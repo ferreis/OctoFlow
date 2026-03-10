@@ -1,6 +1,5 @@
 # Dados persistidos e artefatos locais
-/data/*
-!/data/.gitkeep
+/data/
 
 # Segredos e variáveis locais
 **/.env.local
