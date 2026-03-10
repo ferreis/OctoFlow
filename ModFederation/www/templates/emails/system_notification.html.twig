@@ -1,0 +1,21 @@
+{% extends 'emails/base_email.html.twig' %}
+
+{% block subject %}{{ subject|default('Notificação do sistema - ModFederation') }}{% endblock %}
+
+{% block preheader %}{{ preheader|default('Notificação importante do sistema') }}{% endblock %}
+
+{% block body %}
+<p>{{ greeting|default('Olá') }},</p>
+
+<div>{{ message|default('Você recebeu uma notificação do sistema.')|raw }}</div>
+
+{% if extra is defined and extra %}
+  <div style="margin-top:12px;color:#374151;font-size:13px">{{ extra|raw }}</div>
+{% endif %}
+{% endblock %}
+
+{% block action %}
+  {% if action_url is defined and action_url %}
+    <a class="button" href="{{ action_url }}">{{ action_text|default('Ver detalhes') }}</a>
+  {% endif %}
+{% endblock %}

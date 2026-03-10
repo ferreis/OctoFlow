@@ -1,0 +1,112 @@
+services:
+  backend:
+    container_name: php_ModFederation
+    hostname: php_ModFederation # se trocar no nome aqui tem que trocar no nginx/conf.d/phpbase.vhost
+    build:
+      context: . # path do build
+      dockerfile: docker/php/Dockerfile
+    image: php-fpm # faz um cross validate
+    volumes:
+      - ./www:/var/www/html
+      - ./docker/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../data/ftp:/ftp
+      - ../data/ftp_persistent:/ftp_persistent
+    depends_on:
+      - database
+    networks:
+      - ModFederation-network
+
+  frontend:
+    container_name: frontend_ModFederation
+    hostname: frontend_ModFederation
+    build:
+      context: .
+      dockerfile: docker/nodejs/Dockerfile
+    image: nodejs
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/home/node/app
+      - ../data/temp:/temp
+    ports:
+      - "5173:5173"
+      - "5175:5175"
+    depends_on:
+      - backend
+    networks:
+      - ModFederation-network
+
+  nginx:
+    container_name: nginx_ModFederation
+    hostname: nginx_ModFederation
+    restart: always
+    build:
+      context: .
+      dockerfile: ./docker/nginx/Dockerfile
+    image: nginx
+    depends_on:
+      - frontend
+      - backend
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        if [ ! -f /var/www/cert/nginx-selfsigned.crt ] || [ ! -f /var/www/cert/nginx-selfsigned.key ]; then
+          openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 825 \
+            -keyout /var/www/cert/nginx-selfsigned.key \
+            -out /var/www/cert/nginx-selfsigned.crt \
+            -subj '/C=BR/ST=SP/L=SaoPaulo/O=ModuleFederation/OU=Dev/CN=localhost' \
+            -addext 'subjectAltName=DNS:localhost,DNS:nginx,IP:127.0.0.1'
+          chmod 600 /var/www/cert/nginx-selfsigned.key
+          chmod 644 /var/www/cert/nginx-selfsigned.crt
+        fi
+        exec nginx -g 'daemon off;'
+    volumes:
+      - ./www_nginx:/var/www/html
+      - ../data/cert_nginx:/var/www/cert
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d     
+    # environment:
+    #   - NGINX_HOST=foobar.com
+    #   - NGINX_PORT=80
+    ports:
+      - "680:85"
+      - "4483:443"
+    networks:
+      - ModFederation-network
+
+  database:
+    container_name: database_ModFederation
+    hostname: database_ModFederation
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: test_db
+    build:
+      context: .
+      dockerfile: docker/pg/Dockerfile
+    volumes:
+      - ../data/pg/PostgreSql-Snippets/infile:/infile
+      - ../data/pg/pg_data:/var/lib/postgresql/data
+      - ../data/tempdb:/tempdb
+      - ../data/temp:/temp
+    ports:
+      - "14953:5432"
+    networks:
+      - ModFederation-network
+
+  mailcatcher:
+    image: dockage/mailcatcher:latest
+    container_name: mailcatcher_ModFederation
+    hostname: mailcatcher
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+      - "1025:1025"
+    networks:
+      - ModFederation-network
+
+networks:
+  ModFederation-network:
+    driver: bridge

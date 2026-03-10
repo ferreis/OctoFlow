@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>{% block subject %}{% endblock %}</title>
+  <style>
+    .button{display:inline-block;padding:10px 16px;background:#0ea5e9;color:#fff;border-radius:6px;text-decoration:none}
+    body{background:#f7f7fb}
+  </style>
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:24px">
+  <div style="max-width:700px;margin:0 auto;background:#fff;padding:18px;border-radius:8px;box-shadow:0 6px 18px rgba(16,24,40,0.06)">
+    <header style="padding-bottom:12px;border-bottom:1px solid #eee">
+      <h2 style="margin:0">{% block header %}ModFederation{% endblock %}</h2>
+    </header>
+    <main style="padding:18px 0">
+      <p style="color:#6b7280;font-size:14px;margin:0">{% block preheader %}{% endblock %}</p>
+      <div style="margin-top:12px">{% block body %}{% endblock %}</div>
+      <div style="margin-top:18px">{% block action %}{% endblock %}</div>
+    </main>
+    <footer style="border-top:1px solid #eee;padding-top:12px;color:#6b7280;font-size:13px">
+      <p style="margin:0">Se você não reconhece esta mensagem, basta ignorá-la.</p>
+      <p style="margin:6px 0 0">—ModFederation</p>
+    </footer>
+  </div>
+</body>
+</html>

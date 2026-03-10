@@ -1,0 +1,28 @@
+api_platform:
+    title: Hello API Platform
+    version: 1.0.0
+    defaults:
+        stateless: true
+        pagination_enabled: true
+        client_items_per_page: true
+        pagination_client_items_per_page: true
+        maximum_items_per_page: 100
+        pagination_items_per_page: 10
+        cache_headers:
+            vary: ['Content-Type', 'Authorization', 'Origin']
+    collection:
+        pagination:
+            items_per_page_parameter_name: itemsPerPage
+    formats:
+        jsonld: ['application/ld+json']
+        json: ['application/json']
+
+    swagger:
+        api_keys:
+            jwt:
+                name: Authorization
+                type: header
+            api_key:
+                name: X-API-KEY
+                type: header
+

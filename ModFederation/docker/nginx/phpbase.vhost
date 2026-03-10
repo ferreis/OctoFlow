@@ -1,0 +1,42 @@
+
+server {
+    listen 84 ;
+    server_name localhost;
+    root /var/www/html;
+    index index.html index.htm;
+
+
+    client_header_buffer_size 5120k;
+    large_client_header_buffers 16 5120k;
+
+    location = / {
+        try_files @site @site;
+    }
+
+    location / {
+        try_files $uri $uri/ @site;
+    }
+
+
+    location ~ \.php$ {
+        return 404;
+    }
+
+    location @site {
+        fastcgi_pass php_ModFederation:9000;
+		fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        include fastcgi_params;
+		set $path_sym '/var/www/html/public';
+		fastcgi_param SCRIPT_FILENAME $path_sym/index.php;
+		#fastcgi_param SCRIPT_FILENAME $path_sym$fastcgi_script_name;
+        #fastcgi_param DOCUMENT_ROOT $path_sym;
+
+        #fastcgi_param  SCRIPT_FILENAME /var/www/html/public/index.php;
+        #uncomment when running via https
+        #fastcgi_param HTTPS on;
+    }
+
+
+}
+
+

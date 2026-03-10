@@ -1,0 +1,1 @@
+ ao apagar este arquivo, o npm install irá rodar no próximo up

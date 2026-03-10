@@ -1,0 +1,42 @@
+server {
+    listen 85;
+
+    server_name example.com www.example.com;
+    root /var/www/html/public;
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+
+    location / {
+        # try to serve file directly, fallback to index.php
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
+
+
+    location ~ ^/index\.php(/|$)  {
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        fastcgi_pass php_ModFederation:9000;
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        include fastcgi_params;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        #fastcgi_param SCRIPT_NAME index.php;
+        fastcgi_param DOCUMENT_ROOT $document_root;
+
+        fastcgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;
+        fastcgi_param HTTP_X_FORWARDED_PROTO $scheme;
+        fastcgi_param HTTP_X_FORWARDED_HOST $host;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        internal;
+    }
+
+    # return 404 for all other php files not matching the front controller
+    # this prevents access to other php files you don't want to be accessible.
+    location ~ \.php$ {
+        return 404;
+    }
+
+    error_log /var/log/nginx/project_error.log;
+    access_log /var/log/nginx/project_access.log;
+}
