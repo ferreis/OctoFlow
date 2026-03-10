@@ -131,43 +131,43 @@ Orquestra toda a lógica de emissão, rotação e revogação de tokens.
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ AuthController::login()                                     │
-│ 1. Valida credenciais                                      │
-│ 2. Gera Access Token (JWT, 15 min)                         │
-│ 3. Chama refreshTokenManager->issue($user, $request)       │
+│ 1. Valida credenciais                                       │
+│ 2. Gera Access Token (JWT, 15 min)                          │
+│ 3. Chama refreshTokenManager->issue($user, $request)        │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ RefreshTokenManager::issue()                                │
-│ ┌──────────────────────────────────────────────────────┐   │
-│ │ Geração de Dados:                                    │   │
-│ │ • plainToken = random_bytes(64) em hex              │   │
-│ │ • tokenHash = SHA-256(plainToken)                   │   │
-│ │ • expiresAt = now + 30 dias                         │   │
-│ │                                                      │   │
-│ │ Fingerprint de Contexto:                            │   │
-│ │ • fingerprintHash = SHA-256(UA + IP)               │   │
-│ │ • userAgentHash = SHA-256(UA)                       │   │
-│ │ • ipHash = SHA-256(IP)                              │   │
-│ │                                                      │   │
-│ │ Família de Tokens:                                  │   │
-│ │ • tokenFamilyId = novo UUID (primeira vez)          │   │
-│ │ • parentTokenHash = null (primeira vez)             │   │
-│ └──────────────────────────────────────────────────────┘   │
+│ ┌──────────────────────────────────────────────────────┐    │
+│ │ Geração de Dados:                                    │    │
+│ │ • plainToken = random_bytes(64) em hex               │    │
+│ │ • tokenHash = SHA-256(plainToken)                    │    │
+│ │ • expiresAt = now + 30 dias                          │    │
+│ │                                                      │    │
+│ │ Fingerprint de Contexto:                             │    │
+│ │ • fingerprintHash = SHA-256(UA + IP)                 │    │
+│ │ • userAgentHash = SHA-256(UA)                        │    │
+│ │ • ipHash = SHA-256(IP)                               │    │
+│ │                                                      │    │
+│ │ Família de Tokens:                                   │    │
+│ │ • tokenFamilyId = novo UUID (primeira vez)           │    │
+│ │ • parentTokenHash = null (primeira vez)              │    │
+│ └──────────────────────────────────────────────────────┘    │
 │                                                             │
-│ Persiste RefreshToken com todos os dados                  │
-│ Retorna IssuedRefreshToken(user, plainToken, expiresAt)   │
+│ Persiste RefreshToken com todos os dados                    │
+│ Retorna IssuedRefreshToken(user, plainToken, expiresAt)     │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ AuthController::login() retorna ao Cliente:                 │
 │ {                                                           │
-│   "token": "eyJhbGc...",      ← Access Token (JWT)        │
-│   "token_type": "Bearer",                                  │
-│   "expires_in": 900,           ← Em segundos (15 min)      │
-│   "user": { ... }                                          │
-│   Cookie: refresh_token=<plainToken> (HttpOnly)            │
+│   "token": "eyJhbGc...",      ← Access Token (JWT)          │
+│   "token_type": "Bearer",                                   │
+│   "expires_in": 900,           ← Em segundos (15 min)       │
+│   "user": { ... }                                           │
+│   Cookie: refresh_token=<plainToken> (HttpOnly)             │
 │ }                                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -183,89 +183,89 @@ Orquestra toda a lógica de emissão, rotação e revogação de tokens.
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ AuthController::refresh()                                   │
-│ 1. Extrai plainToken do Cookie                             │
-│ 2. Chama refreshTokenManager->rotate(plainToken, $request) │
+│ 1. Extrai plainToken do Cookie                              │
+│ 2. Chama refreshTokenManager->rotate(plainToken, $request)  │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ RefreshTokenManager::rotate()                                │
-│ ┌────────────────────────────────────────────────────────┐  │
-│ │ PASSO 1: Encontra Token Atual                          │  │
-│ │ tokenHash = SHA-256(plainToken)                        │  │
-│ │ existingToken = DB.findByHash(tokenHash)              │  │
-│ │                                                        │  │
-│ │ Se não encontrado → return null ❌                    │  │
-│ └────────────────────────────────────────────────────────┘  │
+│ ┌────────────────────────────────────────────────────────┐   │
+│ │ PASSO 1: Encontra Token Atual                          │   │
+│ │ tokenHash = SHA-256(plainToken)                        │   │
+│ │ existingToken = DB.findByHash(tokenHash)               │   │
+│ │                                                        │   │
+│ │ Se não encontrado → return null ❌                     │   │
+│ └────────────────────────────────────────────────────────┘   │
 │                                                              │
-│ ┌────────────────────────────────────────────────────────┐  │
-│ │ PASSO 2: Verifica Revogação (Detecção de Reuso) 🚨    │  │
-│ │ if (existingToken.isRevoked()) {                       │  │
-│ │   // ⚠️ Token revogado sendo reutilizado!             │  │
-│ │   //    Indica vazamento do cookie                    │  │
-│ │                                                        │  │
-│ │   existingToken.reuseDetectedAt = now                 │  │
-│ │   DB.flush()                                           │  │
-│ │                                                        │  │
-│ │   // 🚨 AÇÃO CRÍTICA: Revoga TODA a família          │  │
-│ │   revokeTokenFamily(existingToken.tokenFamilyId)     │  │
-│ │                                                        │  │
-│ │   Logs: "Token reuse detected for user %s"            │  │
-│ │   return null ❌                                      │  │
-│ │ }                                                      │  │
-│ └────────────────────────────────────────────────────────┘  │
+│ ┌────────────────────────────────────────────────────────┐   │
+│ │ PASSO 2: Verifica Revogação (Detecção de Reuso) 🚨     │   │
+│ │ if (existingToken.isRevoked()) {                       │   │
+│ │   // ⚠️ Token revogado sendo reutilizado!              │   │
+│ │   //    Indica vazamento do cookie                     │   │
+│ │                                                        │   │
+│ │   existingToken.reuseDetectedAt = now                  │   │
+│ │   DB.flush()                                           │   │
+│ │                                                        │   │
+│ │   // 🚨 AÇÃO CRÍTICA: Revoga TODA a família            │   │
+│ │   revokeTokenFamily(existingToken.tokenFamilyId)       │   │
+│ │                                                        │   │
+│ │   Logs: "Token reuse detected for user %s"             │   │
+│ │   return null ❌                                       │   │
+│ │ }                                                      │   │
+│ └────────────────────────────────────────────────────────┘   │
 │                                                              │
-│ ┌────────────────────────────────────────────────────────┐  │
-│ │ PASSO 3: Valida Fingerprint (Contexto)                │  │
-│ │ currentFingerprint = fingerprint.generate($request)   │  │
-│ │ contextChange = fingerprint.assessContextChange(      │  │
-│ │   stored.userAgentHash,                              │  │
-│ │   current.userAgentHash,                             │  │
-│ │   stored.ipHash,                                     │  │
-│ │   current.ipHash                                     │  │
-│ │ )                                                     │  │
-│ │                                                       │  │
-│ │ // Classificação:                                    │  │
-│ │ // ✅ 'none'   → Contexto idêntico                  │  │
-│ │ // ⚠️  'low'   → Novo device, mesmo IP              │  │
-│ │ // ⚠️  'medium'→ Mesmo device, novo IP              │  │
-│ │ // 🚨 'high'   → Ambos mudaram (muito suspeito!)    │  │
-│ │                                                       │  │
-│ │ if (contextChange === 'high') {                      │  │
-│ │   existingToken.contextChangedAt = now               │  │
-│ │   // Continua rotação mas registra alerta            │  │
-│ │   // Logs: "Unusual context change detected"         │  │
-│ │ }                                                     │  │
-│ └────────────────────────────────────────────────────────┘  │
+│ ┌────────────────────────────────────────────────────────┐   │
+│ │ PASSO 3: Valida Fingerprint (Contexto)                 │   │
+│ │ currentFingerprint = fingerprint.generate($request)    │   │
+│ │ contextChange = fingerprint.assessContextChange(       │   │
+│ │   stored.userAgentHash,                                │   │
+│ │   current.userAgentHash,                               │   │
+│ │   stored.ipHash,                                       │   │
+│ │   current.ipHash                                       │   │
+│ │ )                                                      │   │
+│ │                                                        │   │
+│ │ // Classificação:                                      │   │
+│ │ // ✅ 'none'   → Contexto idêntico                     │   │
+│ │ // ⚠️  'low'   → Novo device, mesmo IP                 │   │
+│ │ // ⚠️  'medium'→ Mesmo device, novo IP                 │   │
+│ │ // 🚨 'high'   → Ambos mudaram (muito suspeito!)       │   │
+│ │                                                        │   │
+│ │ if (contextChange === 'high') {                        │   │
+│ │   existingToken.contextChangedAt = now                 │   │
+│ │   // Continua rotação mas registra alerta              │   │
+│ │   // Logs: "Unusual context change detected"           │   │
+│ │ }                                                      │   │
+│ └────────────────────────────────────────────────────────┘   │
 │                                                              │
-│ ┌────────────────────────────────────────────────────────┐  │
-│ │ PASSO 4: Rotação (Revoga Atual + Emite Novo)          │  │
-│ │ existingToken.revokedAt = now                         │  │
-│ │ DB.flush()                                            │  │
-│ │                                                        │  │
-│ │ newToken = issue(                                     │  │
-│ │   user,                                              │  │
-│ │   $request,                                          │  │
-│ │   parentTokenHash = existingToken.tokenHash          │  │
-│ │ )                                                     │  │
-│ │                                                        │  │
-│ │ // O novo token:                                      │  │
-│ │ // • Continua na MESMA familia (tokenFamilyId)        │  │
-│ │ // • Tem parentTokenHash apontando para o anterior    │  │
-│ │ // • Possui novo fingerprint (contexto atual)         │  │
-│ │ // • É armazenado sem revogação                       │  │
-│ └────────────────────────────────────────────────────────┘  │
+│ ┌────────────────────────────────────────────────────────┐   │
+│ │ PASSO 4: Rotação (Revoga Atual + Emite Novo)           │   │
+│ │ existingToken.revokedAt = now                          │   │
+│ │ DB.flush()                                             │   │
+│ │                                                        │   │
+│ │ newToken = issue(                                      │   │
+│ │   user,                                                │   │
+│ │   $request,                                            │   │
+│ │   parentTokenHash = existingToken.tokenHash            │   │
+│ │ )                                                      │   │
+│ │                                                        │   │
+│ │ // O novo token:                                       │   │
+│ │ // • Continua na MESMA familia (tokenFamilyId)         │   │
+│ │ // • Tem parentTokenHash apontando para o anterior     │   │
+│ │ // • Possui novo fingerprint (contexto atual)          │   │
+│ │ // • É armazenado sem revogação                        │   │
+│ └────────────────────────────────────────────────────────┘   │
 └──────────────────┬───────────────────────────────────────────┘
                    │
                    ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ AuthController::refresh() retorna ao Cliente:                │
 │ {                                                            │
-│   "token": "eyJhbGc...", NEW   ← Novo Access Token         │
-│   "token_type": "Bearer",                                  │
-│   "expires_in": 900,                                      │
-│   "user": { ... }                                          │
-│   Cookie: refresh_token=<newPlainToken> (HttpOnly) UPDATED │
+│   "token": "eyJhbGc...", NEW   ← Novo Access Token           │
+│   "token_type": "Bearer",                                    │
+│   "expires_in": 900,                                         | 
+│   "user": { ... }                                            | 
+│   Cookie: refresh_token=<newPlainToken> (HttpOnly) UPDATED   │
 │ }                                                            │
 └──────────────────────────────────────────────────────────────┘
 ```

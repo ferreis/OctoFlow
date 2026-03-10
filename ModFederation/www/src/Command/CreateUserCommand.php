@@ -27,6 +27,10 @@ class CreateUserCommand extends Command
     ) {
         parent::__construct();
     }
+    /**
+     * Usuário: admin@example.com
+     * Senha: Senha@123     *
+     */
 
     protected function configure(): void
     {

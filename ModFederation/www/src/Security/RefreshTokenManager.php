@@ -45,8 +45,8 @@ class RefreshTokenManager
     {
         $plainToken = $this->generateToken();
         $tokenHash = $this->hashToken($plainToken);
-        $expiresAt = new \DateTimeImmutable(sprintf('+%d seconds', $this->refreshTokenTtl));
         $now = new \DateTimeImmutable();
+        $expiresAt = $now->modify(sprintf('+%d seconds', $this->normalizeRefreshTokenTtl()));
 
         // Gera fingerprint e hashes componentes
         $fingerprintHash = $this->fingerprintService->generate($request);
@@ -76,6 +76,14 @@ class RefreshTokenManager
         $this->entityManager->flush();
 
         return new IssuedRefreshToken($user, $plainToken, $expiresAt);
+    }
+
+    /**
+     * Evita tokens sem janela de validade em caso de configuração inválida.
+     */
+    private function normalizeRefreshTokenTtl(): int
+    {
+        return max(1, $this->refreshTokenTtl);
     }
 
     /**
