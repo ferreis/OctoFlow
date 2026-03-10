@@ -39,6 +39,13 @@ const currentComponentProps = computed(() => {
     endpoint: props.endpoint,
   }
 
+  if (activeAction.value === 'list') {
+    return {
+      ...baseProps,
+      selectedTaskId: selectedTaskId.value,
+    }
+  }
+
   if (activeAction.value === 'view' || activeAction.value === 'edit') {
     return {
       ...baseProps,

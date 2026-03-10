@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const props = defineProps({
   request: {
@@ -10,6 +10,10 @@ const props = defineProps({
     type: String,
     default: '/tasks',
   },
+  selectedTaskId: {
+    type: Number,
+    default: null,
+  },
 })
 
 const emit = defineEmits(['select-task', 'open-view', 'open-edit', 'task-deleted', 'task-status'])
@@ -18,6 +22,19 @@ const tasks = ref([])
 const loading = ref(false)
 const error = ref('')
 const rowLoadingId = ref(null)
+const statusFilter = ref('all')
+
+const filteredTasks = computed(() => {
+  if (statusFilter.value === 'completed') {
+    return tasks.value.filter((task) => task.completed)
+  }
+
+  if (statusFilter.value === 'pending') {
+    return tasks.value.filter((task) => !task.completed)
+  }
+
+  return tasks.value
+})
 
 onMounted(() => {
   void loadTasks()
@@ -76,6 +93,33 @@ async function removeTask(task) {
   }
 }
 
+async function toggleStatus(task) {
+  rowLoadingId.value = task.id
+  error.value = ''
+
+  try {
+    const response = await props.request({
+      url: `${props.endpoint}/${task.id}`,
+      method: 'PATCH',
+      data: {
+        completed: !task.completed,
+      },
+    })
+
+    const updatedTask = response?.data?.item || {
+      ...task,
+      completed: !task.completed,
+    }
+
+    tasks.value = tasks.value.map((item) => (item.id === task.id ? updatedTask : item))
+    emit('task-status', `Status da tarefa ${task.id} atualizado para ${updatedTask.completed ? 'Concluida' : 'Pendente'}.`)
+  } catch (requestError) {
+    error.value = extractMessage(requestError, 'Falha ao atualizar status da tarefa.')
+  } finally {
+    rowLoadingId.value = null
+  }
+}
+
 function extractMessage(error, fallback) {
   if (error && typeof error === 'object') {
     const responseMessage = error.response?.data?.message
@@ -91,6 +135,10 @@ function extractMessage(error, fallback) {
 
   return fallback
 }
+
+function statusLabel(task) {
+  return task.completed ? 'Concluida' : 'Pendente'
+}
 </script>
 
 <template>
@@ -102,22 +150,47 @@ function extractMessage(error, fallback) {
       </button>
     </header>
 
+    <label class="filter-field">
+      <span>Filtro de status</span>
+      <select v-model="statusFilter" :disabled="loading">
+        <option value="all">Todos</option>
+        <option value="pending">Pendentes</option>
+        <option value="completed">Concluidas</option>
+      </select>
+    </label>
+
     <p v-if="error" class="feedback error">{{ error }}</p>
     <p v-if="loading" class="empty">Carregando tarefas...</p>
-    <p v-else-if="tasks.length === 0" class="empty">Nenhuma tarefa encontrada.</p>
+    <p v-else-if="filteredTasks.length === 0" class="empty">
+      {{ tasks.length === 0 ? 'Nenhuma tarefa encontrada.' : 'Nenhuma tarefa para o status selecionado.' }}
+    </p>
 
     <ul v-else class="task-list">
-      <li v-for="task in tasks" :key="task.id" class="task-item">
+      <li
+        v-for="task in filteredTasks"
+        :key="task.id"
+        class="task-item"
+        :class="{ selected: task.id === selectedTaskId }"
+        tabindex="0"
+        @click="selectTask(task)"
+        @keydown.enter.prevent="selectTask(task)"
+        @keydown.space.prevent="selectTask(task)"
+      >
         <div class="task-main">
-          <p class="task-title" :class="{ done: task.completed }">{{ task.title }}</p>
+          <div class="task-title-row">
+            <p class="task-title" :class="{ done: task.completed }">{{ task.title }}</p>
+            <span class="status-chip" :class="task.completed ? 'done' : 'pending'">{{ statusLabel(task) }}</span>
+          </div>
           <p class="task-description">{{ task.description || 'Sem descricao' }}</p>
         </div>
 
         <div class="task-actions">
-          <button type="button" class="tag" @click="selectTask(task)">Selecionar</button>
-          <button type="button" class="ghost" @click="openView(task)">View</button>
-          <button type="button" class="ghost" @click="openEdit(task)">Editar</button>
-          <button type="button" class="danger" :disabled="rowLoadingId === task.id" @click="removeTask(task)">
+          <button type="button" class="ghost" @click.stop="openView(task)">View</button>
+          <button type="button" class="ghost" @click.stop="openEdit(task)">Editar</button>
+          <button type="button" class="tag" :disabled="rowLoadingId === task.id" @click.stop="toggleStatus(task)">
+            Status
+          </button>
+          <button type="button" class="danger" :disabled="rowLoadingId === task.id" @click.stop="removeTask(task)">
             Excluir
           </button>
         </div>
@@ -137,6 +210,25 @@ function extractMessage(error, fallback) {
   align-items: center;
   display: flex;
   justify-content: space-between;
+}
+
+.filter-field {
+  color: #334155;
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.filter-field span {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.filter-field select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f172a;
+  padding: 8px 10px;
 }
 
 .task-block-header h4 {
@@ -173,10 +265,23 @@ function extractMessage(error, fallback) {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
+  cursor: pointer;
   display: flex;
   gap: 10px;
   justify-content: space-between;
   padding: 10px;
+}
+
+.task-item.selected {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.12);
+}
+
+.task-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .task-title {
@@ -193,6 +298,23 @@ function extractMessage(error, fallback) {
 .task-description {
   color: #475569;
   margin: 4px 0 0;
+}
+
+.status-chip {
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.status-chip.done {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.status-chip.pending {
+  background: #e0f2fe;
+  color: #075985;
 }
 
 .task-actions {
