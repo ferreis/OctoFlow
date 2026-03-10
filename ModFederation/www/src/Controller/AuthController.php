@@ -5,6 +5,12 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Security\RefreshTokenManager;
+use App\Security\Google\Exception\GoogleAccountLinkException;
+use App\Security\Google\Exception\GoogleOAuthConfigurationException;
+use App\Security\Google\Exception\GoogleTokenVerificationException;
+use App\Security\Google\GoogleIdentity;
+use App\Security\Google\GoogleIdentityVerifier;
+use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Cookie;
@@ -21,9 +27,11 @@ class AuthController
 {
     public function __construct(
         private readonly UserRepository $userRepository,
+        private readonly EntityManagerInterface $entityManager,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly JWTTokenManagerInterface $jwtTokenManager,
         private readonly RefreshTokenManager $refreshTokenManager,
+        private readonly GoogleIdentityVerifier $googleIdentityVerifier,
         #[Autowire('%env(string:AUTH_REFRESH_TOKEN_COOKIE_NAME)%')]
         private readonly string $refreshCookieName,
         #[Autowire('%env(bool:AUTH_REFRESH_COOKIE_SECURE)%')]
@@ -59,6 +67,42 @@ class AuthController
             return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
         }
 
+        return $this->createAuthenticatedResponse($user, $request);
+    }
+
+    #[Route('/google', name: 'auth_google', methods: ['POST'])]
+    public function googleLogin(Request $request): JsonResponse
+    {
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $credential = trim((string) ($payload['credential'] ?? ''));
+        if ($credential === '') {
+            return new JsonResponse(['message' => 'Google credential is required.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $googleIdentity = $this->googleIdentityVerifier->verifyIdToken($credential);
+            $user = $this->resolveGoogleUser($googleIdentity);
+        } catch (GoogleOAuthConfigurationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (GoogleAccountLinkException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
+        } catch (GoogleTokenVerificationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        if (!$user->isActive()) {
+            return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        return $this->createAuthenticatedResponse($user, $request);
+    }
+
+    private function createAuthenticatedResponse(User $user, Request $request): JsonResponse
+    {
         $accessToken = $this->jwtTokenManager->create($user);
         $issuedRefreshToken = $this->refreshTokenManager->issue($user, $request);
 
@@ -72,6 +116,47 @@ class AuthController
         $response->headers->setCookie($this->buildRefreshCookie($issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
 
         return $response;
+    }
+
+    private function resolveGoogleUser(GoogleIdentity $googleIdentity): User
+    {
+        $user = $this->userRepository->findOneByGoogleSubject($googleIdentity->subject);
+        if ($user !== null) {
+            if ($user->getEmail() !== $googleIdentity->email) {
+                $userWithSameEmail = $this->userRepository->findOneByEmail($googleIdentity->email);
+                if ($userWithSameEmail !== null && $userWithSameEmail->getId() !== $user->getId()) {
+                    throw new GoogleAccountLinkException('The Google account email is already linked to another user.');
+                }
+
+                $user->setEmail($googleIdentity->email);
+                $this->entityManager->flush();
+            }
+
+            return $user;
+        }
+
+        $existingUser = $this->userRepository->findOneByEmail($googleIdentity->email);
+        if ($existingUser !== null) {
+            throw new GoogleAccountLinkException('There is already a local account with this email. Sign in with email and password before linking Google.');
+        }
+
+        return $this->createGoogleUser($googleIdentity);
+    }
+
+    private function createGoogleUser(GoogleIdentity $googleIdentity): User
+    {
+        $user = (new User())
+            ->setEmail($googleIdentity->email)
+            ->setGoogleSubject($googleIdentity->subject)
+            ->setRoles(['ROLE_USER'])
+            ->setIsActive(true);
+
+        $user->setPassword($this->passwordHasher->hashPassword($user, bin2hex(random_bytes(32))));
+
+        $this->entityManager->persist($user);
+        $this->entityManager->flush();
+
+        return $user;
     }
 
     #[Route('/refresh', name: 'auth_refresh', methods: ['POST'])]

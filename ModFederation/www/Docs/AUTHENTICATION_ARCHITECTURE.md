@@ -13,6 +13,16 @@ Implementação de um sistema de autenticação baseado em **Access Token (JWT)*
 5. **Fingerprint de Contexto**: Valida User-Agent + IP para detectar mudanças suspeitas
 6. **Proteção contra Token Fixation**: Cookie HttpOnly, Secure, SameSite=Strict
 
+### 🌐 Login Social com Google
+
+O login Google foi acoplado ao mesmo fluxo stateless já existente:
+
+1. O frontend usa Google Identity Services para obter um `credential` (ID token).
+2. O backend recebe esse token em `POST /auth/google`.
+3. O backend valida `aud`, `iss`, `sub`, `exp` e `email_verified` com o endpoint oficial `tokeninfo` do Google.
+4. Se o usuário ainda não existir, a API cria um registro local com `google_subject` e segue emitindo o JWT próprio da aplicação.
+5. Se já existir conta local com o mesmo email, o login é bloqueado até existir vínculo explícito, evitando takeover por auto-link inseguro.
+
 ---
 
 ## 📊 Estrutura de Dados

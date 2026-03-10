@@ -40,6 +40,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[Groups(['user:read'])]
     private string $email = '';
 
+    #[ORM\Column(length: 191, unique: true, nullable: true)]
+    private ?string $googleSubject = null;
+
     /**
      * @var list<string>
      */
@@ -89,6 +92,20 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setEmail(string $email): self
     {
         $this->email = mb_strtolower(trim($email));
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getGoogleSubject(): ?string
+    {
+        return $this->googleSubject;
+    }
+
+    public function setGoogleSubject(?string $googleSubject): self
+    {
+        $normalized = $googleSubject === null ? null : trim($googleSubject);
+        $this->googleSubject = $normalized === '' ? null : $normalized;
         $this->touch();
 
         return $this;

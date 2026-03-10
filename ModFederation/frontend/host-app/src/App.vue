@@ -1,6 +1,6 @@
 <script setup>
 import axios from 'axios'
-import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
 
 // Usa caminho relativo para funcionar com proxy do Vite em dev e mesmo dominio via nginx em producao.
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/ModFederation/api').replace(/\/$/, '')
@@ -12,6 +12,48 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
+const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim()
+const googleLoginEnabled = GOOGLE_CLIENT_ID !== ''
+
+let googleIdentityScriptPromise
+
+function loadGoogleIdentityScript() {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Google Identity Services so pode ser carregado no navegador.'))
+  }
+
+  if (window.google?.accounts?.id) {
+    return Promise.resolve(window.google)
+  }
+
+  if (googleIdentityScriptPromise) {
+    return googleIdentityScriptPromise
+  }
+
+  googleIdentityScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = () => {
+      if (window.google?.accounts?.id) {
+        resolve(window.google)
+        return
+      }
+
+      googleIdentityScriptPromise = undefined
+      reject(new Error('Google Identity Services carregou sem expor a API esperada.'))
+    }
+    script.onerror = () => {
+      googleIdentityScriptPromise = undefined
+      reject(new Error('Falha ao carregar o script do Google Identity Services.'))
+    }
+    document.head.appendChild(script)
+  })
+
+  return googleIdentityScriptPromise
+}
 
 const federationError = ref('')
 
@@ -43,20 +85,35 @@ const currentUser = ref(null)
 const loginLoading = ref(false)
 const actionLoading = ref(false)
 const authError = ref('')
+const googleError = ref('')
+const googleLoading = ref(false)
 const statusMessage = ref('')
+const googleButtonContainer = ref(null)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 
 onMounted(async () => {
+  if (googleLoginEnabled) {
+    await setupGoogleLogin()
+  }
+
   const refreshed = await refreshToken()
   if (refreshed) {
     await loadCurrentUser(false)
   }
 })
 
+watch(isAuthenticated, async (authenticated) => {
+  if (!authenticated && googleLoginEnabled) {
+    await nextTick()
+    renderGoogleButton()
+  }
+})
+
 async function handleLogin() {
   loginLoading.value = true
   authError.value = ''
+  googleError.value = ''
   statusMessage.value = ''
 
   try {
@@ -79,6 +136,77 @@ async function handleLogin() {
     authError.value = `Erro de conexao com o backend: ${message}`
   } finally {
     loginLoading.value = false
+  }
+}
+
+async function setupGoogleLogin() {
+  googleError.value = ''
+
+  try {
+    await loadGoogleIdentityScript()
+
+    if (!window.google?.accounts?.id) {
+      throw new Error('Google Identity Services nao esta disponivel.')
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredentialResponse,
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    })
+
+    await nextTick()
+    renderGoogleButton()
+  } catch (error) {
+    googleError.value = extractHttpMessage(error, 'Falha ao inicializar o login com Google.')
+  }
+}
+
+function renderGoogleButton() {
+  if (!googleLoginEnabled || !googleButtonContainer.value || !window.google?.accounts?.id) {
+    return
+  }
+
+  googleButtonContainer.value.innerHTML = ''
+  window.google.accounts.id.renderButton(googleButtonContainer.value, {
+    theme: 'outline',
+    size: 'large',
+    shape: 'pill',
+    text: 'continue_with',
+    logo_alignment: 'left',
+    width: 320,
+  })
+}
+
+async function handleGoogleCredentialResponse(response) {
+  const credential = typeof response?.credential === 'string' ? response.credential.trim() : ''
+  if (!credential) {
+    googleError.value = 'Google nao retornou uma credencial valida.'
+    return
+  }
+
+  googleLoading.value = true
+  authError.value = ''
+  googleError.value = ''
+  statusMessage.value = ''
+
+  try {
+    const { data } = await apiClient.post('/auth/google', { credential })
+
+    setAccessToken(data.token || '')
+    currentUser.value = data.user || null
+
+    if (!currentUser.value) {
+      await loadCurrentUser(false)
+    }
+
+    loginForm.password = ''
+    statusMessage.value = 'Login com Google realizado com sucesso.'
+  } catch (error) {
+    googleError.value = extractHttpMessage(error, 'Falha no login com Google.')
+  } finally {
+    googleLoading.value = false
   }
 }
 
@@ -126,8 +254,13 @@ async function logout() {
   try {
     await apiClient.post('/auth/logout')
   } finally {
+    if (window.google?.accounts?.id?.disableAutoSelect) {
+      window.google.accounts.id.disableAutoSelect()
+    }
+
     clearAuth()
     authError.value = ''
+    googleError.value = ''
     statusMessage.value = 'Sessao encerrada com sucesso.'
     actionLoading.value = false
   }
@@ -183,7 +316,6 @@ function clearAuth() {
 
 <template>
   <div class="host-shell">
-  
     <header class="hero">
       <p class="eyebrow">Module Federation</p>
       <h1>Somente modulo remoto de Task</h1>
@@ -207,9 +339,19 @@ function clearAuth() {
               <input v-model="loginForm.password" type="password" autocomplete="current-password" required>
             </label>
 
-            <button type="submit" :disabled="loginLoading">
+            <button type="submit" :disabled="loginLoading || googleLoading">
               {{ loginLoading ? 'Entrando...' : 'Entrar' }}
             </button>
+
+            <div v-if="googleLoginEnabled" class="social-login">
+              <div class="separator">
+                <span>ou</span>
+              </div>
+
+              <div ref="googleButtonContainer" class="google-button" :class="{ 'is-loading': googleLoading }"></div>
+              <p v-if="googleLoading" class="hint">Validando conta Google...</p>
+              <p v-if="googleError" class="feedback error social-feedback">{{ googleError }}</p>
+            </div>
           </form>
 
           <div v-else class="session">
@@ -317,6 +459,40 @@ function clearAuth() {
   gap: 12px;
 }
 
+.social-login {
+  display: grid;
+  gap: 10px;
+}
+
+.separator {
+  align-items: center;
+  color: #64748b;
+  display: flex;
+  font-size: 0.9rem;
+  gap: 12px;
+}
+
+.separator::before,
+.separator::after {
+  border-top: 1px solid #dbe4ee;
+  content: '';
+  flex: 1;
+}
+
+.separator span {
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.google-button {
+  min-height: 44px;
+}
+
+.google-button.is-loading {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -382,6 +558,16 @@ button:disabled {
   background: #ecfeff;
   border: 1px solid #bae6fd;
   color: #075985;
+}
+
+.social-feedback {
+  margin-top: 0;
+}
+
+.hint {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 .empty {

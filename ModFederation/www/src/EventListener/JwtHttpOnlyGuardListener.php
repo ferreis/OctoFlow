@@ -78,7 +78,7 @@ final class JwtHttpOnlyGuardListener
 
     private function isPublicPath(string $path): bool
     {
-        return preg_match('#^/(auth/login|auth/refresh|docs|contexts)(?:/|$)#', $path) === 1;
+        return preg_match('#^/(auth/login|auth/google|auth/refresh|docs|contexts)(?:/|$)#', $path) === 1;
     }
 
     private function extractBearerToken(?string $authorizationHeader): ?string

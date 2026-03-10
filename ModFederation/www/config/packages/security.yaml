@@ -21,6 +21,7 @@ security:
 
     access_control:
         - { path: ^/auth/login$, roles: PUBLIC_ACCESS }
+        - { path: ^/auth/google$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/refresh$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/logout$, roles: PUBLIC_ACCESS }
         - { path: ^/docs, roles: PUBLIC_ACCESS }

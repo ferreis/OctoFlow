@@ -1,6 +1,6 @@
 # Module Federation - Full Stack JWT Auth + Task CRUD
 
-Uma arquitetura full-stack moderna implementando **autenticação JWT com RefreshToken HttpOnly**, **Backend Symfony com API REST protegida** e **Frontend Vue 3 com Module Federation** para carregamento sob demanda de componentes.
+Uma arquitetura full-stack moderna implementando **autenticação JWT com RefreshToken HttpOnly**, **login local e com Google OAuth2**, **Backend Symfony com API REST protegida** e **Frontend Vue 3 com Module Federation** para carregamento sob demanda de componentes.
 
 ---
 
@@ -27,8 +27,8 @@ Uma arquitetura full-stack moderna implementando **autenticação JWT com Refres
 │                         FRONTEND (Vue 3)                             │
 │  ┌──────────────────┐          ┌──────────────────────────────────┐ │
 │  │   Host App       │          │    Remote Task Module (MF)       │ │
-│  │  (Login Local)   │ ────────▶│  TaskCrudPanel (Orquestrador)   │ │
-│  │                  │          │  ├─ TaskListPanel               │ │
+│  │ (Login Local +   │ ────────▶│  TaskCrudPanel (Orquestrador)   │ │
+│  │   Google OAuth)  │          │  ├─ TaskListPanel               │ │
 │  │                  │          │  ├─ TaskCreatePanel             │ │
 │  │                  │          │  ├─ TaskViewPanel               │ │
 │  │                  │          │  └─ TaskEditPanel               │ │
@@ -42,10 +42,11 @@ Uma arquitetura full-stack moderna implementando **autenticação JWT com Refres
 │  ┌──────────────────┐       ┌──────────────────┐                    │
 │  │  AuthController  │       │  TaskController  │                    │
 │  │  ├─ /auth/login  │       │  ├─ GET /tasks   │                    │
-│  │  ├─ /auth/refresh│       │  ├─ POST /tasks  │                    │
-│  │  ├─ /auth/logout │       │  ├─ GET  /tasks/{id}                  │
-│  │  └─ /auth/me     │       │  ├─ PATCH /tasks/{id}                │
-│  └──────────────────┘       │  └─ DELETE /tasks/{id}               │
+│  │  ├─ /auth/google │       │  ├─ POST /tasks  │                    │
+│  │  ├─ /auth/refresh│       │  ├─ GET  /tasks/{id}                  │
+│  │  ├─ /auth/logout │       │  ├─ PATCH /tasks/{id}                │
+│  │  └─ /auth/me     │       │  └─ DELETE /tasks/{id}               │
+│  └──────────────────┘       └──────────────────┘                    │
 │  ┌──────────────────────────────────────────────────┐                │
 │  │  RefreshTokenManager (Custom)                    │                │
 │  │  ├─ issue(): Emite novo refresh token            │                │
@@ -185,6 +186,10 @@ AUTH_REFRESH_TOKEN_TTL=1209600                 # 14 dias em segundos
 AUTH_REFRESH_COOKIE_SECURE=1                   # 1 = HTTPS only (0 = HTTP allowed)
 AUTH_REFRESH_COOKIE_SAMESITE="none"            # none = cross-origin (Secure must be 1)
 
+# ========== GOOGLE OAUTH ==========
+GOOGLE_OAUTH_CLIENT_ID="seu-client-id.apps.googleusercontent.com"
+GOOGLE_OAUTH_ALLOWED_HD=""                     # opcional: restringe ao dominio Google Workspace
+
 # ========== CORS (Nginx) ==========
 CORS_ALLOW_ORIGIN="http://localhost:3000,https://ModFederation.example.com"
 ```
@@ -194,6 +199,7 @@ CORS_ALLOW_ORIGIN="http://localhost:3000,https://ModFederation.example.com"
 ```ini
 VITE_API_BASE_URL="http://localhost/api"       # Para dev local
 VITE_API_BASE_URL="https://api.example.com"    # Para produção
+VITE_GOOGLE_CLIENT_ID="seu-client-id.apps.googleusercontent.com"
 ```
 
 ### 3. Gerar chaves RSA (JWT)
@@ -433,6 +439,7 @@ POST /auth/logout
 | Método | Endpoint | Descrição | Retorno |
 |--------|----------|-----------|---------|
 | POST | `/auth/login` | Login com email/senha | `{token, user}` |
+| POST | `/auth/google` | Login com Google ID token | `{token, user}` |
 | POST | `/auth/refresh` | Renovar JWT (Cookie enviado) | `{token, user}` |
 | POST | `/auth/logout` | Logout + revoga refresh token | `{message}` |
 | GET | `/auth/me` | Dados do usuário autenticado | `{user}` |
