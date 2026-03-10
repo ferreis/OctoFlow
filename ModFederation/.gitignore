@@ -1,0 +1,32 @@
+# Segredos e variáveis locais do backend
+www/.env.local
+www/.env.local.php
+www/.env.*.local
+www/config/jwt/*.pem
+www/config/secrets/prod/prod.decrypt.private.php
+
+# Dependências, cache e artefatos gerados
+www/vendor/
+www/var/
+www/public/bundles/
+www/.phpunit.result.cache
+www/phpunit.xml
+frontend/**/node_modules/
+frontend/**/dist/
+frontend/**/dist-ssr/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDE e sistema operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
