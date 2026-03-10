@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const fallbackRemoteUrl = env.VITE_REMOTE_APP_URL || 'http://localhost:5175/assets/remoteEntry.js'
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'https://nginx:443'
-  const remoteExternal = `Promise.resolve((globalThis.location && globalThis.location.protocol === 'https:') ? globalThis.location.origin + '/meusite-mf/assets/remoteEntry.js' : '${fallbackRemoteUrl}')`
+  const remoteExternal = `Promise.resolve((globalThis.location && globalThis.location.protocol === 'https:') ? globalThis.location.origin + '/ModFederation-mf/assets/remoteEntry.js' : '${fallbackRemoteUrl}')`
 
   return {
     plugins: [
@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: false,
       proxy: {
-        '/meusite/api': {
+        '/ModFederation/api': {
           target: apiProxyTarget,
           changeOrigin: true,
           secure: false,

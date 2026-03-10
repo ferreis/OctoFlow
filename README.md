@@ -186,7 +186,7 @@ AUTH_REFRESH_COOKIE_SECURE=1                   # 1 = HTTPS only (0 = HTTP allowe
 AUTH_REFRESH_COOKIE_SAMESITE="none"            # none = cross-origin (Secure must be 1)
 
 # ========== CORS (Nginx) ==========
-CORS_ALLOW_ORIGIN="http://localhost:3000,https://meusite.example.com"
+CORS_ALLOW_ORIGIN="http://localhost:3000,https://ModFederation.example.com"
 ```
 
 **Frontend** (`.env` em host-app e my-vue-mf):
@@ -787,7 +787,7 @@ Cenário 1: Atacante tenta fazer POST em foreign domain
            │
            ▼
 ┌───────────────────────────────────────┐
-│  Requisição POST para meusite.com     │
+│  Requisição POST para ModFederation.com     │
 │  ├─ Cookie enviado? NÃO (SameSite)   │
 │  └─ RefreshToken? NÃO → 401           │
 └───────────────────────────────────────┘
@@ -1081,7 +1081,7 @@ JWT_PASSPHRASE="MUDE_ISSO_EM_PRODUCAO"
 AUTH_REFRESH_COOKIE_SECURE=1
 
 # CORS restrito
-CORS_ALLOW_ORIGIN="https://meusite.com"
+CORS_ALLOW_ORIGIN="https://ModFederation.com"
 
 # Database seguro
 DATABASE_URL="postgresql://user:PASSWORD@db-host:5432/db_name"
@@ -1090,7 +1090,7 @@ DATABASE_URL="postgresql://user:PASSWORD@db-host:5432/db_name"
 **Frontend (.env.production):**
 
 ```ini
-VITE_API_BASE_URL="https://api.meusite.com"
+VITE_API_BASE_URL="https://api.ModFederation.com"
 ```
 
 ### Checklist

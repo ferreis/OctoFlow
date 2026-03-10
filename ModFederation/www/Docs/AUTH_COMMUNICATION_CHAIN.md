@@ -27,9 +27,9 @@ Campos principais relacionados ao fluxo discutido:
 ## Cadeia de Comunicacao (visao geral)
 
 ### Fluxo 1: Desenvolvimento via Vite (porta 5173)
-1. Browser chama `http://127.0.0.1:5173/meusite/api/auth/login`.
+1. Browser chama `http://127.0.0.1:5173/ModFederation/api/auth/login`.
 2. `host-app` (Vite dev server) recebe a chamada e aplica proxy para `https://nginx:443`.
-3. Nginx aplica regra `location /meusite/api` e redireciona para `http://127.0.0.1:85/` dentro do proprio container nginx.
+3. Nginx aplica regra `location /ModFederation/api` e redireciona para `http://127.0.0.1:85/` dentro do proprio container nginx.
 4. PHP/Symfony processa `POST /auth/login`.
 5. Symfony valida credenciais no PostgreSQL (`app_user`).
 6. Symfony gera Access Token (JWT, 10 min) e Refresh Token (opaco, 14 dias).
@@ -39,9 +39,9 @@ Campos principais relacionados ao fluxo discutido:
    - Cookie: `refresh_token` (`HttpOnly`, `Secure`, `SameSite`)
 
 ### Fluxo 2: Acesso HTTPS via Nginx (porta 4483)
-1. Browser chama `https://localhost:4483/meusite/...`.
+1. Browser chama `https://localhost:4483/ModFederation/...`.
 2. Nginx atende TLS e roteia frontend/backend pelos locations.
-3. Para API (`/meusite/api/*`), segue para Symfony no mesmo caminho descrito acima.
+3. Para API (`/ModFederation/api/*`), segue para Symfony no mesmo caminho descrito acima.
 
 ## Cadeia de Comunicacao (refresh token)
 1. Browser envia `POST /auth/refresh` com cookie `refresh_token`.
@@ -67,12 +67,12 @@ Campos principais relacionados ao fluxo discutido:
 ## Comandos de verificacao rapida
 ```bash
 # Validar login pela API HTTPS
-curl -k -i 'https://localhost:4483/meusite/api/auth/login' \
+curl -k -i 'https://localhost:4483/ModFederation/api/auth/login' \
   -H 'Content-Type: application/json' \
   --data-raw '{"email":"admin@example.com","password":"Senha@123"}'
 
 # Validar login pelo fluxo de desenvolvimento (Vite proxy)
-curl -i 'http://127.0.0.1:5173/meusite/api/auth/login' \
+curl -i 'http://127.0.0.1:5173/ModFederation/api/auth/login' \
   -H 'Content-Type: application/json' \
   --data-raw '{"email":"admin@example.com","password":"Senha@123"}'
 ```

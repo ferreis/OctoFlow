@@ -29,7 +29,7 @@ Este documento consolida, em um unico lugar, tudo que foi implementado no backen
 ### 2.3 Frontend
 - Host app (Vite + Vue)
 - Remote app (Module Federation)
-- Fluxo autenticado consumindo `/meusite/api/*`
+- Fluxo autenticado consumindo `/ModFederation/api/*`
 
 ## 3. Configuracao Atual (Fonte de Verdade)
 
@@ -128,16 +128,16 @@ Campos principais:
 ## 7. Cadeia de Comunicacao
 
 ## 7.1 Fluxo de desenvolvimento (frontend em `127.0.0.1:5173`)
-1. Browser chama `http://127.0.0.1:5173/meusite/api/auth/login`.
+1. Browser chama `http://127.0.0.1:5173/ModFederation/api/auth/login`.
 2. Host app (Vite) recebe a requisicao.
 3. Proxy do Vite encaminha para `https://nginx:443` dentro da rede Docker.
-4. Nginx recebe e aplica `location /meusite/api`.
+4. Nginx recebe e aplica `location /ModFederation/api`.
 5. Nginx encaminha para Symfony/PHP-FPM.
 6. Symfony processa rota, consulta banco e monta resposta.
 7. Resposta retorna ao browser com JSON + cookie.
 
 ## 7.2 Fluxo HTTPS via Nginx (porta 4483)
-1. Browser chama `https://localhost:4483/meusite/api/...`.
+1. Browser chama `https://localhost:4483/ModFederation/api/...`.
 2. Nginx termina TLS e roteia API para backend.
 3. Backend responde com JWT e cookie refresh quando aplicavel.
 
@@ -155,15 +155,15 @@ Campos principais:
 ```text
 Browser
   |
-  | POST /meusite/api/auth/login
+  | POST /ModFederation/api/auth/login
   v
 Host App (Vite :5173)
   |
-  | proxy /meusite/api -> https://nginx:443
+  | proxy /ModFederation/api -> https://nginx:443
   v
 Nginx
   |
-  | route /meusite/api/*
+  | route /ModFederation/api/*
   v
 Symfony (AuthController + RefreshTokenManager)
   |
@@ -176,14 +176,14 @@ PostgreSQL (app_user, refresh_token)
 
 ### 9.1 Login via Nginx HTTPS
 ```bash
-curl -k -i 'https://localhost:4483/meusite/api/auth/login' \
+curl -k -i 'https://localhost:4483/ModFederation/api/auth/login' \
   -H 'Content-Type: application/json' \
   --data-raw '{"email":"admin@example.com","password":"Senha@123"}'
 ```
 
 ### 9.2 Login via fluxo dev (Vite proxy)
 ```bash
-curl -i 'http://127.0.0.1:5173/meusite/api/auth/login' \
+curl -i 'http://127.0.0.1:5173/ModFederation/api/auth/login' \
   -H 'Content-Type: application/json' \
   --data-raw '{"email":"admin@example.com","password":"Senha@123"}'
 ```
