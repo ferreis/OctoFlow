@@ -5,11 +5,12 @@ import federation from '@originjs/vite-plugin-federation'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const fallbackRemoteUrl = env.VITE_REMOTE_APP_URL || 'http://localhost:5175/assets/remoteEntry.js'
+  const fallbackRemoteUrl = env.VITE_REMOTE_APP_URL || 'http://localhost:5175/ModFederation-mf/assets/remoteEntry.js'
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'https://nginx:443'
   const remoteExternal = `Promise.resolve((globalThis.location && globalThis.location.protocol === 'https:') ? globalThis.location.origin + '/ModFederation-mf/assets/remoteEntry.js' : '${fallbackRemoteUrl}')`
 
   return {
+    base: '/ModFederation/',
     plugins: [
       vue(),
       federation({

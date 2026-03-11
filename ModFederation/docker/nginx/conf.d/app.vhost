@@ -52,6 +52,10 @@ server {
 
 
     # frontend_ModFederation Vue
+    location = /ModFederation {
+        return 301 $scheme://$http_host/ModFederation/;
+    }
+
     location /ModFederation {
         proxy_pass http://frontend_host_app;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -79,7 +83,7 @@ server {
 
     # Remote Module Federation server (5175) via same origin for HTTPS pages
     location /ModFederation-mf/ {
-        proxy_pass http://frontend:5175/;
+        proxy_pass http://frontend:5175;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;

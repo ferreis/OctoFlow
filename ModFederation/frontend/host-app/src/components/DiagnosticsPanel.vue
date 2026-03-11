@@ -13,6 +13,15 @@ import { ref } from 'vue'
 
 const status = ref('')
 const statusClass = ref('')
+const fallbackRemoteUrl = import.meta.env.VITE_REMOTE_APP_URL || 'http://localhost:5175/ModFederation-mf/assets/remoteEntry.js'
+
+function getRemoteEntryUrl() {
+  if (typeof window !== 'undefined' && window.location?.protocol === 'https:') {
+    return `${window.location.origin}/ModFederation-mf/assets/remoteEntry.js`
+  }
+
+  return fallbackRemoteUrl
+}
 
 async function testConnection() {
   status.value = 'Testando...'
@@ -20,13 +29,15 @@ async function testConnection() {
   
   try {
     // Testar fetch do remoteEntry.js
-    const response = await fetch('http://localhost:5175/assets/remoteEntry.js')
+    const remoteEntryUrl = getRemoteEntryUrl()
+    const response = await fetch(remoteEntryUrl)
     
     if (response.ok) {
       const text = await response.text()
       const contentType = response.headers.get('content-type')
       
       status.value = `🟢 remoteEntry.js encontrado!\n`
+      status.value += `URL: ${remoteEntryUrl}\n`
       status.value += `Status: ${response.status}\n`
       status.value += `Tamanho: ${text.length} bytes\n`
       status.value += `Content-Type: ${contentType}\n\n`
@@ -50,7 +61,7 @@ async function testConnection() {
     }
   } catch (error) {
     status.value = `🔴 Erro: ${error.message}\n\n`
-    status.value += 'Verifique se o remote está rodando em http://localhost:5175'
+    status.value += `Verifique se o remote está disponível em ${getRemoteEntryUrl()}`
     statusClass.value = 'error'
   }
 }
