@@ -96,7 +96,7 @@ services:
     hostname: mailcatcher
     restart: unless-stopped
     ports:
-      - "11080:1080"
+      - "11081:1080"
     networks:
       - ModFederation-network
 
