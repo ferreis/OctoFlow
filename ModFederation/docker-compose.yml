@@ -27,9 +27,6 @@ services:
     volumes:
       - ./frontend:/home/node/app
       - ../data/temp:/temp
-    # ports: desnecessario abrir a porta do docker, ambos estão dentro do mesmo network, o nginx é que vai expor a porta
-      # - "15173:5173"
-      # - "15175:5175"
     depends_on:
       - backend
     networks:
@@ -65,11 +62,8 @@ services:
       - ../data/cert_nginx:/var/www/cert
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./docker/nginx/conf.d:/etc/nginx/conf.d     
-    # environment:
-    #   - NGINX_HOST=foobar.com
-    #   - NGINX_PORT=80
+
     ports:
-      # - "680:85"
       - "4481:443"
     networks:
       - ModFederation-network
@@ -103,7 +97,6 @@ services:
     restart: unless-stopped
     ports:
       - "11080:1080"
-      # - "1025:1025"
     networks:
       - ModFederation-network
 
