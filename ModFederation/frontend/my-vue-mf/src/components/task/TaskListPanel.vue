@@ -81,6 +81,7 @@ async function removeTask(task) {
     await props.request({
       url: `${props.endpoint}/${task.id}`,
       method: 'DELETE',
+      csrfActionId: `task.delete.row.${task.id}`,
     })
 
     tasks.value = tasks.value.filter((item) => item.id !== task.id)
@@ -101,6 +102,7 @@ async function toggleStatus(task) {
     const response = await props.request({
       url: `${props.endpoint}/${task.id}`,
       method: 'PATCH',
+      csrfActionId: `task.toggle-status.row.${task.id}`,
       data: {
         completed: !task.completed,
       },

@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Security\CsrfTokenManager;
 use App\Security\RefreshTokenManager;
 use App\Security\Google\Exception\GoogleAccountLinkException;
 use App\Security\Google\Exception\GoogleOAuthConfigurationException;
@@ -25,12 +26,23 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
 #[Route('/auth')]
 class AuthController
 {
+    /**
+     * @var array<string, array{method: string, path: string}>
+     */
+    private const PUBLIC_CSRF_ACTIONS = [
+        'auth.login' => ['method' => 'POST', 'path' => '/auth/login'],
+        'auth.google' => ['method' => 'POST', 'path' => '/auth/google'],
+        'auth.refresh' => ['method' => 'POST', 'path' => '/auth/refresh'],
+        'auth.logout' => ['method' => 'POST', 'path' => '/auth/logout'],
+    ];
+
     public function __construct(
         private readonly UserRepository $userRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly JWTTokenManagerInterface $jwtTokenManager,
         private readonly RefreshTokenManager $refreshTokenManager,
+        private readonly CsrfTokenManager $csrfTokenManager,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
         #[Autowire('%env(string:AUTH_REFRESH_TOKEN_COOKIE_NAME)%')]
         private readonly string $refreshCookieName,
@@ -41,6 +53,36 @@ class AuthController
         #[Autowire('%env(int:JWT_TOKEN_TTL)%')]
         private readonly int $accessTokenTtl,
     ) {
+    }
+
+    #[Route('/csrf/challenge', name: 'auth_csrf_challenge', methods: ['POST'])]
+    public function csrfChallenge(Request $request): JsonResponse
+    {
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $actionId = trim((string) ($payload['actionId'] ?? ''));
+        $definition = self::PUBLIC_CSRF_ACTIONS[$actionId] ?? null;
+        if ($definition === null) {
+            return new JsonResponse(['message' => 'CSRF challenge is not available for this action.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        $requestedMethod = strtoupper(trim((string) ($payload['method'] ?? '')));
+        $requestedPath = '/' . ltrim((string) ($payload['path'] ?? ''), '/');
+
+        if ($requestedMethod !== $definition['method'] || $requestedPath !== $definition['path']) {
+            return new JsonResponse(['message' => 'CSRF challenge payload does not match the requested action.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        try {
+            $challenge = $this->csrfTokenManager->issueChallenge($request, $requestedMethod, $requestedPath, $actionId);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        return new JsonResponse($challenge);
     }
 
     #[Route('/login', name: 'auth_login', methods: ['POST'])]

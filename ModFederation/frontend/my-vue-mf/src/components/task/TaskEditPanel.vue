@@ -88,6 +88,7 @@ async function saveTask() {
     const response = await props.request({
       url: `${props.endpoint}/${props.taskId}`,
       method: 'PATCH',
+      csrfActionId: `task.update.form.${props.taskId}`,
       data: {
         title,
         description: form.description.trim(),

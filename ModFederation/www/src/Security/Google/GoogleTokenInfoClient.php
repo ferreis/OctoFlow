@@ -27,13 +27,13 @@ final class GoogleTokenInfoClient implements GoogleTokenInfoClientInterface
         $rawResponse = curl_exec($curlHandle);
         if ($rawResponse === false) {
             $curlError = curl_error($curlHandle);
-            curl_close($curlHandle);
+            curl_exec($curlHandle);
 
             throw new GoogleTokenVerificationException(sprintf('Failed to contact Google: %s', $curlError));
         }
 
         $statusCode = (int) curl_getinfo($curlHandle, CURLINFO_RESPONSE_CODE);
-        curl_close($curlHandle);
+        curl_exec($curlHandle);
 
         $decodedResponse = json_decode($rawResponse, true);
         if (!is_array($decodedResponse)) {

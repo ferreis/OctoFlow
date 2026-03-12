@@ -37,6 +37,7 @@ async function createTask() {
     const response = await props.request({
       url: props.endpoint,
       method: 'POST',
+      csrfActionId: 'task.create.form',
       data: {
         title,
         description: form.description.trim(),

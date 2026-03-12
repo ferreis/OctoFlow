@@ -20,10 +20,13 @@ security:
             jwt: ~
 
     access_control:
+        - { path: ^/auth/csrf/challenge$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/login$, roles: PUBLIC_ACCESS }
+        - { path: ^/auth/config$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/google$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/refresh$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/logout$, roles: PUBLIC_ACCESS }
+        - { path: ^/csrf/challenge$, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/docs, roles: PUBLIC_ACCESS }
         - { path: ^/contexts, roles: PUBLIC_ACCESS }
         - { path: ^/auth/me$, roles: IS_AUTHENTICATED_FULLY }

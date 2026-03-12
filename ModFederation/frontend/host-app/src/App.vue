@@ -1,9 +1,18 @@
 <script setup>
 import axios from 'axios'
-import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import GoogleLogin from './components/GoogleLogin.vue'
 
 // Usa caminho relativo para funcionar com proxy do Vite em dev e mesmo dominio via nginx em producao.
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/ModFederation/api').replace(/\/$/, '')
+const DEFAULT_CSRF_HEADER_NAME = 'X-CSRF-Token'
+const DEFAULT_CSRF_ACTION_HEADER_NAME = 'X-CSRF-Action'
+const PUBLIC_CSRF_ACTIONS = {
+  'auth.login': { method: 'POST', path: '/auth/login' },
+  'auth.google': { method: 'POST', path: '/auth/google' },
+  'auth.refresh': { method: 'POST', path: '/auth/refresh' },
+  'auth.logout': { method: 'POST', path: '/auth/logout' },
+}
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -12,48 +21,6 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 })
-
-const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim()
-const googleLoginEnabled = GOOGLE_CLIENT_ID !== ''
-
-let googleIdentityScriptPromise
-
-function loadGoogleIdentityScript() {
-  if (typeof window === 'undefined') {
-    return Promise.reject(new Error('Google Identity Services so pode ser carregado no navegador.'))
-  }
-
-  if (window.google?.accounts?.id) {
-    return Promise.resolve(window.google)
-  }
-
-  if (googleIdentityScriptPromise) {
-    return googleIdentityScriptPromise
-  }
-
-  googleIdentityScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = 'https://accounts.google.com/gsi/client'
-    script.async = true
-    script.defer = true
-    script.onload = () => {
-      if (window.google?.accounts?.id) {
-        resolve(window.google)
-        return
-      }
-
-      googleIdentityScriptPromise = undefined
-      reject(new Error('Google Identity Services carregou sem expor a API esperada.'))
-    }
-    script.onerror = () => {
-      googleIdentityScriptPromise = undefined
-      reject(new Error('Falha ao carregar o script do Google Identity Services.'))
-    }
-    document.head.appendChild(script)
-  })
-
-  return googleIdentityScriptPromise
-}
 
 const federationError = ref('')
 
@@ -81,32 +48,28 @@ const loginForm = reactive({
 })
 
 const accessToken = ref('')
+const csrfHeaderName = ref(DEFAULT_CSRF_HEADER_NAME)
+const csrfActionHeaderName = ref(DEFAULT_CSRF_ACTION_HEADER_NAME)
 const currentUser = ref(null)
 const loginLoading = ref(false)
 const actionLoading = ref(false)
 const authError = ref('')
 const googleError = ref('')
-const googleLoading = ref(false)
 const statusMessage = ref('')
-const googleButtonContainer = ref(null)
+const googleLoginComponent = ref(null)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 
 onMounted(async () => {
-  if (googleLoginEnabled) {
-    await setupGoogleLogin()
-  }
-
-  const refreshed = await refreshToken()
+  const refreshed = await refreshToken(false)
   if (refreshed) {
     await loadCurrentUser(false)
   }
 })
 
 watch(isAuthenticated, async (authenticated) => {
-  if (!authenticated && googleLoginEnabled) {
-    await nextTick()
-    renderGoogleButton()
+  if (!authenticated) {
+    googleError.value = ''
   }
 })
 
@@ -117,9 +80,14 @@ async function handleLogin() {
   statusMessage.value = ''
 
   try {
-    const { data } = await apiClient.post('/auth/login', {
-      email: loginForm.email,
-      password: loginForm.password,
+    const { data } = await requestWithCsrf({
+      url: '/auth/login',
+      method: 'POST',
+      csrfActionId: 'auth.login',
+      data: {
+        email: loginForm.email,
+        password: loginForm.password,
+      },
     })
 
     setAccessToken(data.token || '')
@@ -139,60 +107,20 @@ async function handleLogin() {
   }
 }
 
-async function setupGoogleLogin() {
-  googleError.value = ''
-
-  try {
-    await loadGoogleIdentityScript()
-
-    if (!window.google?.accounts?.id) {
-      throw new Error('Google Identity Services nao esta disponivel.')
-    }
-
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredentialResponse,
-      auto_select: false,
-      cancel_on_tap_outside: true,
-    })
-
-    await nextTick()
-    renderGoogleButton()
-  } catch (error) {
-    googleError.value = extractHttpMessage(error, 'Falha ao inicializar o login com Google.')
-  }
-}
-
-function renderGoogleButton() {
-  if (!googleLoginEnabled || !googleButtonContainer.value || !window.google?.accounts?.id) {
-    return
-  }
-
-  googleButtonContainer.value.innerHTML = ''
-  window.google.accounts.id.renderButton(googleButtonContainer.value, {
-    theme: 'outline',
-    size: 'large',
-    shape: 'pill',
-    text: 'continue_with',
-    logo_alignment: 'left',
-    width: 320,
-  })
-}
-
-async function handleGoogleCredentialResponse(response) {
-  const credential = typeof response?.credential === 'string' ? response.credential.trim() : ''
-  if (!credential) {
-    googleError.value = 'Google nao retornou uma credencial valida.'
-    return
-  }
-
-  googleLoading.value = true
+async function handleGoogleCredential(credential) {
+  const wasLoading = loginLoading.value
+  loginLoading.value = true
   authError.value = ''
   googleError.value = ''
   statusMessage.value = ''
 
   try {
-    const { data } = await apiClient.post('/auth/google', { credential })
+    const { data } = await requestWithCsrf({
+      url: '/auth/google',
+      method: 'POST',
+      csrfActionId: 'auth.google',
+      data: { credential },
+    })
 
     setAccessToken(data.token || '')
     currentUser.value = data.user || null
@@ -206,8 +134,12 @@ async function handleGoogleCredentialResponse(response) {
   } catch (error) {
     googleError.value = extractHttpMessage(error, 'Falha no login com Google.')
   } finally {
-    googleLoading.value = false
+    loginLoading.value = wasLoading
   }
+}
+
+function handleGoogleLoginError(error) {
+  googleError.value = error
 }
 
 async function loadCurrentUser(canRetry = true) {
@@ -227,11 +159,22 @@ async function loadCurrentUser(canRetry = true) {
   }
 }
 
-async function refreshToken() {
-  actionLoading.value = true
+async function refreshToken(useLoading = true) {
+  if (useLoading) {
+    actionLoading.value = true
+  }
 
   try {
-    const { data } = await apiClient.post('/auth/refresh')
+    const { data } = await requestWithCsrf(
+      {
+        url: '/auth/refresh',
+        method: 'POST',
+        csrfActionId: 'auth.refresh',
+      },
+      true,
+      false,
+    )
+
     if (!data?.token) {
       clearAuth()
       return false
@@ -244,7 +187,9 @@ async function refreshToken() {
     clearAuth()
     return false
   } finally {
-    actionLoading.value = false
+    if (useLoading) {
+      actionLoading.value = false
+    }
   }
 }
 
@@ -252,12 +197,12 @@ async function logout() {
   actionLoading.value = true
 
   try {
-    await apiClient.post('/auth/logout')
+    await requestWithCsrf({
+      url: '/auth/logout',
+      method: 'POST',
+      csrfActionId: 'auth.logout',
+    })
   } finally {
-    if (window.google?.accounts?.id?.disableAutoSelect) {
-      window.google.accounts.id.disableAutoSelect()
-    }
-
     clearAuth()
     authError.value = ''
     googleError.value = ''
@@ -266,23 +211,164 @@ async function logout() {
   }
 }
 
-async function authRequest(config, canRetry = true) {
+function isMutatingMethod(method) {
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || 'GET').toUpperCase())
+}
+
+function normalizeApiPath(url) {
+  const rawUrl = typeof url === 'string' && url.trim() !== '' ? url.trim() : '/'
+
+  try {
+    const resolvedUrl = new URL(rawUrl, window.location.origin)
+    const apiBasePath = new URL(API_BASE_URL, window.location.origin).pathname.replace(/\/$/, '')
+    let normalizedPath = resolvedUrl.pathname || '/'
+
+    if (apiBasePath && normalizedPath.startsWith(apiBasePath)) {
+      normalizedPath = normalizedPath.slice(apiBasePath.length) || '/'
+    }
+
+    return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`
+  } catch {
+    return rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`
+  }
+}
+
+function getCsrfActionId(config, method) {
+  const actionId = typeof config?.csrfActionId === 'string' ? config.csrfActionId.trim() : ''
+
+  if (isMutatingMethod(method) && actionId === '') {
+    throw new Error('Toda requisicao mutavel precisa informar csrfActionId.')
+  }
+
+  return actionId
+}
+
+function isPublicCsrfAction(actionId, method, path) {
+  const definition = PUBLIC_CSRF_ACTIONS[actionId]
+
+  return Boolean(definition && definition.method === method && definition.path === path)
+}
+
+function buildAuthorizedHeaders(headers = {}) {
+  return accessToken.value
+    ? {
+        ...headers,
+        Authorization: `Bearer ${accessToken.value}`,
+      }
+    : { ...headers }
+}
+
+async function authorizedRequestWithoutCsrf(config, canRetry = true) {
   try {
     return await apiClient.request({
       ...config,
-      headers: {
-        ...(config.headers || {}),
-        ...(accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}),
-      },
+      headers: buildAuthorizedHeaders(config?.headers || {}),
     })
   } catch (error) {
     if (canRetry && axios.isAxiosError(error) && error.response?.status === 401) {
-      const refreshed = await refreshToken()
+      const refreshed = await refreshToken(false)
       if (refreshed) {
-        return authRequest(config, false)
+        return authorizedRequestWithoutCsrf(config, false)
       }
     }
 
+    throw error
+  }
+}
+
+async function requestCsrfChallenge(config, canRetryAuth = true) {
+  const method = String(config?.method || 'GET').toUpperCase()
+  const path = normalizeApiPath(config?.url)
+  const actionId = getCsrfActionId(config, method)
+  const payload = { method, path, actionId }
+
+  if (isPublicCsrfAction(actionId, method, path)) {
+    const response = await apiClient.post('/auth/csrf/challenge', payload)
+    return response.data || {}
+  }
+
+  const response = await authorizedRequestWithoutCsrf(
+    {
+      url: '/csrf/challenge',
+      method: 'POST',
+      data: payload,
+    },
+    canRetryAuth,
+  )
+
+  return response.data || {}
+}
+
+function shouldRetryWithNewCsrf(error, method) {
+  if (!isMutatingMethod(method) || !axios.isAxiosError(error)) {
+    return false
+  }
+
+  const status = error.response?.status
+  const message = error.response?.data?.message
+
+  return status === 403 && typeof message === 'string' && message.toLowerCase().includes('csrf')
+}
+
+async function requestWithCsrf(config, canRetryCsrf = true, canRetryAuth = true) {
+  const method = String(config?.method || 'GET').toUpperCase()
+  const path = normalizeApiPath(config?.url)
+  const actionId = getCsrfActionId(config, method)
+  const publicCsrfAction = isPublicCsrfAction(actionId, method, path)
+  const headers = {
+    ...(config?.headers || {}),
+  }
+
+  if (isMutatingMethod(method)) {
+    const challenge = await requestCsrfChallenge(config, canRetryAuth)
+    const token = typeof challenge?.csrfToken === 'string' ? challenge.csrfToken.trim() : ''
+    const issuedHeaderName = typeof challenge?.headerName === 'string' && challenge.headerName.trim() !== ''
+      ? challenge.headerName.trim()
+      : DEFAULT_CSRF_HEADER_NAME
+    const issuedActionHeaderName = typeof challenge?.actionHeaderName === 'string' && challenge.actionHeaderName.trim() !== ''
+      ? challenge.actionHeaderName.trim()
+      : DEFAULT_CSRF_ACTION_HEADER_NAME
+
+    if (token === '') {
+      throw new Error('O backend nao retornou um CSRF token valido para esta acao.')
+    }
+
+    csrfHeaderName.value = issuedHeaderName
+    csrfActionHeaderName.value = issuedActionHeaderName
+    headers[issuedHeaderName] = token
+    headers[issuedActionHeaderName] = actionId
+  }
+
+  try {
+    return await apiClient.request({
+      ...config,
+      method,
+      headers: publicCsrfAction ? headers : buildAuthorizedHeaders(headers),
+    })
+  } catch (error) {
+    if (canRetryCsrf && shouldRetryWithNewCsrf(error, method)) {
+      return requestWithCsrf(config, false, canRetryAuth)
+    }
+
+    if (!publicCsrfAction && canRetryAuth && axios.isAxiosError(error) && error.response?.status === 401) {
+      const refreshed = await refreshToken(false)
+      if (refreshed) {
+        return requestWithCsrf(config, canRetryCsrf, false)
+      }
+    }
+
+    throw error
+  }
+}
+
+async function authRequest(config, canRetry = true) {
+  if (isMutatingMethod(config?.method)) {
+    return requestWithCsrf(config, true, canRetry)
+  }
+
+  try {
+    return await authorizedRequestWithoutCsrf(config, canRetry)
+  } catch (error) {
     throw error
   }
 }
@@ -313,7 +399,6 @@ function clearAuth() {
   currentUser.value = null
 }
 </script>
-
 <template>
   <div class="host-shell">
     <header class="hero">
@@ -339,17 +424,18 @@ function clearAuth() {
               <input v-model="loginForm.password" type="password" autocomplete="current-password" required>
             </label>
 
-            <button type="submit" :disabled="loginLoading || googleLoading">
+            <button type="submit" :disabled="loginLoading || actionLoading">
               {{ loginLoading ? 'Entrando...' : 'Entrar' }}
             </button>
 
-            <div v-if="googleLoginEnabled" class="social-login">
-              <div class="separator">
-                <span>ou</span>
-              </div>
-
-              <div ref="googleButtonContainer" class="google-button" :class="{ 'is-loading': googleLoading }"></div>
-              <p v-if="googleLoading" class="hint">Validando conta Google...</p>
+            <div v-if="true" class="social-login">
+              <GoogleLogin
+                ref="googleLoginComponent"
+                :api-client="apiClient"
+                :is-loading="loginLoading || actionLoading"
+                @credential="handleGoogleCredential"
+                @error="handleGoogleLoginError"
+              />
               <p v-if="googleError" class="feedback error social-feedback">{{ googleError }}</p>
             </div>
           </form>
@@ -459,40 +545,6 @@ function clearAuth() {
   gap: 12px;
 }
 
-.social-login {
-  display: grid;
-  gap: 10px;
-}
-
-.separator {
-  align-items: center;
-  color: #64748b;
-  display: flex;
-  font-size: 0.9rem;
-  gap: 12px;
-}
-
-.separator::before,
-.separator::after {
-  border-top: 1px solid #dbe4ee;
-  content: '';
-  flex: 1;
-}
-
-.separator span {
-  font-weight: 600;
-  text-transform: lowercase;
-}
-
-.google-button {
-  min-height: 44px;
-}
-
-.google-button.is-loading {
-  opacity: 0.72;
-  pointer-events: none;
-}
-
 .field {
   display: grid;
   gap: 6px;
@@ -558,16 +610,6 @@ button:disabled {
   background: #ecfeff;
   border: 1px solid #bae6fd;
   color: #075985;
-}
-
-.social-feedback {
-  margin-top: 0;
-}
-
-.hint {
-  color: #64748b;
-  font-size: 0.9rem;
-  margin: 0;
 }
 
 .empty {

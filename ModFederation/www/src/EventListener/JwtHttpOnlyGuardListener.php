@@ -73,12 +73,12 @@ final class JwtHttpOnlyGuardListener
             return false;
         }
 
-        return preg_match('#^/(auth|api|tasks)(?:/|$)#', $path) === 1;
+        return preg_match('#^/(auth|api|tasks|csrf)(?:/|$)#', $path) === 1;
     }
 
     private function isPublicPath(string $path): bool
     {
-        return preg_match('#^/(auth/login|auth/google|auth/refresh|docs|contexts)(?:/|$)#', $path) === 1;
+        return preg_match('#^/(auth/login|auth/google|auth/refresh|auth/logout|auth/config|auth/csrf/challenge|docs|contexts)(?:/|$)#', $path) === 1;
     }
 
     private function extractBearerToken(?string $authorizationHeader): ?string
