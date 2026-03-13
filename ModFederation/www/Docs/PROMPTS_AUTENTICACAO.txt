@@ -1,0 +1,116 @@
+PROMPTS PARA CRIACAO DE AUTENTICACAO
+
+Este arquivo contem prompts prontos para uso na criacao ou evolucao dos fluxos de Access Token, Refresh Token e autenticacao com Google neste projeto.
+
+================================================================
+1. PROMPT PARA CRIACAO DE ACCESS TOKEN
+================================================================
+
+Crie a implementacao de Access Token para uma API.
+
+Requisitos obrigatorios:
+- emitir o token nas rotas POST /auth/login, POST /auth/google e POST /auth/refresh
+- tempo de expiracao do access token: 600 segundos
+- retornar resposta JSON no formato:
+  {
+    "token": "<>",
+    "token_type": "Bearer",
+    "expires_in": 600,
+    "user": {
+      "email": "user@example.com",
+      "isActive": true
+    }
+  }
+- aceitar envio via header Authorization: Bearer <>
+- nao persistir o token em texto puro no banco
+- implementar blacklist de access token usando hash SHA-256
+- criar entidade/tabela access_token_blacklist com os campos principais: token_hash, reason, created_at e expires_at
+- criar um servico para verificar se o Access Token esta blacklistado e outro para inserir o hash na blacklist
+- em rotas protegidas, validar o vinculo entre o Access Token enviado no header e o refresh token do cookie do mesmo usuario
+- se houver mismatch entre Access Token e refresh token, colocar o Access Token em blacklist e retornar 401
+
+Arquivos de referencia esperados:
+- AuthController
+Tambem gere exemplos de uso com cURL para login e para chamada autenticada em rota protegida.
+
+================================================================
+2. PROMPT PARA CRIACAO DE REFRESH TOKEN
+================================================================
+
+Crie a implementacao completa de Refresh Token para uma API Symfony/PHP com foco em seguranca, rotacao e deteccao de reuso.
+
+Requisitos obrigatorios:
+- gerar refresh token opaco com bin2hex(random_bytes(64)), resultando em 128 caracteres hexadecimais
+- armazenar o token no cliente apenas em cookie HttpOnly
+- armazenar no banco somente o hash SHA-256 do token
+- emitir refresh token nas rotas POST /auth/login, POST /auth/google e POST /auth/refresh
+- no endpoint /auth/refresh, implementar rotacao obrigatoria: ao usar um refresh token valido, revogar o atual e emitir um novo
+- implementar deteccao de reuso: se um token revogado for reutilizado, revogar toda a familia de tokens relacionada
+- considerar TTL de 14 dias
+- usar cookie com nome refresh_token
+- configurar cookie com HttpOnly=true, Secure=true e SameSite=none
+- criar persistencia com campos: token_hash, token_family_id, parent_token_hash, fingerprint_hash, user_agent_hash, ip_hash, revoked_at, context_changed_at, reuse_detected_at e expires_at
+- implementar validacao de contexto com user agent e IP
+- registrar mudanca forte de contexto em context_changed_at
+- logout deve revogar o token atual e limpar o cookie
+- nunca retornar o refresh token no body da resposta; ele deve ser enviado apenas via Set-Cookie
+- quando o token for invalido, expirado ou reutilizado, retornar 401 e limpar o cookie
+- o endpoint /auth/refresh deve exigir challenge CSRF valido
+
+Arquivos de referencia esperados:
+- RefreshTokenManager
+- entidade RefreshToken
+- RefreshTokenRepository
+- AuthController
+
+Tambem gere um exemplo de cURL para rotacao de refresh token usando cookies e cabecalhos de CSRF.
+
+================================================================
+3. PROMPT PARA CRIACAO DE AUTH GOOGLE
+================================================================
+
+Crie a autenticacao com Google para uma aplicacao com frontend em Vite e backend em Symfony, usando Google Identity Services com envio da credencial de autenticacao do Google para o backend.
+
+Requisitos obrigatorios:
+- o frontend deve obter a credential do Google Identity Services e enviar para o backend via POST /auth/google
+- o backend deve validar a credencial recebida usando a API oficial tokeninfo do Google
+- validar obrigatoriamente os campos aud, iss, sub, email_verified, exp e hd quando configurado
+- usar a variavel GOOGLE_OAUTH_CLIENT_ID no backend
+- usar a variavel VITE_GOOGLE_CLIENT_ID no frontend
+- o mesmo Client ID deve ser usado no frontend e no backend
+- nao usar client secret nesse fluxo
+- o backend deve buscar ou criar o usuario local a partir do retorno validado do Google
+- se GOOGLE_OAUTH_ALLOWED_HD estiver preenchido, restringir o login ao dominio informado
+- se existir conta local com o mesmo e-mail, mas sem vinculacao segura, retornar conflito em vez de auto-link por seguranca
+- apos login Google bem-sucedido, retornar access token no body e refresh token via cookie HttpOnly
+- documentar que o Google Console deve registrar corretamente as origens JavaScript autorizadas
+- deixar claro que esse fluxo usa a credencial emitida pelo Google no frontend e nao Authorization Code Flow
+
+Variaveis de ambiente esperadas:
+- backend: GOOGLE_OAUTH_CLIENT_ID e GOOGLE_OAUTH_ALLOWED_HD
+- frontend: VITE_GOOGLE_CLIENT_ID
+
+Tambem inclua no resultado:
+- passos resumidos para configurar o projeto no Google Cloud Console
+- orientacao sobre tela de consentimento OAuth
+- exemplos de origens autorizadas para localhost e producao
+- erros comuns como origin_mismatch, redirect_uri_mismatch, token invalido e conflito por conta local existente
+
+================================================================
+4. PROMPT UNIFICADO
+================================================================
+
+Implemente um modulo de autenticacao completo em Symfony/PHP com frontend Vite contendo:
+
+1. Access Token com TTL de 600 segundos, retorno em JSON e suporte a Authorization: Bearer.
+2. Blacklist de access token com hash SHA-256 e invalidacao em caso de mismatch com refresh token.
+3. Refresh Token opaco salvo apenas em cookie HttpOnly, com hash SHA-256 no banco, rotacao obrigatoria e deteccao de reuso por familia.
+4. Login tradicional, login com Google e endpoint de refresh.
+5. Login Google usando Google Identity Services no frontend e validacao da credencial recebida no backend.
+6. Cookie refresh_token com Secure=true, HttpOnly=true e SameSite=none.
+7. Restricao opcional por dominio Google Workspace via GOOGLE_OAUTH_ALLOWED_HD.
+8. Logout com revogacao do refresh token atual e limpeza de cookie.
+9. Protecao CSRF no fluxo de refresh.
+10. Documentacao tecnica e exemplos cURL para todos os fluxos principais.
+
+Estruture a solucao com controllers, services, entities, repositories e listeners, seguindo boas praticas de seguranca e mantendo separacao clara entre emissao de token, validacao, blacklist, rotacao de refresh e autenticacao federada com Google.
