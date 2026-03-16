@@ -50,7 +50,7 @@ final class CsrfProtectionListener
 
     private function isProtectedPath(string $path): bool
     {
-        return preg_match('#^/(auth|tasks|api)(?:/|$)#', $path) === 1;
+        return preg_match('#^/(auth|tasks|api|github)(?:/|$)#', $path) === 1;
     }
 
     private function isExemptPath(string $path): bool

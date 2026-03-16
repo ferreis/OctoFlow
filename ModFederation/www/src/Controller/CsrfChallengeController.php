@@ -68,6 +68,10 @@ final class CsrfChallengeController
             return true;
         }
 
+        if (preg_match('#^/github(?:/|$)#', $path) === 1) {
+            return true;
+        }
+
         return false;
     }
 }

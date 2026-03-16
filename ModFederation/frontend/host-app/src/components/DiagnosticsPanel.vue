@@ -47,7 +47,7 @@ async function testConnection() {
         status.value += `O arquivo está retornando HTML ao invés de JavaScript.\n\n`
         status.value += `SOLUÇÃO:\n`
         status.value += `1. Pare o remote (Ctrl+C)\n`
-        status.value += `2. cd my-vue-mf\n`
+        status.value += `2. cd Components\n`
         status.value += `3. npm run build\n`
         status.value += `4. npm run preview\n`
         statusClass.value = 'warning'

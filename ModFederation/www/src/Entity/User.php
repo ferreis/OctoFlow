@@ -43,6 +43,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 191, unique: true, nullable: true)]
     private ?string $googleSubject = null;
 
+    #[ORM\Column(length: 191, nullable: true)]
+    private ?string $githubRepositoryOwner = null;
+
+    #[ORM\Column(length: 191, nullable: true)]
+    private ?string $githubRepositoryName = null;
+
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $githubTokenEncrypted = null;
+
     /**
      * @var list<string>
      */
@@ -109,6 +118,62 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->touch();
 
         return $this;
+    }
+
+    public function getGithubRepositoryOwner(): ?string
+    {
+        return $this->githubRepositoryOwner;
+    }
+
+    public function setGithubRepositoryOwner(?string $githubRepositoryOwner): self
+    {
+        $normalized = $githubRepositoryOwner === null ? null : trim($githubRepositoryOwner);
+        $this->githubRepositoryOwner = $normalized === '' ? null : $normalized;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getGithubRepositoryName(): ?string
+    {
+        return $this->githubRepositoryName;
+    }
+
+    public function setGithubRepositoryName(?string $githubRepositoryName): self
+    {
+        $normalized = $githubRepositoryName === null ? null : trim($githubRepositoryName);
+        $this->githubRepositoryName = $normalized === '' ? null : $normalized;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getGithubTokenEncrypted(): ?string
+    {
+        return $this->githubTokenEncrypted;
+    }
+
+    public function setGithubTokenEncrypted(?string $githubTokenEncrypted): self
+    {
+        $normalized = $githubTokenEncrypted === null ? null : trim($githubTokenEncrypted);
+        $this->githubTokenEncrypted = $normalized === '' ? null : $normalized;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function hasGithubTokenConfigured(): bool
+    {
+        return $this->githubTokenEncrypted !== null && $this->githubTokenEncrypted !== '';
+    }
+
+    public function hasGithubWorkspaceConfiguration(): bool
+    {
+        return $this->hasGithubTokenConfigured()
+            && $this->githubRepositoryOwner !== null
+            && $this->githubRepositoryOwner !== ''
+            && $this->githubRepositoryName !== null
+            && $this->githubRepositoryName !== '';
     }
 
     /**

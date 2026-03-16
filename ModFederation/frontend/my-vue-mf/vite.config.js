@@ -11,7 +11,8 @@ export default defineConfig({
       name: 'my_vue_mf',
       filename: 'remoteEntry.js',
       exposes: {
-        './TaskCrudPanel': './src/components/TaskCrudPanel.vue'
+        './TaskCrudPanel': './src/components/TaskCrudPanel.vue',
+        './GithubWorkspacePanel': './src/components/GithubWorkspacePanel.vue'
       },
       shared: ['vue']
     })

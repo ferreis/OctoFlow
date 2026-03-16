@@ -24,7 +24,7 @@ if [ -x /home/node/app/roda.sh ]; then
   /bin/bash /home/node/app/roda.sh
 elif [ ! -e "${SENTINEL_FILE}" ]; then
   echo "[frontend] Instalacao inicial detectada"
-  run_install /home/node/app/my-vue-mf
+  run_install /home/node/app/Components
   run_install /home/node/app/host-app
   {
     echo "este arquivo e gerado automaticamente"
@@ -45,7 +45,7 @@ echo "[frontend] Iniciando remote (5175 preview) e host (5173 dev)"
 trap 'kill 0' SIGINT SIGTERM EXIT
 
 (
-  cd /home/node/app/my-vue-mf
+  cd /home/node/app/Components
   npm run build
   npm run preview -- --host 0.0.0.0 --port 5175 --strictPort
 ) &

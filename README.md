@@ -138,7 +138,7 @@ application/
     │   ├── vite.config.js        # Consumidor Module Federation
     │   └── package.json
     │
-    └── my-vue-mf/                # Remote (Componentes Task)
+    └── Components/                # Remote (Componentes Task)
         ├── src/
         │   ├── components/
         │   │   ├── TaskCrudPanel.vue       # Orquestrador (mount/unmount)
@@ -194,7 +194,7 @@ GOOGLE_OAUTH_ALLOWED_HD=""                     # opcional: restringe ao dominio 
 CORS_ALLOW_ORIGIN="http://localhost:3000,https://ModFederation.example.com"
 ```
 
-**Frontend** (`.env` em host-app e my-vue-mf):
+**Frontend** (`.env` em host-app e Components):
 
 ```ini
 VITE_API_BASE_URL="http://localhost/api"       # Para dev local
@@ -234,7 +234,7 @@ php bin/console doctrine:migrations:migrate
 
 ```bash
 # Remote (Task Module)
-cd application/frontend/my-vue-mf
+cd application/frontend/Components
 npm install
 
 # Host (Login + Orquestrador)
@@ -278,10 +278,10 @@ symfony serve --port 8000
 php -S localhost:8000 -t public
 ```
 
-**Terminal 2 - Remote Module (My-Vue-MF)**
+**Terminal 2 - Remote Module (Components)**
 
 ```bash
-cd application/frontend/my-vue-mf
+cd application/frontend/Components
 npm run dev
 # Executa em http://localhost:5173
 ```
@@ -550,7 +550,7 @@ curl -X POST http://localhost/api/tasks \
 └─────────────────────────────────┘
 ```
 
-### Configuração do Remote (my-vue-mf)
+### Configuração do Remote (Components)
 
 **vite.config.js:**
 

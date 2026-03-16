@@ -15,5 +15,9 @@ services:
     # this creates a service per class whose id is the fully-qualified class name
     App\:
         resource: "../src/"
+
+    App\Security\Google\GoogleTokenInfoClientInterface: '@App\Security\Google\GoogleTokenInfoClient'
+    App\Github\GithubGraphQLClientInterface: '@App\Github\GithubGraphQLClient'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
