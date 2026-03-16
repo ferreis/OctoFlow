@@ -10,6 +10,26 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showSeparator: {
+    type: Boolean,
+    default: true,
+  },
+  separatorLabel: {
+    type: String,
+    default: 'ou',
+  },
+  unavailableMessage: {
+    type: String,
+    default: 'Google Sign-In não está disponível. Faça login com email/senha.',
+  },
+  loadingHint: {
+    type: String,
+    default: 'Validando conta Google...',
+  },
+  buttonWidth: {
+    type: Number,
+    default: 320,
+  },
 })
 
 const emit = defineEmits(['credential', 'error', 'config-loaded'])
@@ -124,7 +144,7 @@ function renderGoogleButton() {
     shape: 'pill',
     text: 'continue_with',
     logo_alignment: 'left',
-    width: 320,
+    width: props.buttonWidth,
   })
 }
 
@@ -169,16 +189,16 @@ defineExpose({
 <template>
   <div class="google-login-container">
     <div v-if="googleClientId" class="social-login">
-      <div class="separator">
-        <span>ou</span>
+      <div v-if="showSeparator" class="separator">
+        <span>{{ separatorLabel }}</span>
       </div>
 
       <div ref="googleButtonContainer" class="google-button" :class="{ 'is-loading': isLoading || isLoading }"></div>
-      <p v-if="isLoading || isLoading" class="hint">Validando conta Google...</p>
+      <p v-if="isLoading || isLoading" class="hint">{{ loadingHint }}</p>
       <p v-if="error" class="feedback error">{{ error }}</p>
     </div>
 
-    <p v-else class="feedback info">Google Sign-In não está disponível. Faça login com email/senha.</p>
+    <p v-else class="feedback info">{{ unavailableMessage }}</p>
   </div>
 </template>
 

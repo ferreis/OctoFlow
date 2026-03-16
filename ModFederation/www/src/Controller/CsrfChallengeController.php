@@ -72,6 +72,10 @@ final class CsrfChallengeController
             return true;
         }
 
+        if (preg_match('#^/auth/(emails(?:/default)?|google/link)$#', $path) === 1) {
+            return true;
+        }
+
         return false;
     }
 }

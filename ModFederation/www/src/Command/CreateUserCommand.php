@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use App\Account\UserEmailManager;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -24,6 +25,7 @@ class CreateUserCommand extends Command
         private readonly UserRepository $userRepository,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly EntityManagerInterface $entityManager,
+        private readonly UserEmailManager $userEmailManager,
     ) {
         parent::__construct();
     }
@@ -67,6 +69,7 @@ class CreateUserCommand extends Command
         $user->setPassword($hashedPassword);
 
         $this->entityManager->persist($user);
+        $this->userEmailManager->ensureEmail($user, $email, ['system'], true, true);
         $this->entityManager->flush();
 
         $io->success(sprintf('User "%s" created with roles: %s', $user->getEmail(), implode(', ', $user->getRoles())));

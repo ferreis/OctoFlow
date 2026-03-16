@@ -6,6 +6,7 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use App\Entity\RefreshToken;
+use App\Entity\UserEmail;
 use App\Repository\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -80,12 +81,19 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: RefreshToken::class, mappedBy: 'user', orphanRemoval: true)]
     private Collection $refreshTokens;
 
+    /**
+     * @var Collection<int, UserEmail>
+     */
+    #[ORM\OneToMany(targetEntity: UserEmail::class, mappedBy: 'user', orphanRemoval: true, cascade: ['persist'])]
+    private Collection $emailAddresses;
+
     public function __construct()
     {
         $now = new \DateTimeImmutable();
         $this->createdAt = $now;
         $this->updatedAt = $now;
         $this->refreshTokens = new ArrayCollection();
+        $this->emailAddresses = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -225,6 +233,11 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this->isActive;
     }
 
+    public function getIsActive(): bool
+    {
+        return $this->isActive();
+    }
+
     public function setIsActive(bool $isActive): self
     {
         $this->isActive = $isActive;
@@ -279,6 +292,33 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         if ($this->refreshTokens->removeElement($refreshToken) && $refreshToken->getUser() === $this) {
             $refreshToken->setUser(null);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, UserEmail>
+     */
+    public function getEmailAddresses(): Collection
+    {
+        return $this->emailAddresses;
+    }
+
+    public function addEmailAddress(UserEmail $emailAddress): self
+    {
+        if (!$this->emailAddresses->contains($emailAddress)) {
+            $this->emailAddresses->add($emailAddress);
+            $emailAddress->setUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeEmailAddress(UserEmail $emailAddress): self
+    {
+        if ($this->emailAddresses->removeElement($emailAddress) && $emailAddress->getUser() === $this) {
+            $emailAddress->setUser(null);
         }
 
         return $this;

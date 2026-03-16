@@ -2,6 +2,9 @@
 
 namespace App\Controller;
 
+use App\Account\Exception\UserEmailConflictException;
+use App\Account\UserEmailManager;
+use App\Account\UserPayloadBuilder;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Security\CsrfTokenManager;
@@ -44,6 +47,8 @@ class AuthController
         private readonly RefreshTokenManager $refreshTokenManager,
         private readonly CsrfTokenManager $csrfTokenManager,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
+        private readonly UserEmailManager $userEmailManager,
+        private readonly UserPayloadBuilder $userPayloadBuilder,
         #[Autowire('%env(string:AUTH_REFRESH_TOKEN_COOKIE_NAME)%')]
         private readonly string $refreshCookieName,
         #[Autowire('%env(bool:AUTH_REFRESH_COOKIE_SECURE)%')]
@@ -130,7 +135,7 @@ class AuthController
             $user = $this->resolveGoogleUser($googleIdentity);
         } catch (GoogleOAuthConfigurationException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
-        } catch (GoogleAccountLinkException $exception) {
+        } catch (GoogleAccountLinkException|UserEmailConflictException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
         } catch (GoogleTokenVerificationException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_UNAUTHORIZED);
@@ -152,7 +157,7 @@ class AuthController
             'token' => $accessToken,
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
-            'user' => $this->buildUserPayload($user),
+            'user' => $this->userPayloadBuilder->build($user),
         ]);
 
         $response->headers->setCookie($this->buildRefreshCookie($issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
@@ -164,15 +169,8 @@ class AuthController
     {
         $user = $this->userRepository->findOneByGoogleSubject($googleIdentity->subject);
         if ($user !== null) {
-            if ($user->getEmail() !== $googleIdentity->email) {
-                $userWithSameEmail = $this->userRepository->findOneByEmail($googleIdentity->email);
-                if ($userWithSameEmail !== null && $userWithSameEmail->getId() !== $user->getId()) {
-                    throw new GoogleAccountLinkException('The Google account email is already linked to another user.');
-                }
-
-                $user->setEmail($googleIdentity->email);
-                $this->entityManager->flush();
-            }
+            $this->userEmailManager->ensureEmail($user, $googleIdentity->email, ['google'], true, false);
+            $this->entityManager->flush();
 
             return $user;
         }
@@ -196,6 +194,7 @@ class AuthController
         $user->setPassword($this->passwordHasher->hashPassword($user, bin2hex(random_bytes(32))));
 
         $this->entityManager->persist($user);
+        $this->userEmailManager->ensureEmail($user, $googleIdentity->email, ['google'], true, true);
         $this->entityManager->flush();
 
         return $user;
@@ -223,7 +222,7 @@ class AuthController
             'token' => $accessToken,
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
-            'user' => $this->buildUserPayload($issuedRefreshToken->user),
+            'user' => $this->userPayloadBuilder->build($issuedRefreshToken->user),
         ]);
         $response->headers->setCookie($this->buildRefreshCookie($issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
 
@@ -249,7 +248,7 @@ class AuthController
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
-        return new JsonResponse(['user' => $this->buildUserPayload($user)]);
+        return new JsonResponse(['user' => $this->userPayloadBuilder->build($user)]);
     }
 
     /**
@@ -265,19 +264,6 @@ class AuthController
         } catch (\JsonException) {
             return null;
         }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildUserPayload(User $user): array
-    {
-        return [
-            'id' => $user->getId(),
-            'email' => $user->getEmail(),
-            'roles' => $user->getRoles(),
-            'isActive' => $user->isActive(),
-        ];
     }
 
     private function buildRefreshCookie(string $plainToken, \DateTimeImmutable $expiresAt): Cookie

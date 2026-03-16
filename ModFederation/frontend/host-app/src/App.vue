@@ -1,6 +1,7 @@
 <script setup>
 import axios from 'axios'
 import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import AccountEmailsPanel from './components/AccountEmailsPanel.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/ModFederation/api').replace(/\/$/, '')
@@ -392,6 +393,10 @@ function clearAuth() {
   setAccessToken('')
   currentUser.value = null
 }
+
+function handleCurrentUserUpdated(user) {
+  currentUser.value = user
+}
 </script>
 
 <template>
@@ -489,6 +494,15 @@ function clearAuth() {
             <li>Issues sobem via backend para proteger o token do GitHub.</li>
             <li>Projects usam GraphQL para adicionar item e atualizar status.</li>
           </ul>
+        </article>
+
+        <article v-if="isAuthenticated" class="card account-card">
+          <AccountEmailsPanel
+            :request="authRequest"
+            :api-client="apiClient"
+            :current-user="currentUser"
+            @user-updated="handleCurrentUserUpdated"
+          />
         </article>
       </aside>
 

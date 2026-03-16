@@ -2,9 +2,13 @@
 
 namespace App\Controller;
 
+use App\Account\Exception\UserEmailConflictException;
+use App\Account\UserPayloadBuilder;
 use App\Entity\User;
+use App\Github\Exception\GithubApiException;
 use App\Github\Exception\GithubConfigurationException;
 use App\Github\Exception\GithubGraphQLException;
+use App\Github\GithubLinkedEmailService;
 use App\Github\GithubIssueService;
 use App\Github\GithubProfileService;
 use App\Github\GithubWorkspaceService;
@@ -24,6 +28,8 @@ final class GithubController
         private readonly GithubWorkspaceService $workspaceService,
         private readonly GithubIssueService $issueService,
         private readonly GithubProfileService $profileService,
+        private readonly GithubLinkedEmailService $linkedEmailService,
+        private readonly UserPayloadBuilder $userPayloadBuilder,
     ) {
     }
 
@@ -95,6 +101,32 @@ final class GithubController
         } catch (GithubGraphQLException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_GATEWAY);
         }
+    }
+
+    #[Route('/emails/link', name: 'github_emails_link', methods: ['POST'])]
+    public function linkEmails(#[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        try {
+            $linkedEmails = $this->linkedEmailService->linkVerifiedEmails($user);
+        } catch (UserEmailConflictException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (GithubConfigurationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
+        } catch (GithubApiException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_GATEWAY);
+        }
+
+        return new JsonResponse([
+            'message' => 'GitHub emails linked successfully.',
+            'importedCount' => count($linkedEmails),
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
     }
 
     /**
