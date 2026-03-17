@@ -18,22 +18,31 @@ const props = defineProps({
     type: Object,
     default: null,
   },
-  collapsed: {
+  expanded: {
     type: Boolean,
     default: false,
   },
-  collapsible: {
+  compact: {
     type: Boolean,
-    default: true,
+    default: false,
   },
 })
 
-const emit = defineEmits(['navigate', 'toggle-collapse', 'refresh', 'logout'])
+const emit = defineEmits(['navigate', 'refresh', 'logout', 'expand', 'collapse'])
+
+const sidebarExpanded = computed(() => props.compact || props.expanded)
+const primaryItems = computed(() => props.items.filter((item) => item.key !== 'profile'))
+const profileItem = computed(() => props.items.find((item) => item.key === 'profile') || {
+  key: 'profile',
+  label: 'Perfil',
+  description: 'Configuracoes da conta',
+})
+const profileSelected = computed(() => props.activeKey === profileItem.value.key)
 
 const userLabel = computed(() => {
   const email = typeof props.currentUser?.defaultEmail === 'string' && props.currentUser.defaultEmail.trim() !== ''
     ? props.currentUser.defaultEmail.trim()
-    : typeof props.currentUser?.email === 'string'
+    : typeof props.currentUser?.email === 'string' && props.currentUser.email.trim() !== ''
       ? props.currentUser.email.trim()
       : ''
 
@@ -49,110 +58,109 @@ function navigate(key) {
 
   emit('navigate', key)
 }
+
+function openProfile() {
+  navigate(profileItem.value.key)
+}
+
+function handleMouseEnter() {
+  if (props.compact) {
+    return
+  }
+
+  emit('expand')
+}
+
+function handleMouseLeave() {
+  if (props.compact) {
+    return
+  }
+
+  emit('collapse')
+}
 </script>
 
 <template>
   <aside
-    class="sticky top-0 flex h-screen max-h-screen min-w-0 flex-col gap-4 self-start overflow-hidden border-r border-white/10 bg-slate-950/90 text-[var(--nav-text)] backdrop-blur"
-    :class="props.collapsed ? 'px-2 py-4 lg:px-2.5' : 'px-3 py-4 lg:px-4'"
-  >
-    <div class="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-      <div class="flex min-w-0 items-center gap-3">
-        <img
-          src="/icon.ico"
-          alt="OctoFlow"
-          class="h-10 w-10 shrink-0 rounded-xl border border-white/10 bg-white/10 object-cover p-1"
-        >
+    class="sticky top-0 flex h-screen max-h-screen flex-col gap-4 overflow-hidden border-r border-white/10 bg-slate-950/90 text-[var(--nav-text)] backdrop-blur transition-all duration-300"
+    :class="sidebarExpanded ? 'w-[280px] px-3 py-4 lg:px-4' : 'w-[88px] px-2 py-4'"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave">
+    <div class="grid items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3"
+      :class="sidebarExpanded ? 'grid-cols-1' : 'grid-cols-1 justify-items-center'">
+      <div class="flex min-w-0 items-center gap-3" :class="sidebarExpanded ? '' : 'justify-center'">
+        <img src="/icon.ico" alt="OctoFlow"
+          class="block h-10 w-10 min-h-10 min-w-10 shrink-0 rounded-xl border border-white/10 bg-white/10 object-cover p-1">
 
-        <h1 v-if="!props.collapsed" class="truncate text-xl font-semibold text-[var(--nav-text)]">
+        <h1 v-if="sidebarExpanded" class="truncate text-xl font-semibold text-[var(--nav-text)]">
           OctoFlow
         </h1>
       </div>
-
-      <button
-        v-if="props.collapsible"
-        type="button"
-        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs font-black text-[var(--nav-muted)] transition hover:bg-white/15"
-        :title="props.collapsed ? 'Abrir menu' : 'Recolher menu'"
-        @click="$emit('toggle-collapse')"
-      >
-        {{ props.collapsed ? '>>' : '<<' }}
-      </button>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-      <nav
-        class="grid min-w-0 gap-2"
-        :class="props.collapsed ? 'grid-cols-1' : 'grid-cols-1'"
-        aria-label="Navegacao principal"
-      >
-        <button
-          v-for="item in items"
-          :key="item.key"
-          type="button"
-          :disabled="!props.authenticated"
-          :title="item.label"
-          class="group grid min-w-0 gap-3 rounded-2xl border px-3 py-3 text-left transition duration-200 disabled:cursor-not-allowed disabled:opacity-45"
+    <div
+      class="min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <nav class="grid gap-2" aria-label="Navegacao principal">
+        <button v-for="item in primaryItems" :key="item.key" type="button" :disabled="!props.authenticated" :title="item.label"
+          class="group min-w-0 rounded-2xl border text-left transition duration-200 disabled:cursor-not-allowed disabled:opacity-45"
           :class="[
-            props.collapsed ? 'grid-cols-1 justify-items-center px-2.5 py-3' : 'grid-cols-[auto,minmax(0,1fr)]',
+            sidebarExpanded
+              ? 'grid w-full grid-cols-[40px_minmax(0,1fr)] gap-3 px-3 py-3'
+              : 'grid w-full grid-cols-1 justify-items-center gap-2 px-2 py-3',
             item.key === props.activeKey
               ? 'border-cyan-400/30 bg-cyan-400/12 shadow-[0_12px_30px_rgba(34,211,238,0.12)]'
               : 'border-white/8 bg-white/5 hover:border-white/15 hover:bg-white/8',
-          ]"
-          @click="navigate(item.key)"
-        >
-          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xs font-black tracking-wide text-[var(--nav-text)]">
+          ]" @click="navigate(item.key)">
+          <span
+            class="inline-flex h-10 w-10 min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xs font-black tracking-wide text-[var(--nav-text)]">
             {{ item.short }}
           </span>
 
-          <span v-if="!props.collapsed" class="grid min-w-0 gap-1">
-            <strong class="truncate text-base font-semibold text-[var(--nav-text)]">{{ item.label }}</strong>
-            <small class="line-clamp-2 text-xs leading-5 text-[var(--nav-muted)]">{{ item.description }}</small>
+          <span v-if="sidebarExpanded" class="grid min-w-0 gap-1">
+            <strong class="truncate text-base font-semibold text-[var(--nav-text)]">
+              {{ item.label }}
+            </strong>
+            <small class="line-clamp-2 text-xs leading-5 text-[var(--nav-muted)]">
+              {{ item.description }}
+            </small>
           </span>
         </button>
       </nav>
 
-      <div
-        class="mt-4 grid min-w-0 gap-3 rounded-2xl border border-white/10 bg-white/6 p-3"
-        :class="props.collapsed ? 'justify-items-center' : ''"
-      >
-        <div class="flex min-w-0 items-center gap-3" :class="props.collapsed ? 'justify-center' : ''">
-          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/12 text-sm font-black text-[var(--nav-text)]">
+      <div class="mt-4 grid min-w-0 gap-3 rounded-2xl border border-white/10 bg-white/6 p-3"
+        :class="[
+          sidebarExpanded ? '' : 'justify-items-center',
+          profileSelected ? 'border-cyan-400/30 bg-cyan-400/12 shadow-[0_12px_30px_rgba(34,211,238,0.12)]' : '',
+        ]">
+        <button type="button" :disabled="!props.authenticated" :title="profileItem.label"
+          class="flex min-w-0 items-center gap-3 rounded-xl text-left transition disabled:cursor-not-allowed disabled:opacity-45"
+          :class="sidebarExpanded ? 'w-full px-1 py-1' : 'justify-center'"
+          @click="openProfile">
+          <span
+            class="inline-flex h-10 w-10 min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-white/12 text-sm font-black text-[var(--nav-text)]">
             {{ userInitial }}
           </span>
 
-          <div v-if="!props.collapsed" class="min-w-0">
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--nav-muted)]">Sessao</p>
-            <strong class="block overflow-hidden text-ellipsis text-sm font-semibold text-[var(--nav-text)] break-all">
+          <div v-if="sidebarExpanded" class="min-w-0">
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--nav-muted)]">
+              {{ profileItem.label }}
+            </p>
+            <strong class="block overflow-hidden text-ellipsis break-all text-sm font-semibold text-[var(--nav-text)]">
               {{ userLabel }}
             </strong>
+            <small class="block truncate text-xs leading-5 text-[var(--nav-muted)]">
+              {{ profileItem.description }}
+            </small>
           </div>
-        </div>
+        </button>
 
-        <p v-if="!props.collapsed" class="text-sm leading-6 text-[var(--nav-muted)]">
-          {{ props.authenticated ? 'Use o menu para navegar entre Dashboard, Tarefas e Perfil.' : 'Faca login para liberar todas as areas.' }}
-        </p>
 
-        <div class="grid w-full gap-2" :class="props.collapsed ? 'justify-items-center' : ''">
-          <button
-            type="button"
-            :disabled="!props.authenticated"
-            :title="props.collapsed ? 'Renovar token' : ''"
-            class="inline-flex max-w-full items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-            :class="props.collapsed ? 'h-10 w-10 px-0 py-0' : 'w-full'"
-            @click="$emit('refresh')"
-          >
-            {{ props.collapsed ? 'RT' : 'Renovar token' }}
-          </button>
-          <button
-            type="button"
-            :disabled="!props.authenticated"
-            :title="props.collapsed ? 'Sair' : ''"
-            class="inline-flex max-w-full items-center justify-center rounded-xl border border-white/10 bg-white/90 px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-            :class="props.collapsed ? 'h-10 w-10 px-0 py-0' : 'w-full'"
-            @click="$emit('logout')"
-          >
-            {{ props.collapsed ? 'S' : 'Sair' }}
+        <div class="grid w-full gap-2" :class="sidebarExpanded ? '' : 'justify-items-center'">
+          <button type="button" :disabled="!props.authenticated" :title="!sidebarExpanded ? 'Sair' : ''"
+            class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/90 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            :class="!sidebarExpanded ? 'h-10 w-10 min-h-10 min-w-10 px-0 py-0' : 'w-full px-4 py-2.5'"
+            @click.stop="$emit('logout')">
+            {{ !sidebarExpanded ? 'S' : 'Sair' }}
           </button>
         </div>
       </div>

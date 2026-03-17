@@ -94,7 +94,7 @@ const navigationItems = [
 ]
 
 const activeView = ref('dashboard')
-const sidebarCollapsed = ref(false)
+const sidebarExpanded = ref(false)
 const isCompactViewport = ref(false)
 const accessToken = ref('')
 const csrfHeaderName = ref(DEFAULT_CSRF_HEADER_NAME)
@@ -109,7 +109,7 @@ const availableThemes = APP_THEME_OPTIONS
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 const activeViewConfig = computed(() => navigationItems.find((item) => item.key === activeView.value) || navigationItems[0])
 const currentDisplayEmail = computed(() => currentUser.value?.defaultEmail || currentUser.value?.email || 'Acesso publico')
-const effectiveSidebarCollapsed = computed(() => !isCompactViewport.value && sidebarCollapsed.value)
+const effectiveSidebarExpanded = computed(() => isCompactViewport.value || sidebarExpanded.value)
 
 let viewportMediaQuery = null
 let removeViewportListener = null
@@ -130,8 +130,6 @@ onMounted(async () => {
     removeViewportListener = () => viewportMediaQuery?.removeListener(handleViewportChange)
   }
 
-  sidebarCollapsed.value = window.localStorage.getItem('host.sidebar.collapsed') === '1'
-
   const refreshed = await refreshToken(false)
   if (refreshed) {
     await loadCurrentUser(false)
@@ -148,8 +146,10 @@ watch(isAuthenticated, (authenticated) => {
   }
 })
 
-watch(sidebarCollapsed, (collapsed) => {
-  window.localStorage.setItem('host.sidebar.collapsed', collapsed ? '1' : '0')
+watch(isCompactViewport, (compact) => {
+  if (!compact) {
+    sidebarExpanded.value = false
+  }
 })
 
 watch(
@@ -305,12 +305,20 @@ function navigateTo(viewKey) {
   activeView.value = viewKey
 }
 
-function toggleSidebar() {
+function expandSidebar() {
   if (isCompactViewport.value) {
     return
   }
 
-  sidebarCollapsed.value = !sidebarCollapsed.value
+  sidebarExpanded.value = true
+}
+
+function collapseSidebar() {
+  if (isCompactViewport.value) {
+    return
+  }
+
+  sidebarExpanded.value = false
 }
 
 function handleSessionUpdated(session) {
@@ -555,7 +563,7 @@ function clearNotification() {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ collapsed: effectiveSidebarCollapsed, compact: isCompactViewport }">
+  <div class="app-shell" :class="{ collapsed: !effectiveSidebarExpanded, compact: isCompactViewport }">
     <AppNotification :notification="notification" @close="clearNotification" />
 
     <MenuSidebar
@@ -563,10 +571,11 @@ function clearNotification() {
       :active-key="activeView"
       :authenticated="isAuthenticated"
       :current-user="currentUser"
-      :collapsed="effectiveSidebarCollapsed"
-      :collapsible="!isCompactViewport"
+      :compact="isCompactViewport"
+      :expanded="effectiveSidebarExpanded"
       @navigate="navigateTo"
-      @toggle-collapse="toggleSidebar"
+      @expand="expandSidebar"
+      @collapse="collapseSidebar"
       @refresh="refreshToken"
       @logout="logout"
     />
