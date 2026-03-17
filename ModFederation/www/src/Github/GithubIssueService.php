@@ -14,8 +14,37 @@ mutation CreateIssue($repositoryId: ID!, $title: String!, $body: String!, $label
       id
       number
       title
+      body
+      state
       url
       createdAt
+      updatedAt
+      viewerCanUpdate
+      viewerCanClose
+      viewerCanReopen
+      author {
+        login
+      }
+      assignees(first: 10) {
+        nodes {
+          login
+          name
+          avatarUrl
+          url
+        }
+      }
+      labels(first: 15) {
+        nodes {
+          id
+          name
+          color
+          description
+        }
+      }
+      repository {
+        nameWithOwner
+        url
+      }
     }
   }
 }
@@ -54,6 +83,7 @@ GRAPHQL;
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueTemplateCatalog $templateCatalog,
         private readonly GithubIssueBodyRenderer $bodyRenderer,
+        private readonly GithubIssueCacheService $cacheService,
     ) {
     }
 
@@ -70,6 +100,8 @@ GRAPHQL;
             throw new \InvalidArgumentException('Unknown GitHub issue template.');
         }
 
+        $repositorySelection = $this->normalizeRepositorySelection($payload);
+
         $rawFieldValues = $payload['fields'] ?? [];
         if (!is_array($rawFieldValues)) {
             throw new \InvalidArgumentException('The issue fields payload is invalid.');
@@ -82,8 +114,12 @@ GRAPHQL;
             $user->getEmail()
         );
 
-        $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user);
-        $repository = $this->workspaceService->fetchRepository($user);
+        $token = $this->profileService->requireToken($user);
+        $repository = $this->workspaceService->fetchRepository(
+            $user,
+            $repositorySelection['repositoryOwner'],
+            $repositorySelection['repositoryName']
+        );
         $projectSelection = $this->normalizeProjectSelection($payload);
         $validatedProject = $this->validateProjectSelection(
             $user,
@@ -92,7 +128,7 @@ GRAPHQL;
             $projectSelection['statusOptionId']
         );
 
-        $issueData = $this->graphqlClient->query($runtimeConfiguration->token, self::CREATE_ISSUE_MUTATION, [
+        $issueData = $this->graphqlClient->query($token, self::CREATE_ISSUE_MUTATION, [
             'repositoryId' => (string) ($repository['id'] ?? ''),
             'title' => $draft['title'],
             'body' => $draft['body'],
@@ -104,6 +140,8 @@ GRAPHQL;
             throw new GithubGraphQLException('GitHub did not return the created issue payload.');
         }
 
+        $cachedIssue = $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
+
         $projectResult = [
             'projectId' => $projectSelection['projectId'],
             'attached' => false,
@@ -114,7 +152,7 @@ GRAPHQL;
         if ($validatedProject !== null) {
             try {
                 $projectResult = $this->attachIssueToProject(
-                    $runtimeConfiguration->token,
+                    $token,
                     $issue,
                     $validatedProject,
                     $projectSelection['statusOptionId']
@@ -137,6 +175,13 @@ GRAPHQL;
                 'url' => (string) ($issue['url'] ?? ''),
                 'createdAt' => (string) ($issue['createdAt'] ?? ''),
             ],
+            'repository' => [
+                'id' => (string) ($repository['id'] ?? ''),
+                'name' => (string) ($repository['name'] ?? ''),
+                'nameWithOwner' => (string) ($repository['nameWithOwner'] ?? ''),
+                'url' => (string) ($repository['url'] ?? ''),
+            ],
+            'item' => $cachedIssue,
             'project' => $projectResult,
         ];
     }
@@ -158,6 +203,26 @@ GRAPHQL;
         return [
             'projectId' => $projectId !== '' ? $projectId : null,
             'statusOptionId' => $statusOptionId !== '' ? $statusOptionId : null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array{repositoryOwner: ?string, repositoryName: ?string}
+     */
+    private function normalizeRepositorySelection(array $payload): array
+    {
+        $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
+        $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
+
+        if (($repositoryOwner === '') xor ($repositoryName === '')) {
+            throw new \InvalidArgumentException('Inform the GitHub repository owner and name together.');
+        }
+
+        return [
+            'repositoryOwner' => $repositoryOwner !== '' ? $repositoryOwner : null,
+            'repositoryName' => $repositoryName !== '' ? $repositoryName : null,
         ];
     }
 
@@ -286,5 +351,37 @@ GRAPHQL;
         $projectState['statusUpdated'] = true;
 
         return $projectState;
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeIssue(array $issue): array
+    {
+        $assigneeNodes = $issue['assignees']['nodes'] ?? [];
+        $labelNodes = $issue['labels']['nodes'] ?? [];
+
+        return [
+            'id' => (string) ($issue['id'] ?? ''),
+            'number' => (int) ($issue['number'] ?? 0),
+            'title' => (string) ($issue['title'] ?? ''),
+            'body' => (string) ($issue['body'] ?? ''),
+            'state' => (string) ($issue['state'] ?? 'OPEN'),
+            'url' => (string) ($issue['url'] ?? ''),
+            'createdAt' => (string) ($issue['createdAt'] ?? ''),
+            'updatedAt' => (string) ($issue['updatedAt'] ?? $issue['createdAt'] ?? ''),
+            'viewerCanUpdate' => (bool) ($issue['viewerCanUpdate'] ?? false),
+            'viewerCanClose' => (bool) ($issue['viewerCanClose'] ?? false),
+            'viewerCanReopen' => (bool) ($issue['viewerCanReopen'] ?? false),
+            'authorLogin' => is_array($issue['author'] ?? null) ? ($issue['author']['login'] ?? null) : null,
+            'assignees' => is_array($assigneeNodes) ? array_values(array_filter($assigneeNodes, 'is_array')) : [],
+            'labels' => is_array($labelNodes) ? array_values(array_filter($labelNodes, 'is_array')) : [],
+            'repository' => [
+                'nameWithOwner' => is_array($issue['repository'] ?? null) ? (string) (($issue['repository']['nameWithOwner'] ?? '')) : '',
+                'url' => is_array($issue['repository'] ?? null) ? ($issue['repository']['url'] ?? null) : null,
+            ],
+        ];
     }
 }

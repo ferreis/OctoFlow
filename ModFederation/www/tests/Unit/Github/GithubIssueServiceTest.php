@@ -5,6 +5,7 @@ namespace App\Tests\Unit\Github;
 use App\Entity\User;
 use App\Github\GithubGraphQLClientInterface;
 use App\Github\GithubIssueBodyRenderer;
+use App\Github\GithubIssueCacheService;
 use App\Github\GithubIssueService;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubProfileService;
@@ -20,12 +21,14 @@ final class GithubIssueServiceTest extends TestCase
     private GithubIssueTemplateCatalog $templateCatalog;
     private GithubIssueBodyRenderer $renderer;
     private GithubProfileService $profileService;
+    private GithubIssueCacheService&MockObject $cacheService;
 
     protected function setUp(): void
     {
         $this->graphqlClient = $this->createMock(GithubGraphQLClientInterface::class);
         $this->templateCatalog = new GithubIssueTemplateCatalog();
         $this->renderer = new GithubIssueBodyRenderer();
+        $this->cacheService = $this->createMock(GithubIssueCacheService::class);
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
             new GithubTokenCipher('test-app-secret')
@@ -35,6 +38,34 @@ final class GithubIssueServiceTest extends TestCase
     public function testCreateIssueCanAttachProjectAndSetInitialStatus(): void
     {
         $call = 0;
+
+        $this->cacheService
+            ->expects($this->once())
+            ->method('upsertIssue')
+            ->with(
+                $this->isInstanceOf(User::class),
+                $this->callback(function (array $issue): bool {
+                    $this->assertSame('issue-node-id', $issue['id']);
+                    $this->assertSame('OPEN', $issue['state']);
+                    $this->assertSame('acme/delivery-desk', $issue['repository']['nameWithOwner']);
+
+                    return true;
+                })
+            )
+            ->willReturn([
+                'id' => 'issue-node-id',
+                'number' => 42,
+                'title' => '[feat] Entregar workspace GitHub',
+                'body' => 'Body salvo no cache',
+                'state' => 'OPEN',
+                'url' => 'https://github.com/acme/delivery-desk/issues/42',
+                'createdAt' => '2026-03-16T12:00:00Z',
+                'updatedAt' => '2026-03-16T12:00:00Z',
+                'repository' => [
+                    'nameWithOwner' => 'acme/delivery-desk',
+                    'url' => 'https://github.com/acme/delivery-desk',
+                ],
+            ]);
 
         $this->graphqlClient
             ->expects($this->exactly(5))
@@ -112,8 +143,27 @@ final class GithubIssueServiceTest extends TestCase
                                 'id' => 'issue-node-id',
                                 'number' => 42,
                                 'title' => '[feat] Entregar workspace GitHub',
+                                'body' => '## Problema ou oportunidade',
+                                'state' => 'OPEN',
                                 'url' => 'https://github.com/acme/delivery-desk/issues/42',
                                 'createdAt' => '2026-03-16T12:00:00Z',
+                                'updatedAt' => '2026-03-16T12:00:00Z',
+                                'viewerCanUpdate' => true,
+                                'viewerCanClose' => true,
+                                'viewerCanReopen' => false,
+                                'author' => [
+                                    'login' => 'owner',
+                                ],
+                                'assignees' => [
+                                    'nodes' => [],
+                                ],
+                                'labels' => [
+                                    'nodes' => [],
+                                ],
+                                'repository' => [
+                                    'nameWithOwner' => 'acme/delivery-desk',
+                                    'url' => 'https://github.com/acme/delivery-desk',
+                                ],
                             ],
                         ],
                     ];
@@ -159,7 +209,8 @@ final class GithubIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->templateCatalog,
-            $this->renderer
+            $this->renderer,
+            $this->cacheService
         );
 
         $result = $service->createIssue($this->buildConfiguredUser(), [
@@ -180,6 +231,7 @@ final class GithubIssueServiceTest extends TestCase
         ]);
 
         $this->assertSame(42, $result['issue']['number']);
+        $this->assertSame('issue-node-id', $result['item']['id']);
         $this->assertTrue($result['project']['attached']);
         $this->assertTrue($result['project']['statusUpdated']);
         $this->assertNull($result['project']['message']);

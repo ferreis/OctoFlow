@@ -85,9 +85,9 @@ GRAPHQL;
     /**
      * @return array<string, mixed>
      */
-    public function fetchWorkspace(User $user): array
+    public function fetchWorkspace(User $user, ?string $repositoryOwner = null, ?string $repositoryName = null): array
     {
-        $repository = $this->fetchRepository($user);
+        $repository = $this->fetchRepository($user, $repositoryOwner, $repositoryName);
         $projects = [];
         $projectsMeta = [
             'available' => true,
@@ -115,9 +115,9 @@ GRAPHQL;
     /**
      * @return array<string, mixed>
      */
-    public function fetchRepository(User $user): array
+    public function fetchRepository(User $user, ?string $repositoryOwner = null, ?string $repositoryName = null): array
     {
-        $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user);
+        $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user, $repositoryOwner, $repositoryName);
 
         $data = $this->graphqlClient->query($runtimeConfiguration->token, self::REPOSITORY_QUERY, [
             'owner' => $runtimeConfiguration->repositoryOwner,

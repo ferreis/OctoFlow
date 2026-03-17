@@ -7,15 +7,17 @@ use App\Github\Exception\GithubGraphQLException;
 
 final class GithubAssignedIssueService
 {
+    private const ISSUE_SCOPE_ALL = 'all';
     private const ISSUE_SCOPE_ASSIGNED = 'assigned';
     private const ISSUE_SCOPE_REPOSITORY = 'repository';
 
     private const VIEWER_REPOSITORIES_QUERY = <<<'GRAPHQL'
-query GithubViewerRepositories {
+query GithubViewerRepositories($after: String) {
   viewer {
     login
     repositories(
-      first: 30
+      first: 50
+      after: $after
       affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
       orderBy: {field: UPDATED_AT, direction: DESC}
       ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
@@ -30,6 +32,54 @@ query GithubViewerRepositories {
         owner {
           login
         }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}
+GRAPHQL;
+
+    private const ISSUE_DETAIL_QUERY = <<<'GRAPHQL'
+query GithubIssueDetail($issueId: ID!) {
+  node(id: $issueId) {
+    __typename
+    ... on Issue {
+      id
+      number
+      title
+      body
+      state
+      url
+      createdAt
+      updatedAt
+      viewerCanUpdate
+      viewerCanClose
+      viewerCanReopen
+      author {
+        login
+      }
+      assignees(first: 10) {
+        nodes {
+          login
+          name
+          avatarUrl
+          url
+        }
+      }
+      labels(first: 15) {
+        nodes {
+          id
+          name
+          color
+          description
+        }
+      }
+      repository {
+        nameWithOwner
+        url
       }
     }
   }
@@ -207,6 +257,7 @@ GRAPHQL;
     public function __construct(
         private readonly GithubProfileService $profileService,
         private readonly GithubGraphQLClientInterface $graphqlClient,
+        private readonly GithubIssueCacheService $cacheService,
     ) {
     }
 
@@ -217,40 +268,100 @@ GRAPHQL;
         User $user,
         ?string $repositoryOwner = null,
         ?string $repositoryName = null,
-        string $scope = self::ISSUE_SCOPE_ASSIGNED,
+        string $scope = self::ISSUE_SCOPE_ALL,
     ): array
     {
-        $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user, $repositoryOwner, $repositoryName);
-        $viewerData = $this->graphqlClient->query($runtimeConfiguration->token, self::VIEWER_REPOSITORIES_QUERY);
-        $viewer = $viewerData['viewer'] ?? null;
-
-        if (!is_array($viewer)) {
-            throw new GithubGraphQLException('GitHub did not return the authenticated viewer profile.');
-        }
-
-        $viewerLogin = trim((string) ($viewer['login'] ?? ''));
-        if ($viewerLogin === '') {
-            throw new GithubGraphQLException('GitHub returned an invalid viewer login.');
-        }
-
-        $repositories = $this->normalizeRepositoryCatalog($viewer['repositories']['nodes'] ?? []);
         $normalizedScope = $this->normalizeScope($scope);
-        $issuesPayload = $this->fetchRepositoryIssues(
-            $runtimeConfiguration,
-            $viewerLogin,
-            $normalizedScope
-        );
-        $normalizedRepository = $issuesPayload['repository'];
+        $token = $this->profileService->requireToken($user);
+        $viewerCatalog = $this->fetchViewerRepositoryCatalog($token);
+        $viewerLogin = $viewerCatalog['login'];
+        $repositories = $viewerCatalog['repositories'];
+        $normalizedRepository = null;
 
-        return [
-            'scope' => $normalizedScope,
-            'viewer' => [
-                'login' => $viewerLogin,
-            ],
-            'repository' => $normalizedRepository,
-            'repositories' => $this->mergeSelectedRepository($normalizedRepository, $repositories),
-            'items' => $issuesPayload['items'],
-        ];
+        if ($normalizedScope === self::ISSUE_SCOPE_REPOSITORY) {
+            $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user, $repositoryOwner, $repositoryName);
+            $issuesPayload = $this->fetchRepositoryIssues($runtimeConfiguration, $viewerLogin, $normalizedScope);
+            $normalizedRepository = $issuesPayload['repository'];
+            $repositories = $this->mergeSelectedRepository($normalizedRepository, $repositories);
+            $items = $issuesPayload['items'];
+        } else {
+            $items = $this->fetchCatalogIssues($token, $repositories, $viewerLogin, $normalizedScope);
+        }
+
+        $this->cacheService->syncIssues(
+            $user,
+            $normalizedScope,
+            $items,
+            $viewerLogin,
+            $repositories,
+            $normalizedRepository['ownerLogin'] ?? $repositoryOwner,
+            $normalizedRepository['name'] ?? $repositoryName,
+        );
+
+        return $this->cacheService->buildCachedBoard($user, $normalizedScope, $repositoryOwner, $repositoryName);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function fetchCachedIssues(
+        User $user,
+        ?string $repositoryOwner = null,
+        ?string $repositoryName = null,
+        string $scope = self::ISSUE_SCOPE_ALL,
+    ): array {
+        return $this->cacheService->buildCachedBoard($user, $scope, $repositoryOwner, $repositoryName);
+    }
+
+    /**
+     * @return array{item: array<string, mixed>, source: string, warning: ?string}
+     */
+    public function fetchIssue(User $user, string $issueId): array
+    {
+        $normalizedIssueId = trim($issueId);
+        if ($normalizedIssueId === '') {
+            throw new \InvalidArgumentException('The GitHub issue id is required.');
+        }
+
+        try {
+            $token = $this->profileService->requireToken($user);
+            $data = $this->graphqlClient->query($token, self::ISSUE_DETAIL_QUERY, [
+                'issueId' => $normalizedIssueId,
+            ]);
+
+            $node = $data['node'] ?? null;
+            if (!is_array($node) || trim((string) ($node['__typename'] ?? '')) !== 'Issue') {
+                throw new GithubGraphQLException('GitHub did not return the requested issue.');
+            }
+
+            $normalizedIssue = $this->normalizeIssue($node);
+            $cachedIssue = $this->cacheService->upsertIssue($user, $normalizedIssue);
+
+            return [
+                'item' => $cachedIssue,
+                'source' => 'github',
+                'warning' => null,
+            ];
+        } catch (\Throwable $exception) {
+            $cachedIssue = $this->cacheService->findCachedIssue($user, $normalizedIssueId);
+            if ($cachedIssue !== null) {
+                return [
+                    'item' => $cachedIssue,
+                    'source' => 'cache',
+                    'warning' => sprintf('GitHub detail refresh failed: %s', $exception->getMessage()),
+                ];
+            }
+
+            if ($exception instanceof \InvalidArgumentException) {
+                throw $exception;
+            }
+
+            if ($exception instanceof GithubGraphQLException) {
+                throw $exception;
+            }
+
+            throw new GithubGraphQLException($exception->getMessage(), previous: $exception);
+        }
     }
 
     /**
@@ -290,22 +401,55 @@ GRAPHQL;
             throw new GithubGraphQLException('GitHub did not return the updated issue payload.');
         }
 
-        return $this->normalizeIssue($issue);
+        return $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
     }
 
     private function normalizeScope(string $scope): string
     {
-        $normalizedScope = trim(strtolower($scope));
+        return $this->cacheService->normalizeScope($scope);
+    }
 
-        if ($normalizedScope === '') {
-            return self::ISSUE_SCOPE_ASSIGNED;
-        }
+    /**
+     * @return array{login: string, repositories: list<array<string, mixed>>}
+     */
+    private function fetchViewerRepositoryCatalog(string $token): array
+    {
+        $viewerLogin = '';
+        $repositories = [];
+        $after = null;
 
-        if (!in_array($normalizedScope, [self::ISSUE_SCOPE_ASSIGNED, self::ISSUE_SCOPE_REPOSITORY], true)) {
-            throw new \InvalidArgumentException('The GitHub issue scope must be "assigned" or "repository".');
-        }
+        do {
+            $data = $this->graphqlClient->query($token, self::VIEWER_REPOSITORIES_QUERY, [
+                'after' => $after,
+            ]);
 
-        return $normalizedScope;
+            $viewer = $data['viewer'] ?? null;
+            if (!is_array($viewer)) {
+                throw new GithubGraphQLException('GitHub did not return the authenticated viewer profile.');
+            }
+
+            if ($viewerLogin === '') {
+                $viewerLogin = trim((string) ($viewer['login'] ?? ''));
+                if ($viewerLogin === '') {
+                    throw new GithubGraphQLException('GitHub returned an invalid viewer login.');
+                }
+            }
+
+            $repositories = [
+                ...$repositories,
+                ...$this->normalizeRepositoryCatalog($viewer['repositories']['nodes'] ?? []),
+            ];
+
+            $pageInfo = $viewer['repositories']['pageInfo'] ?? null;
+            $hasNextPage = is_array($pageInfo) ? (bool) ($pageInfo['hasNextPage'] ?? false) : false;
+            $endCursor = is_array($pageInfo) ? trim((string) ($pageInfo['endCursor'] ?? '')) : '';
+            $after = $hasNextPage && $endCursor !== '' ? $endCursor : null;
+        } while ($after !== null);
+
+        return [
+            'login' => $viewerLogin,
+            'repositories' => $this->uniqueRepositories($repositories),
+        ];
     }
 
     /**
@@ -359,8 +503,36 @@ GRAPHQL;
 
         return [
             'repository' => $normalizedRepository,
-            'items' => $items,
+            'items' => $this->sortIssues($items),
         ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $repositories
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function fetchCatalogIssues(string $token, array $repositories, string $viewerLogin, string $scope): array
+    {
+        $items = [];
+
+        foreach ($repositories as $repository) {
+            $ownerLogin = trim((string) ($repository['ownerLogin'] ?? ''));
+            $repositoryName = trim((string) ($repository['name'] ?? ''));
+            if ($ownerLogin === '' || $repositoryName === '') {
+                continue;
+            }
+
+            $issuesPayload = $this->fetchRepositoryIssues(
+                new GithubRuntimeConfiguration($token, $ownerLogin, $repositoryName),
+                $viewerLogin,
+                $scope
+            );
+
+            $items = [...$items, ...$issuesPayload['items']];
+        }
+
+        return $this->sortIssues($items);
     }
 
     /**
@@ -393,6 +565,27 @@ GRAPHQL;
     }
 
     /**
+     * @param list<array<string, mixed>> $repositories
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function uniqueRepositories(array $repositories): array
+    {
+        $catalog = [];
+
+        foreach ($repositories as $repository) {
+            $key = trim((string) ($repository['nameWithOwner'] ?? ''));
+            if ($key === '' || array_key_exists($key, $catalog)) {
+                continue;
+            }
+
+            $catalog[$key] = $repository;
+        }
+
+        return array_values($catalog);
+    }
+
+    /**
      * @param array<string, mixed> $repository
      * @param list<array<string, mixed>> $repositories
      *
@@ -414,6 +607,20 @@ GRAPHQL;
         array_unshift($repositories, $repository);
 
         return $repositories;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function sortIssues(array $items): array
+    {
+        usort($items, static function (array $left, array $right): int {
+            return strcmp((string) ($right['updatedAt'] ?? ''), (string) ($left['updatedAt'] ?? ''));
+        });
+
+        return array_values($items);
     }
 
     /**

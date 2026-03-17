@@ -509,7 +509,7 @@ function clearAuth() {
     />
 
     <div class="app-main">
-      <header class="page-header surface-card">
+      <header v-if="!isAuthenticated || activeView !== 'tasks'" class="page-header surface-card">
         <div>
           <p class="section-kicker">{{ activeViewConfig.eyebrow }}</p>
           <h1>{{ isAuthenticated ? activeViewConfig.title : 'Autenticacao e acesso' }}</h1>
@@ -604,6 +604,7 @@ function clearAuth() {
         <TasksScreen
           v-else-if="activeView === 'tasks'"
           :request="authRequest"
+          :current-user="currentUser"
         />
 
         <ProfileScreen

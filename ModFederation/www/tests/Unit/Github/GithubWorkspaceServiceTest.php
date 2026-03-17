@@ -119,7 +119,7 @@ final class GithubWorkspaceServiceTest extends TestCase
         $workspace = $service->fetchWorkspace($this->buildConfiguredUser());
 
         $this->assertSame('acme/delivery-desk', $workspace['repository']['nameWithOwner']);
-        $this->assertCount(3, $workspace['templates']);
+        $this->assertCount(6, $workspace['templates']);
         $this->assertTrue($workspace['projectsMeta']['available']);
         $this->assertCount(1, $workspace['projects']);
         $this->assertSame('field-status', $workspace['projects'][0]['statusField']['id']);

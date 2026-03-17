@@ -67,14 +67,17 @@ final class GithubController
     }
 
     #[Route('/workspace', name: 'github_workspace', methods: ['GET'])]
-    public function workspace(#[CurrentUser] ?User $user): JsonResponse
+    public function workspace(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
+        $repositoryOwner = $this->optionalQueryString($request->query->get('repositoryOwner'));
+        $repositoryName = $this->optionalQueryString($request->query->get('repositoryName'));
+
         try {
-            return new JsonResponse($this->workspaceService->fetchWorkspace($user));
+            return new JsonResponse($this->workspaceService->fetchWorkspace($user, $repositoryOwner, $repositoryName));
         } catch (GithubConfigurationException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
         } catch (GithubGraphQLException $exception) {
@@ -114,10 +117,46 @@ final class GithubController
 
         $repositoryOwner = $this->optionalQueryString($request->query->get('repositoryOwner'));
         $repositoryName = $this->optionalQueryString($request->query->get('repositoryName'));
-        $scope = $this->optionalQueryString($request->query->get('scope')) ?? 'assigned';
+        $scope = $this->optionalQueryString($request->query->get('scope')) ?? 'all';
 
         try {
             return new JsonResponse($this->assignedIssueService->fetchIssues($user, $repositoryOwner, $repositoryName, $scope));
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (GithubConfigurationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
+        } catch (GithubGraphQLException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_GATEWAY);
+        }
+    }
+
+    #[Route('/issues/cache', name: 'github_issue_cache_list', methods: ['GET'])]
+    public function cachedIssues(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $repositoryOwner = $this->optionalQueryString($request->query->get('repositoryOwner'));
+        $repositoryName = $this->optionalQueryString($request->query->get('repositoryName'));
+        $scope = $this->optionalQueryString($request->query->get('scope')) ?? 'all';
+
+        try {
+            return new JsonResponse($this->assignedIssueService->fetchCachedIssues($user, $repositoryOwner, $repositoryName, $scope));
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
+    #[Route('/issues/{issueId}', name: 'github_issue_show', methods: ['GET'])]
+    public function issue(string $issueId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        try {
+            return new JsonResponse($this->assignedIssueService->fetchIssue($user, $issueId));
         } catch (\InvalidArgumentException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
         } catch (GithubConfigurationException $exception) {
