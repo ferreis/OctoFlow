@@ -55,18 +55,13 @@ class GithubIssueCacheService
 
         return [
             'scope' => $normalizedScope,
-            'viewer' => [
-                'login' => $syncState?->getViewerLogin(),
-            ],
             'repository' => $selectedRepository,
             'repositories' => $registeredRepositories,
             'items' => $items,
             'cache' => [
-                'source' => 'database',
                 'available' => $syncState !== null || $items !== [],
                 'lastSyncedAt' => $syncState?->getSyncedAt()->format(DATE_ATOM),
                 'needsRefresh' => $this->needsRefresh($syncState),
-                'ttlSeconds' => self::CACHE_TTL_SECONDS,
             ],
         ];
     }
@@ -99,17 +94,11 @@ class GithubIssueCacheService
 
         $syncState = $this->syncStateRepository->findOneByOwnerScope($user, $normalizedScope, $repositorySelection['stateKey']);
         if ($syncState === null) {
-            $syncState = (new GithubIssueSyncState())
-                ->setOwner($user)
-                ->setScope($normalizedScope)
-                ->setRepositoryKey($repositorySelection['stateKey']);
-
+            $syncState = $this->syncStateRepository->createSyncState($user, $normalizedScope, $repositorySelection['stateKey']);
             $this->entityManager->persist($syncState);
         }
 
-        $syncState
-            ->setViewerLogin($viewerLogin)
-            ->setSyncedAt(new \DateTimeImmutable());
+        $syncState->setSyncedAt(new \DateTimeImmutable());
 
         $this->entityManager->flush();
     }
@@ -228,7 +217,6 @@ class GithubIssueCacheService
             ->setIssueNumber((int) ($issue['number'] ?? 0))
             ->setRepositoryOwner($repositoryParts['owner'])
             ->setRepositoryName($repositoryParts['name'])
-            ->setRepositoryKey($repositoryKey)
             ->setRepositoryUrl(is_array($repository) ? ($repository['url'] ?? null) : null)
             ->setTitle((string) ($issue['title'] ?? ''))
             ->setBody((string) ($issue['body'] ?? ''))

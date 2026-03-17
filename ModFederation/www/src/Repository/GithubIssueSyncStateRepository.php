@@ -29,4 +29,12 @@ class GithubIssueSyncStateRepository extends ServiceEntityRepository
             ->getQuery()
             ->getOneOrNullResult();
     }
+
+    public function createSyncState(User $owner, string $scope, string $repositoryKey = ''): GithubIssueSyncState
+    {
+        return (new GithubIssueSyncState())
+            ->setOwner($owner)
+            ->setScope($scope)
+            ->setRepositoryKey($repositoryKey);
+    }
 }

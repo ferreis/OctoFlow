@@ -15,22 +15,6 @@ const props = defineProps({
     type: Object,
     default: null,
   },
-  summaryComponent: {
-    type: [Object, Function],
-    default: null,
-  },
-  composerComponent: {
-    type: [Object, Function],
-    default: null,
-  },
-  projectsComponent: {
-    type: [Object, Function],
-    default: null,
-  },
-  federationError: {
-    type: String,
-    default: '',
-  },
 })
 
 const profile = ref(null)

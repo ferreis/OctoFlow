@@ -1,6 +1,6 @@
 <script setup>
 import axios from 'axios'
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppFooter from './components/layout/AppFooter.vue'
 import AppNotification from './components/layout/AppNotification.vue'
 import MenuSidebar from './components/layout/MenuSidebar.vue'
@@ -38,28 +38,6 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 })
-
-const federationError = ref('')
-
-function defineRemote(loader, moduleName) {
-  return defineAsyncComponent({
-    loader: async () => {
-      try {
-        return await loader()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'erro desconhecido'
-        federationError.value = `Falha ao carregar componente remoto ${moduleName}: ${message}`
-        throw error
-      }
-    },
-    delay: 150,
-    timeout: 15000,
-  })
-}
-
-const RemoteGithubWorkspaceSummaryCard = defineRemote(() => import('remoteApp/GithubWorkspaceSummaryCard'), 'GithubWorkspaceSummaryCard')
-const RemoteGithubIssueComposerPanel = defineRemote(() => import('remoteApp/GithubIssueComposerPanel'), 'GithubIssueComposerPanel')
-const RemoteGithubProjectsCard = defineRemote(() => import('remoteApp/GithubProjectsCard'), 'GithubProjectsCard')
 
 const loginForm = reactive({
   email: '',
@@ -106,8 +84,6 @@ const authMode = ref('login')
 const sidebarExpanded = ref(false)
 const isCompactViewport = ref(false)
 const accessToken = ref('')
-const csrfHeaderName = ref(DEFAULT_CSRF_HEADER_NAME)
-const csrfActionHeaderName = ref(DEFAULT_CSRF_ACTION_HEADER_NAME)
 const currentUser = ref(null)
 const loginLoading = ref(false)
 const actionLoading = ref(false)
@@ -119,8 +95,6 @@ const uiSettings = ref({
 const availableThemes = APP_THEME_OPTIONS
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
-const activeViewConfig = computed(() => navigationItems.find((item) => item.key === activeView.value) || navigationItems[0])
-const currentDisplayEmail = computed(() => currentUser.value?.defaultEmail || currentUser.value?.email || 'Acesso publico')
 const effectiveSidebarExpanded = computed(() => isCompactViewport.value || sidebarExpanded.value)
 
 let viewportMediaQuery = null
@@ -509,8 +483,6 @@ async function requestWithCsrf(config, canRetryCsrf = true, canRetryAuth = true)
       throw new Error('O backend nao retornou um CSRF token valido para esta acao.')
     }
 
-    csrfHeaderName.value = issuedHeaderName
-    csrfActionHeaderName.value = issuedActionHeaderName
     headers[issuedHeaderName] = token
     headers[issuedActionHeaderName] = actionId
   }
@@ -927,10 +899,6 @@ function clearNotification() {
           :request="authRequest"
           :current-user="currentUser"
           :notify="showNotification"
-          :summary-component="RemoteGithubWorkspaceSummaryCard"
-          :composer-component="RemoteGithubIssueComposerPanel"
-          :projects-component="RemoteGithubProjectsCard"
-          :federation-error="federationError"
         />
 
         <TasksScreen
@@ -953,11 +921,7 @@ function clearNotification() {
         />
       </main>
 
-      <AppFooter
-        :current-user="currentUser"
-        :active-label="isAuthenticated ? activeViewConfig.label : 'Acesso publico'"
-        :api-base="API_BASE_URL"
-      />
+      <AppFooter />
     </div>
   </div>
 </template>

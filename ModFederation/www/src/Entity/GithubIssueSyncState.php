@@ -25,9 +25,6 @@ class GithubIssueSyncState
     #[ORM\Column(length: 191)]
     private string $repositoryKey = '';
 
-    #[ORM\Column(length: 191, nullable: true)]
-    private ?string $viewerLogin = null;
-
     #[ORM\Column]
     private \DateTimeImmutable $syncedAt;
 
@@ -73,19 +70,6 @@ class GithubIssueSyncState
     public function setRepositoryKey(string $repositoryKey): self
     {
         $this->repositoryKey = trim($repositoryKey);
-
-        return $this;
-    }
-
-    public function getViewerLogin(): ?string
-    {
-        return $this->viewerLogin;
-    }
-
-    public function setViewerLogin(?string $viewerLogin): self
-    {
-        $normalized = $viewerLogin === null ? null : trim($viewerLogin);
-        $this->viewerLogin = $normalized === '' ? null : $normalized;
 
         return $this;
     }

@@ -193,9 +193,6 @@ final class GithubAssignedIssueServiceTest extends TestCase
             ->with($this->isInstanceOf(User::class), 'all', null, null)
             ->willReturn([
                 'scope' => 'all',
-                'viewer' => [
-                    'login' => 'octocat',
-                ],
                 'repository' => null,
                 'repositories' => [
                     ['nameWithOwner' => 'acme/alpha'],
@@ -217,7 +214,6 @@ final class GithubAssignedIssueServiceTest extends TestCase
         $issuesBoard = $service->fetchIssues($this->buildTokenOnlyUser());
 
         $this->assertSame('all', $issuesBoard['scope']);
-        $this->assertSame('octocat', $issuesBoard['viewer']['login']);
         $this->assertNull($issuesBoard['repository']);
         $this->assertCount(2, $issuesBoard['repositories']);
         $this->assertCount(2, $issuesBoard['items']);

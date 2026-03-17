@@ -9,7 +9,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'github_cached_issue')]
 #[ORM\UniqueConstraint(name: 'uniq_github_cached_issue_owner_issue', columns: ['owner_id', 'github_issue_id'])]
 #[ORM\Index(name: 'idx_github_cached_issue_owner_updated', columns: ['owner_id', 'active', 'github_updated_at'])]
-#[ORM\Index(name: 'idx_github_cached_issue_owner_repo', columns: ['owner_id', 'repository_key'])]
+#[ORM\Index(name: 'idx_github_cached_issue_owner_repo', columns: ['owner_id', 'active', 'repository_owner', 'repository_name'])]
 class GithubCachedIssue
 {
     #[ORM\Id]
@@ -32,9 +32,6 @@ class GithubCachedIssue
 
     #[ORM\Column(length: 191)]
     private string $repositoryName = '';
-
-    #[ORM\Column(length: 191)]
-    private string $repositoryKey = '';
 
     #[ORM\Column(length: 500, nullable: true)]
     private ?string $repositoryUrl = null;
@@ -165,14 +162,11 @@ class GithubCachedIssue
 
     public function getRepositoryKey(): string
     {
-        return $this->repositoryKey;
-    }
+        if ($this->repositoryOwner !== '' && $this->repositoryName !== '') {
+            return sprintf('%s/%s', $this->repositoryOwner, $this->repositoryName);
+        }
 
-    public function setRepositoryKey(string $repositoryKey): self
-    {
-        $this->repositoryKey = trim($repositoryKey);
-
-        return $this;
+        return '';
     }
 
     public function getRepositoryUrl(): ?string

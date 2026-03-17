@@ -1,19 +1,4 @@
 <script setup>
-const props = defineProps({
-  currentUser: {
-    type: Object,
-    default: null,
-  },
-  activeLabel: {
-    type: String,
-    required: true,
-  },
-  apiBase: {
-    type: String,
-    required: true,
-  },
-})
-
 const currentYear = new Date().getFullYear()
 </script>
 

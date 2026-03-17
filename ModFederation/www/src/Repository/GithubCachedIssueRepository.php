@@ -51,12 +51,19 @@ final class GithubCachedIssueRepository extends ServiceEntityRepository
      */
     public function findActiveByOwnerAndRepositoryKey(User $owner, string $repositoryKey): array
     {
+        $repositorySelection = $this->splitRepositoryKey($repositoryKey);
+        if ($repositorySelection === null) {
+            return [];
+        }
+
         return $this->createQueryBuilder('issue')
             ->andWhere('issue.owner = :owner')
             ->andWhere('issue.active = true')
-            ->andWhere('issue.repositoryKey = :repositoryKey')
+            ->andWhere('issue.repositoryOwner = :repositoryOwner')
+            ->andWhere('issue.repositoryName = :repositoryName')
             ->setParameter('owner', $owner)
-            ->setParameter('repositoryKey', trim($repositoryKey))
+            ->setParameter('repositoryOwner', $repositorySelection['owner'])
+            ->setParameter('repositoryName', $repositorySelection['name'])
             ->orderBy('issue.githubUpdatedAt', 'DESC')
             ->getQuery()
             ->getResult();
@@ -87,14 +94,21 @@ final class GithubCachedIssueRepository extends ServiceEntityRepository
 
     public function markRepositoryInactiveForOwner(User $owner, string $repositoryKey): void
     {
+        $repositorySelection = $this->splitRepositoryKey($repositoryKey);
+        if ($repositorySelection === null) {
+            return;
+        }
+
         $this->createQueryBuilder('issue')
             ->update()
             ->set('issue.active', ':active')
             ->andWhere('issue.owner = :owner')
-            ->andWhere('issue.repositoryKey = :repositoryKey')
+            ->andWhere('issue.repositoryOwner = :repositoryOwner')
+            ->andWhere('issue.repositoryName = :repositoryName')
             ->setParameter('active', false)
             ->setParameter('owner', $owner)
-            ->setParameter('repositoryKey', trim($repositoryKey))
+            ->setParameter('repositoryOwner', $repositorySelection['owner'])
+            ->setParameter('repositoryName', $repositorySelection['name'])
             ->getQuery()
             ->execute();
     }
@@ -109,5 +123,28 @@ final class GithubCachedIssueRepository extends ServiceEntityRepository
             ->setParameter('owner', $owner)
             ->getQuery()
             ->execute();
+    }
+
+    /**
+     * @return array{owner: string, name: string}|null
+     */
+    private function splitRepositoryKey(string $repositoryKey): ?array
+    {
+        $normalizedRepositoryKey = trim($repositoryKey);
+        $separatorPosition = strpos($normalizedRepositoryKey, '/');
+        if ($separatorPosition === false || $separatorPosition <= 0) {
+            return null;
+        }
+
+        $owner = trim(substr($normalizedRepositoryKey, 0, $separatorPosition));
+        $name = trim(substr($normalizedRepositoryKey, $separatorPosition + 1));
+        if ($owner === '' || $name === '') {
+            return null;
+        }
+
+        return [
+            'owner' => $owner,
+            'name' => $name,
+        ];
     }
 }
