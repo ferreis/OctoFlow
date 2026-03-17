@@ -23,6 +23,7 @@ const DEFAULT_CSRF_HEADER_NAME = 'X-CSRF-Token'
 const DEFAULT_CSRF_ACTION_HEADER_NAME = 'X-CSRF-Action'
 const PUBLIC_CSRF_ACTIONS = {
   'auth.login': { method: 'POST', path: '/auth/login' },
+  'auth.register': { method: 'POST', path: '/auth/register' },
   'auth.google': { method: 'POST', path: '/auth/google' },
   'auth.refresh': { method: 'POST', path: '/auth/refresh' },
   'auth.logout': { method: 'POST', path: '/auth/logout' },
@@ -62,6 +63,11 @@ const loginForm = reactive({
   email: 'admin@example.com',
   password: '',
 })
+const registerForm = reactive({
+  email: '',
+  password: '',
+  confirmPassword: '',
+})
 
 const navigationItems = [
   {
@@ -94,6 +100,7 @@ const navigationItems = [
 ]
 
 const activeView = ref('dashboard')
+const authMode = ref('login')
 const sidebarExpanded = ref(false)
 const isCompactViewport = ref(false)
 const accessToken = ref('')
@@ -197,6 +204,43 @@ async function handleLogin() {
   }
 }
 
+async function handleRegister() {
+  loginLoading.value = true
+
+  try {
+    const { data } = await requestWithCsrf({
+      url: '/auth/register',
+      method: 'POST',
+      csrfActionId: 'auth.register',
+      data: {
+        email: registerForm.email,
+        password: registerForm.password,
+        confirmPassword: registerForm.confirmPassword,
+      },
+    })
+
+    setAccessToken(data.token || '')
+    currentUser.value = data.user || null
+
+    if (!currentUser.value) {
+      await loadCurrentUser(false)
+    }
+
+    registerForm.email = ''
+    registerForm.password = ''
+    registerForm.confirmPassword = ''
+    loginForm.email = currentUser.value?.defaultEmail || currentUser.value?.email || ''
+    loginForm.password = ''
+    authMode.value = 'login'
+    activeView.value = 'dashboard'
+    showNotification('Conta criada com sucesso.', 'success')
+  } catch (error) {
+    showNotification(extractHttpMessage(error, 'Falha ao criar conta.'), 'error')
+  } finally {
+    loginLoading.value = false
+  }
+}
+
 async function handleGoogleCredential(credential) {
   const wasLoading = loginLoading.value
   loginLoading.value = true
@@ -228,6 +272,10 @@ async function handleGoogleCredential(credential) {
 
 function handleGoogleLoginError(error) {
   showNotification(error, 'error')
+}
+
+function switchAuthMode(mode) {
+  authMode.value = mode === 'register' ? 'register' : 'login'
 }
 
 async function loadCurrentUser(canRetry = true) {
@@ -563,10 +611,11 @@ function clearNotification() {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ collapsed: !effectiveSidebarExpanded, compact: isCompactViewport }">
+  <div class="app-shell" :class="{ collapsed: isAuthenticated && !effectiveSidebarExpanded, compact: isCompactViewport, 'no-sidebar': !isAuthenticated }">
     <AppNotification :notification="notification" @close="clearNotification" />
 
     <MenuSidebar
+      v-if="isAuthenticated"
       :items="navigationItems"
       :active-key="activeView"
       :authenticated="isAuthenticated"
@@ -630,10 +679,29 @@ function clearNotification() {
           <article class="surface-card auth-form-card">
             <div>
               <p class="section-kicker">Sessao</p>
-              <h2>Entrar na aplicacao</h2>
+              <h2>{{ authMode === 'register' ? 'Criar conta' : 'Entrar na aplicacao' }}</h2>
             </div>
 
-            <form class="auth-form" @submit.prevent="handleLogin">
+            <div class="auth-mode-switch" role="tablist" aria-label="Modos de autenticacao">
+              <button
+                class="auth-mode-option"
+                :class="{ active: authMode === 'login' }"
+                type="button"
+                @click="switchAuthMode('login')"
+              >
+                Entrar
+              </button>
+              <button
+                class="auth-mode-option"
+                :class="{ active: authMode === 'register' }"
+                type="button"
+                @click="switchAuthMode('register')"
+              >
+                Criar conta
+              </button>
+            </div>
+
+            <form v-if="authMode === 'login'" class="auth-form" @submit.prevent="handleLogin">
               <label class="field">
                 <span>Email</span>
                 <input v-model="loginForm.email" type="email" autocomplete="username" required>
@@ -651,10 +719,37 @@ function clearNotification() {
               <GoogleLogin
                 :api-client="apiClient"
                 :is-loading="loginLoading || actionLoading"
+                variant="system"
+                button-label="Entrar com Google"
                 :button-width="280"
                 @credential="handleGoogleCredential"
                 @error="handleGoogleLoginError"
               />
+            </form>
+
+            <form v-else class="auth-form" @submit.prevent="handleRegister">
+              <label class="field">
+                <span>Email</span>
+                <input v-model="registerForm.email" type="email" autocomplete="email" required>
+              </label>
+
+              <label class="field">
+                <span>Senha</span>
+                <input v-model="registerForm.password" type="password" autocomplete="new-password" minlength="8" required>
+              </label>
+
+              <label class="field">
+                <span>Confirmar senha</span>
+                <input v-model="registerForm.confirmPassword" type="password" autocomplete="new-password" minlength="8" required>
+              </label>
+
+              <button class="button-primary" type="submit" :disabled="loginLoading || actionLoading">
+                {{ loginLoading ? 'Criando conta...' : 'Criar conta' }}
+              </button>
+
+              <p class="auth-help-text">
+                A conta e criada com email e senha, e a sessao e aberta automaticamente ao concluir.
+              </p>
             </form>
           </article>
         </section>

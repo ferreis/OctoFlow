@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 
 const props = defineProps({
   apiClient: {
@@ -30,6 +30,14 @@ const props = defineProps({
     type: Number,
     default: 280,
   },
+  variant: {
+    type: String,
+    default: 'native',
+  },
+  buttonLabel: {
+    type: String,
+    default: 'Continuar com Google',
+  },
 })
 
 const emit = defineEmits(['credential', 'error', 'config-loaded'])
@@ -38,6 +46,7 @@ const googleButtonContainer = ref(null)
 const error = ref('')
 const isLoading = ref(false)
 const googleClientId = ref('')
+const useSystemVariant = computed(() => props.variant === 'system')
 let googleIdentityScriptPromise
 
 async function loadAuthConfig() {
@@ -137,6 +146,10 @@ function renderGoogleButton() {
     return
   }
 
+  const renderedWidth = useSystemVariant.value
+    ? Math.max(Math.round(googleButtonContainer.value.getBoundingClientRect().width || 0), 220)
+    : props.buttonWidth
+
   googleButtonContainer.value.innerHTML = ''
   window.google.accounts.id.renderButton(googleButtonContainer.value, {
     theme: 'outline',
@@ -144,7 +157,7 @@ function renderGoogleButton() {
     shape: 'pill',
     text: 'continue_with',
     logo_alignment: 'left',
-    width: props.buttonWidth,
+    width: renderedWidth,
   })
 }
 
@@ -193,8 +206,30 @@ defineExpose({
         <span>{{ separatorLabel }}</span>
       </div>
 
-      <div ref="googleButtonContainer" class="google-button" :class="{ 'is-loading': isLoading || isLoading }"></div>
-      <p v-if="isLoading || isLoading" class="hint">{{ loadingHint }}</p>
+      <div
+        v-if="useSystemVariant"
+        class="google-button-shell"
+        :class="{ 'is-loading': props.isLoading || isLoading }"
+      >
+        <div class="google-button-shell-copy">
+          <span class="google-button-shell-badge" aria-hidden="true">G</span>
+          <span>{{ buttonLabel }}</span>
+        </div>
+        <div
+          ref="googleButtonContainer"
+          class="google-button google-button-overlay"
+          :class="{ 'is-loading': props.isLoading || isLoading }"
+        ></div>
+      </div>
+
+      <div
+        v-else
+        ref="googleButtonContainer"
+        class="google-button"
+        :class="{ 'is-loading': props.isLoading || isLoading }"
+      ></div>
+
+      <p v-if="props.isLoading || isLoading" class="hint">{{ loadingHint }}</p>
       <p v-if="error" class="feedback error">{{ error }}</p>
     </div>
 
@@ -236,6 +271,60 @@ defineExpose({
   max-width: 100%;
   min-height: 44px;
   overflow: hidden;
+}
+
+.google-button-shell {
+  align-items: center;
+  background: var(--button-gradient);
+  border-radius: 999px;
+  box-shadow: var(--button-shadow);
+  color: var(--button-primary-text);
+  display: flex;
+  justify-content: center;
+  min-height: 48px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.google-button-shell.is-loading {
+  opacity: 0.72;
+}
+
+.google-button-shell-copy {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.96rem;
+  font-weight: 700;
+  gap: 12px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  pointer-events: none;
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+
+.google-button-shell-badge {
+  align-items: center;
+  background: color-mix(in srgb, white 18%, transparent);
+  border: 1px solid color-mix(in srgb, white 28%, transparent);
+  border-radius: 999px;
+  color: white;
+  display: inline-flex;
+  font-size: 0.95rem;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.google-button-overlay {
+  inset: 0;
+  opacity: 0.015;
+  position: absolute;
+  z-index: 2;
 }
 
 .google-button.is-loading {

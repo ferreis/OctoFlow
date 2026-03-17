@@ -21,6 +21,7 @@ security:
     access_control:
         - { path: ^/auth/csrf/challenge$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/login$, roles: PUBLIC_ACCESS }
+        - { path: ^/auth/register$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/config$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/google$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/refresh$, roles: PUBLIC_ACCESS }

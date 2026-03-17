@@ -142,12 +142,12 @@ final class AccountEmailController
     {
         $userAlreadyLinkedToGoogle = $this->userRepository->findOneByGoogleSubject($googleIdentity->subject);
         if ($userAlreadyLinkedToGoogle !== null && $userAlreadyLinkedToGoogle->getId() !== $user->getId()) {
-            throw new GoogleAccountLinkException('This Google account is already linked to another user.');
+            throw new GoogleAccountLinkException('Esta conta do Google já está vinculada a outro usuário.');
         }
 
         $existingGoogleSubject = $user->getGoogleSubject();
         if ($existingGoogleSubject !== null && $existingGoogleSubject !== '' && $existingGoogleSubject !== $googleIdentity->subject) {
-            throw new GoogleAccountLinkException('A different Google account is already linked to this user.');
+            throw new GoogleAccountLinkException('Já existe uma conta Google diferente vinculada a este usuário..');
         }
 
         $this->userEmailManager->ensureEmail($user, $googleIdentity->email, ['google'], true, false);

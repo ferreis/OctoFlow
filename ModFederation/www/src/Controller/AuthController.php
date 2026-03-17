@@ -34,6 +34,7 @@ class AuthController
      */
     private const PUBLIC_CSRF_ACTIONS = [
         'auth.login' => ['method' => 'POST', 'path' => '/auth/login'],
+        'auth.register' => ['method' => 'POST', 'path' => '/auth/register'],
         'auth.google' => ['method' => 'POST', 'path' => '/auth/google'],
         'auth.refresh' => ['method' => 'POST', 'path' => '/auth/refresh'],
         'auth.logout' => ['method' => 'POST', 'path' => '/auth/logout'],
@@ -112,6 +113,56 @@ class AuthController
 
         if (!$user->isActive()) {
             return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        return $this->createAuthenticatedResponse($user, $request);
+    }
+
+    #[Route('/register', name: 'auth_register', methods: ['POST'])]
+    public function register(Request $request): JsonResponse
+    {
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $email = mb_strtolower(trim((string) ($payload['email'] ?? '')));
+        $password = (string) ($payload['password'] ?? '');
+        $confirmPassword = (string) ($payload['confirmPassword'] ?? '');
+
+        if ($email === '' || $password === '') {
+            return new JsonResponse(['message' => 'Email and password are required.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return new JsonResponse(['message' => 'A valid email is required.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if (mb_strlen($password) < 8) {
+            return new JsonResponse(['message' => 'Password must contain at least 8 characters.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if ($confirmPassword !== '' && $password !== $confirmPassword) {
+            return new JsonResponse(['message' => 'Password confirmation does not match.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if ($this->userRepository->findOneByEmail($email) !== null) {
+            return new JsonResponse(['message' => 'There is already an account with this email.'], JsonResponse::HTTP_CONFLICT);
+        }
+
+        $user = (new User())
+            ->setEmail($email)
+            ->setRoles(['ROLE_USER'])
+            ->setIsActive(true);
+
+        $user->setPassword($this->passwordHasher->hashPassword($user, $password));
+
+        try {
+            $this->entityManager->persist($user);
+            $this->userEmailManager->ensureEmail($user, $email, ['system'], true, true);
+            $this->entityManager->flush();
+        } catch (UserEmailConflictException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
         }
 
         return $this->createAuthenticatedResponse($user, $request);

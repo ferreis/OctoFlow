@@ -29,6 +29,11 @@ const feedbackSuccess = ref('')
 const initialLoadDone = ref(false)
 
 const linkedEmails = computed(() => Array.isArray(props.currentUser?.linkedEmails) ? props.currentUser.linkedEmails : [])
+const googleLinkedEmail = computed(() => {
+  const googleEntry = linkedEmails.value.find((linkedEmail) => Array.isArray(linkedEmail?.providers) && linkedEmail.providers.includes('google'))
+
+  return typeof googleEntry?.email === 'string' ? googleEntry.email.trim() : ''
+})
 const defaultEmail = computed(() => typeof props.currentUser?.defaultEmail === 'string' && props.currentUser.defaultEmail.trim() !== ''
   ? props.currentUser.defaultEmail.trim()
   : typeof props.currentUser?.email === 'string'
@@ -264,12 +269,20 @@ function extractHttpMessage(error, fallback) {
           <p>Use o mesmo fluxo do login social para anexar o email da conta Google ao usuario atual.</p>
         </div>
 
+        <div v-if="googleLinkedEmail" class="linked-account-state">
+          <strong>Usuario ja vinculado</strong>
+          <span>email: {{ googleLinkedEmail }}</span>
+        </div>
+
         <GoogleLogin
+          v-else
           :api-client="apiClient"
           :is-loading="googleLinking || isLoading"
           :show-separator="false"
           unavailable-message="Google Sign-In nao esta disponivel para vincular contas."
           loading-hint="Validando conta Google para vinculo..."
+          variant="system"
+          button-label="Vincular conta Google"
           :button-width="260"
           @credential="handleGoogleCredential"
           @error="handleGoogleError"
@@ -447,6 +460,24 @@ function extractHttpMessage(error, fallback) {
 .action-copy p {
   color: var(--muted);
   margin: 0;
+}
+
+.linked-account-state {
+  background: color-mix(in srgb, var(--color-secondary) 12%, var(--surface-strong));
+  border: 1px solid color-mix(in srgb, var(--color-secondary) 26%, transparent);
+  border-radius: 18px;
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.linked-account-state strong {
+  color: var(--accent-strong);
+}
+
+.linked-account-state span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .small {
