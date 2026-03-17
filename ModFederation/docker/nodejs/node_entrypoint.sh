@@ -24,8 +24,8 @@ if [ -x /home/node/app/roda.sh ]; then
   /bin/bash /home/node/app/roda.sh
 elif [ ! -e "${SENTINEL_FILE}" ]; then
   echo "[frontend] Instalacao inicial detectada"
-  run_install /home/node/app/Components
-  run_install /home/node/app/host-app
+  run_install /home/node/app/Components-app
+  run_install /home/node/app/Host-app
   {
     echo "este arquivo e gerado automaticamente"
     echo "ao apagar este arquivo, o npm install ira rodar no proximo up"
@@ -40,20 +40,19 @@ if [ -x /home/node/app/up_node.sh ]; then
   exec /bin/bash /home/node/app/up_node.sh
 fi
 
-echo "[frontend] Iniciando remote (5175 preview) e host (5173 dev)"
+echo "[frontend] Iniciando OctoFlow components (5175 preview) e OctoFlow host (5173 dev)"
 
 trap 'kill 0' SIGINT SIGTERM EXIT
 
 (
-  cd /home/node/app/Components
+  cd /home/node/app/Components-app
   npm run build
   npm run preview -- --host 0.0.0.0 --port 5175 --strictPort
 ) &
 
 (
-  cd /home/node/app/host-app
+  cd /home/node/app/Host-app
   npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
 ) &
 
 wait -n
-

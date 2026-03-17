@@ -13,6 +13,8 @@ use App\Security\Google\Exception\GoogleTokenVerificationException;
 use App\Security\Google\GoogleIdentity;
 use App\Security\Google\GoogleIdentityVerifier;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -31,6 +33,9 @@ final class AccountEmailController
         private readonly UserEmailManager $userEmailManager,
         private readonly UserPayloadBuilder $userPayloadBuilder,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
+        private readonly JWTTokenManagerInterface $jwtTokenManager,
+        #[Autowire('%env(int:JWT_TOKEN_TTL)%')]
+        private readonly int $accessTokenTtl,
     ) {
     }
 
@@ -41,7 +46,12 @@ final class AccountEmailController
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
-        return new JsonResponse(['user' => $this->userPayloadBuilder->build($user)]);
+        return new JsonResponse([
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
     }
 
     #[Route('/emails/default', name: 'auth_emails_default', methods: ['PATCH'])]
@@ -68,7 +78,12 @@ final class AccountEmailController
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
         }
 
-        return new JsonResponse(['user' => $this->userPayloadBuilder->build($user)]);
+        return new JsonResponse([
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
     }
 
     #[Route('/google/link', name: 'auth_google_link', methods: ['POST'])]

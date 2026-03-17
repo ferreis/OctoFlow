@@ -23,7 +23,7 @@ server {
     }
 
     location @site {
-        fastcgi_pass php_ModFederation:9000;
+        fastcgi_pass backend:9000;
 		fastcgi_split_path_info ^(.+\.php)(/.*)$;
         include fastcgi_params;
 		set $path_sym '/var/www/html/public';
@@ -38,5 +38,4 @@ server {
 
 
 }
-
 

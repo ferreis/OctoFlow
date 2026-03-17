@@ -18,7 +18,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['user-updated'])
+const emit = defineEmits(['session-updated'])
 
 const isLoading = ref(false)
 const googleLinking = ref(false)
@@ -68,7 +68,7 @@ async function loadLinkedEmails() {
       method: 'GET',
     })
 
-    applyUserPayload(data?.user, '')
+    applySessionPayload(data, '')
   } catch (error) {
     feedbackError.value = extractHttpMessage(error, 'Nao foi possivel carregar os emails vinculados.')
   } finally {
@@ -90,7 +90,7 @@ async function handleGoogleCredential(credential) {
       data: { credential },
     })
 
-    applyUserPayload(data?.user, data?.message || 'Conta Google vinculada com sucesso.')
+    applySessionPayload(data, data?.message || 'Conta Google vinculada com sucesso.')
   } catch (error) {
     feedbackError.value = extractHttpMessage(error, 'Nao foi possivel vincular a conta Google.')
   } finally {
@@ -112,7 +112,7 @@ async function syncGithubEmails() {
 
     const importedCount = Number(data?.importedCount || 0)
     const suffix = importedCount === 1 ? 'email vinculado' : 'emails vinculados'
-    applyUserPayload(data?.user, importedCount > 0 ? `GitHub sincronizado: ${importedCount} ${suffix}.` : 'Emails do GitHub sincronizados com sucesso.')
+    applySessionPayload(data, importedCount > 0 ? `GitHub sincronizado: ${importedCount} ${suffix}.` : 'Emails do GitHub sincronizados com sucesso.')
   } catch (error) {
     feedbackError.value = extractHttpMessage(error, 'Nao foi possivel vincular os emails do GitHub.')
   } finally {
@@ -133,7 +133,7 @@ async function setDefaultEmail(email) {
       data: { email },
     })
 
-    applyUserPayload(data?.user, `Email padrao atualizado para ${email}.`)
+    applySessionPayload(data, `Email padrao atualizado para ${email}.`)
   } catch (error) {
     feedbackError.value = extractHttpMessage(error, 'Nao foi possivel atualizar o email padrao.')
   } finally {
@@ -141,12 +141,18 @@ async function setDefaultEmail(email) {
   }
 }
 
-function applyUserPayload(user, successMessage) {
+function applySessionPayload(payload, successMessage) {
+  const user = payload?.user
   if (!user || typeof user !== 'object') {
     return
   }
 
-  emit('user-updated', user)
+  const token = typeof payload?.token === 'string' && payload.token.trim() !== '' ? payload.token.trim() : ''
+
+  emit('session-updated', {
+    user,
+    token,
+  })
   feedbackError.value = ''
   feedbackSuccess.value = successMessage
   initialLoadDone.value = true
@@ -283,7 +289,7 @@ function extractHttpMessage(error, fallback) {
         </button>
 
         <p v-if="!githubTokenConfigured" class="hint">
-          Configure primeiro o token do GitHub no painel do workspace para habilitar a sincronizacao.
+          Configure primeiro o token do GitHub no painel de perfil para habilitar a sincronizacao.
         </p>
       </div>
     </div>
@@ -302,6 +308,7 @@ function extractHttpMessage(error, fallback) {
 .panel-head {
   align-items: start;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
 }
@@ -367,6 +374,7 @@ function extractHttpMessage(error, fallback) {
 .email-copy {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .email-title {
@@ -374,6 +382,10 @@ function extractHttpMessage(error, fallback) {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.email-title strong {
+  overflow-wrap: anywhere;
 }
 
 .badges {
@@ -409,6 +421,7 @@ function extractHttpMessage(error, fallback) {
 .link-actions {
   display: grid;
   gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .action-card {
@@ -417,6 +430,8 @@ function extractHttpMessage(error, fallback) {
   border-radius: 22px;
   display: grid;
   gap: 14px;
+  min-width: 0;
+  overflow: hidden;
   padding: 16px;
 }
 
@@ -485,6 +500,12 @@ button.primary:disabled,
 button.ghost:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+@media (max-width: 980px) {
+  .link-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {

@@ -106,9 +106,9 @@ GOOGLE_OAUTH_ALLOWED_HD=
 | `GOOGLE_OAUTH_CLIENT_ID` | ID do cliente OAuth 2.0 obtido no Google Console |
 | `GOOGLE_OAUTH_ALLOWED_HD` | *(Opcional)* Restringe login a um domínio Google Workspace (ex.: `empresa.com`). Deixe vazio para aceitar qualquer conta Google. |
 
-### Frontend — `frontend/host-app/.env`
+### Frontend — `frontend/Host-app/.env`
 
-Crie o arquivo `frontend/host-app/.env`:
+Crie o arquivo `frontend/Host-app/.env`:
 
 ```dotenv
 VITE_GOOGLE_CLIENT_ID=SEU_CLIENT_ID.apps.googleusercontent.com

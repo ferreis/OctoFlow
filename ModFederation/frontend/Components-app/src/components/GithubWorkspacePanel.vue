@@ -320,7 +320,7 @@ function renderPreview(template, submissionFields) {
   const lines = [
     `> Template: ${template.name || 'Issue'}`,
     `> Solicitante: ${requesterEmail.value}`,
-    '> Origem: GitHub Delivery Desk',
+    '> Origem: OctoFlow',
     '',
   ]
 
@@ -496,10 +496,10 @@ function projectStatusStyle(option) {
 </script>
 
 <template>
-  <section class="workspace-shell">
+  <section class="workspace-shell text-slate-900">
     <header class="workspace-header">
       <div>
-        <p class="kicker">GitHub Delivery Desk</p>
+        <p class="kicker">OctoFlow</p>
         <h3>Workspace por usuario com configuracao salva no banco</h3>
         <p>
           Cada usuario salva seu proprio owner, repositorio e token do GitHub no perfil.
@@ -661,7 +661,7 @@ function projectStatusStyle(option) {
               v-for="template in templates"
               :key="template.key"
               type="button"
-              class="template-card"
+              class="template-card min-w-0"
               :class="{ active: template.key === selectedTemplateKey }"
               @click="selectedTemplateKey = template.key"
             >
@@ -741,7 +741,7 @@ function projectStatusStyle(option) {
                   v-for="label in labels"
                   :key="label.id"
                   type="button"
-                  class="label-chip"
+                  class="label-chip inline-flex max-w-full items-center justify-center"
                   :class="{ active: selectedLabelIds.includes(label.id) }"
                   :style="labelChipStyle(label)"
                   @click="toggleLabel(label.id)"
@@ -777,10 +777,19 @@ function projectStatusStyle(option) {
             </div>
 
             <div class="form-actions">
-              <button type="submit" class="primary" :disabled="submitting">
+              <button
+                type="submit"
+                class="primary inline-flex max-w-full items-center justify-center"
+                :disabled="submitting"
+              >
                 {{ submitting ? 'Criando issue...' : 'Criar issue no GitHub' }}
               </button>
-              <button type="button" class="ghost" :disabled="submitting" @click="resetActiveTemplateInputs">
+              <button
+                type="button"
+                class="ghost inline-flex max-w-full items-center justify-center"
+                :disabled="submitting"
+                @click="resetActiveTemplateInputs"
+              >
                 Limpar formulario
               </button>
             </div>
@@ -863,6 +872,7 @@ function projectStatusStyle(option) {
 .workspace-shell {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .workspace-header {
@@ -922,6 +932,7 @@ function projectStatusStyle(option) {
 .workspace-side {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .surface {
@@ -1054,6 +1065,7 @@ function projectStatusStyle(option) {
   cursor: pointer;
   display: grid;
   gap: 8px;
+  min-width: 0;
   min-height: 132px;
   padding: 18px;
   text-align: left;
@@ -1080,6 +1092,7 @@ function projectStatusStyle(option) {
 .template-card small {
   color: #475569;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .issue-form,
@@ -1149,8 +1162,10 @@ function projectStatusStyle(option) {
   border: 1px solid transparent;
   border-radius: 999px;
   display: inline-flex;
+  flex: 0 0 auto;
   font-size: 0.84rem;
   font-weight: 700;
+  max-width: 100%;
   padding: 8px 12px;
 }
 
@@ -1177,8 +1192,12 @@ function projectStatusStyle(option) {
   border: 0;
   border-radius: 14px;
   cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
   font: inherit;
   font-weight: 800;
+  justify-content: center;
+  max-width: 100%;
   padding: 12px 16px;
 }
 
@@ -1241,8 +1260,9 @@ function projectStatusStyle(option) {
 }
 
 .project-topline {
-  align-items: center;
+  align-items: start;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
 }
@@ -1318,12 +1338,8 @@ function projectStatusStyle(option) {
   }
 
   .form-actions {
-    flex-direction: column;
-  }
-
-  .primary,
-  .ghost {
-    width: 100%;
+    align-items: flex-start;
+    flex-direction: row;
   }
 }
 </style>

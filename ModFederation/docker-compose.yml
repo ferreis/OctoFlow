@@ -1,7 +1,9 @@
+name: octoflow
+
 services:
   backend:
-    container_name: php_ModFederation
-    hostname: php_ModFederation # se trocar no nome aqui tem que trocar no nginx/conf.d/phpbase.vhost
+    container_name: octoflow-backend
+    hostname: octoflow-backend
     build:
       context: . # path do build
       dockerfile: docker/php/Dockerfile
@@ -14,11 +16,11 @@ services:
     depends_on:
       - database
     networks:
-      - ModFederation-network
+      - octoflow-network
 
   frontend:
-    container_name: frontend_ModFederation
-    hostname: frontend_ModFederation
+    container_name: octoflow-frontend
+    hostname: octoflow-frontend
     build:
       context: .
       dockerfile: docker/nodejs/Dockerfile
@@ -30,12 +32,12 @@ services:
     depends_on:
       - backend
     networks:
-      - ModFederation-network
+      - octoflow-network
 
   #Server pages
   nginx:
-    container_name: nginx_ModFederation
-    hostname: nginx_ModFederation
+    container_name: octoflow-nginx
+    hostname: octoflow-nginx
     restart: always
     build:
       context: .
@@ -52,7 +54,7 @@ services:
           openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 825 \
             -keyout /var/www/cert/nginx-selfsigned.key \
             -out /var/www/cert/nginx-selfsigned.crt \
-            -subj '/C=BR/ST=SP/L=SaoPaulo/O=ModuleFederation/OU=Dev/CN=localhost' \
+            -subj '/C=BR/ST=SP/L=SaoPaulo/O=OctoFlow/OU=Dev/CN=localhost' \
             -addext 'subjectAltName=DNS:localhost,DNS:nginx,IP:127.0.0.1'
           chmod 600 /var/www/cert/nginx-selfsigned.key
           chmod 644 /var/www/cert/nginx-selfsigned.crt
@@ -67,11 +69,11 @@ services:
     ports:
       - "4481:443"
     networks:
-      - ModFederation-network
+      - octoflow-network
 
   database:
-    container_name: database_ModFederation
-    hostname: database_ModFederation
+    container_name: octoflow-database
+    hostname: octoflow-database
     image: postgres:16
     restart: always
     environment:
@@ -89,18 +91,19 @@ services:
     ports:
       - "14953:5432"
     networks:
-      - ModFederation-network
+      - octoflow-network
 
   mailcatcher:
     image: dockage/mailcatcher:latest
-    container_name: mailcatcher_ModFederation
+    container_name: octoflow-mailcatcher
     hostname: mailcatcher
     restart: unless-stopped
     ports:
       - "11081:1080"
     networks:
-      - ModFederation-network
+      - octoflow-network
 
 networks:
-  ModFederation-network:
+  octoflow-network:
+    name: octoflow-network
     driver: bridge

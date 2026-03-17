@@ -17,7 +17,7 @@ Fonte no codigo:
 - `src/EventListener/CsrfProtectionListener.php`
 - `src/Controller/AuthController.php`
 - `src/Controller/CsrfChallengeController.php`
-- `frontend/host-app/src/App.vue`
+- `frontend/Host-app/src/App.vue`
 
 ## 2. Endpoints de Challenge
 
@@ -133,7 +133,7 @@ Isso evita replay do token CSRF por outro contexto.
 
 ## 8. Fluxo no Frontend
 
-Em `frontend/host-app/src/App.vue`:
+Em `frontend/Host-app/src/App.vue`:
 - toda chamada mutavel exige `csrfActionId`
 - `requestWithCsrf()` pede challenge antes da chamada mutavel
 - se vier `403` com erro CSRF, faz 1 retry com novo challenge

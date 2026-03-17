@@ -60,24 +60,29 @@ final class GithubProfileService
         return $this->buildProfilePayload($user);
     }
 
-    public function buildRuntimeConfiguration(User $user): GithubRuntimeConfiguration
+    public function buildRuntimeConfiguration(User $user, ?string $repositoryOwner = null, ?string $repositoryName = null): GithubRuntimeConfiguration
     {
-        $repositoryOwner = trim((string) $user->getGithubRepositoryOwner());
-        $repositoryName = trim((string) $user->getGithubRepositoryName());
+        $resolvedRepositoryOwner = trim($repositoryOwner ?? (string) $user->getGithubRepositoryOwner());
+        $resolvedRepositoryName = trim($repositoryName ?? (string) $user->getGithubRepositoryName());
 
-        if ($repositoryOwner === '' || $repositoryName === '') {
+        if ($resolvedRepositoryOwner === '' || $resolvedRepositoryName === '') {
             throw new GithubConfigurationException('Configure the GitHub repository owner and repository name in your profile before using the GitHub workspace.');
         }
 
+        return new GithubRuntimeConfiguration(
+            token: $this->requireToken($user),
+            repositoryOwner: $resolvedRepositoryOwner,
+            repositoryName: $resolvedRepositoryName,
+        );
+    }
+
+    public function requireToken(User $user): string
+    {
         $encryptedToken = trim((string) $user->getGithubTokenEncrypted());
         if ($encryptedToken === '') {
             throw new GithubConfigurationException('Configure your GitHub token in the profile settings before using the GitHub workspace.');
         }
 
-        return new GithubRuntimeConfiguration(
-            token: $this->tokenCipher->decrypt($encryptedToken),
-            repositoryOwner: $repositoryOwner,
-            repositoryName: $repositoryName,
-        );
+        return $this->tokenCipher->decrypt($encryptedToken);
     }
 }

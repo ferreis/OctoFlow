@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Github\Exception\GithubApiException;
 use App\Github\Exception\GithubConfigurationException;
 use App\Github\Exception\GithubGraphQLException;
+use App\Github\GithubAssignedIssueService;
 use App\Github\GithubLinkedEmailService;
 use App\Github\GithubIssueService;
 use App\Github\GithubProfileService;
@@ -27,6 +28,7 @@ final class GithubController
     public function __construct(
         private readonly GithubWorkspaceService $workspaceService,
         private readonly GithubIssueService $issueService,
+        private readonly GithubAssignedIssueService $assignedIssueService,
         private readonly GithubProfileService $profileService,
         private readonly GithubLinkedEmailService $linkedEmailService,
         private readonly UserPayloadBuilder $userPayloadBuilder,
@@ -103,6 +105,51 @@ final class GithubController
         }
     }
 
+    #[Route('/issues/assigned', name: 'github_issue_assigned_list', methods: ['GET'])]
+    public function assignedIssues(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $repositoryOwner = $this->optionalQueryString($request->query->get('repositoryOwner'));
+        $repositoryName = $this->optionalQueryString($request->query->get('repositoryName'));
+        $scope = $this->optionalQueryString($request->query->get('scope')) ?? 'assigned';
+
+        try {
+            return new JsonResponse($this->assignedIssueService->fetchIssues($user, $repositoryOwner, $repositoryName, $scope));
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (GithubConfigurationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
+        } catch (GithubGraphQLException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_GATEWAY);
+        }
+    }
+
+    #[Route('/issues/{issueId}', name: 'github_issue_update', methods: ['PATCH', 'PUT'])]
+    public function updateIssue(string $issueId, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            return new JsonResponse(['item' => $this->assignedIssueService->updateIssue($user, $issueId, $payload)]);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (GithubConfigurationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
+        } catch (GithubGraphQLException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_GATEWAY);
+        }
+    }
+
     #[Route('/emails/link', name: 'github_emails_link', methods: ['POST'])]
     public function linkEmails(#[CurrentUser] ?User $user): JsonResponse
     {
@@ -142,5 +189,12 @@ final class GithubController
         } catch (\JsonException) {
             return null;
         }
+    }
+
+    private function optionalQueryString(mixed $value): ?string
+    {
+        $normalized = trim((string) $value);
+
+        return $normalized === '' ? null : $normalized;
     }
 }

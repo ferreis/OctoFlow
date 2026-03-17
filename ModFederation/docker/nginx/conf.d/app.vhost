@@ -1,6 +1,6 @@
 client_max_body_size 32M;
 
-upstream frontend_host_app {
+upstream octoflow_frontend_host {
     server frontend:5173;
     keepalive 20;    
 }
@@ -25,7 +25,7 @@ server {
     large_client_header_buffers 16 5120k;
 
     # Symfony
-    location /ModFederation/api {
+    location /OctoFlow/api {
         # 'proxy_pass' encaminha a requisição para o servidor da aplicação.
         # Note a barra no final: ela remove o prefixo /sal/ da URL.
         proxy_pass http://127.0.0.1:85/;
@@ -38,7 +38,7 @@ server {
     }
 
 
-    location /ModFederation/api/ {
+    location /OctoFlow/api/ {
         # 'proxy_pass' encaminha a requisição para o servidor da aplicação.
         # Note a barra no final: ela remove o prefixo /sal/ da URL.
         proxy_pass http://127.0.0.1:85/;
@@ -51,13 +51,13 @@ server {
     }
 
 
-    # frontend_ModFederation Vue
-    location = /ModFederation {
-        return 301 $scheme://$http_host/ModFederation/;
+    # OctoFlow host app
+    location = /OctoFlow {
+        return 301 $scheme://$http_host/OctoFlow/;
     }
 
-    location /ModFederation {
-        proxy_pass http://frontend_host_app;
+    location /OctoFlow {
+        proxy_pass http://octoflow_frontend_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Host $http_host;
         
@@ -81,8 +81,8 @@ server {
         proxy_set_header Connection "Upgrade";
     }
 
-    # Remote Module Federation server (5175) via same origin for HTTPS pages
-    location /ModFederation-mf/ {
+    # Remote OctoFlow components server (5175) via same origin for HTTPS pages
+    location /OctoFlow-mf/ {
         proxy_pass http://frontend:5175;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Host $http_host;
@@ -94,5 +94,4 @@ server {
     }
   
 }
-
 

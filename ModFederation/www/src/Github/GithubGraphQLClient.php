@@ -35,7 +35,7 @@ final class GithubGraphQLClient implements GithubGraphQLClientInterface
                     'Accept: application/vnd.github+json',
                     'Authorization: Bearer ' . trim($token),
                     'Content-Type: application/json',
-                    'User-Agent: ModFederation-GitHubWorkspace',
+                    'User-Agent: OctoFlow-GitHubWorkspace',
                     'X-GitHub-Api-Version: 2022-11-28',
                 ],
                 CURLOPT_SSL_VERIFYHOST => 2,

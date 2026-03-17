@@ -1,8 +1,8 @@
 <template>
   <main class="remote-shell">
-    <h1>Remote Task Module</h1>
-    <p>Este projeto expoe apenas componentes de task para Module Federation.</p>
-    <p>Use pelo host para acessar as acoes de lista, create, view e edit.</p>
+    <h1>OctoFlow Components</h1>
+    <p>Este projeto expoe componentes remotos para o host do OctoFlow.</p>
+    <p>O host monta apenas os blocos que a sessao atual pode carregar.</p>
   </main>
 </template>
 

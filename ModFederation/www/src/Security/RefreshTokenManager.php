@@ -191,10 +191,9 @@ class RefreshTokenManager
             return false;
         }
 
-        $tokenUserIdentifier = mb_strtolower(trim($refreshToken->getUser()->getUserIdentifier()));
         $normalizedUserIdentifier = mb_strtolower(trim($userIdentifier));
 
-        return hash_equals($tokenUserIdentifier, $normalizedUserIdentifier);
+        return $this->userOwnsIdentifier($refreshToken->getUser(), $normalizedUserIdentifier);
     }
 
     /**
@@ -309,5 +308,25 @@ class RefreshTokenManager
     private function hashToken(string $plainToken): string
     {
         return hash('sha256', $plainToken);
+    }
+
+    private function userOwnsIdentifier(User $user, string $identifier): bool
+    {
+        $normalizedIdentifier = mb_strtolower(trim($identifier));
+        if ($normalizedIdentifier === '') {
+            return false;
+        }
+
+        if (hash_equals(mb_strtolower(trim($user->getUserIdentifier())), $normalizedIdentifier)) {
+            return true;
+        }
+
+        foreach ($user->getEmailAddresses() as $emailAddress) {
+            if (hash_equals(mb_strtolower(trim($emailAddress->getEmail())), $normalizedIdentifier)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

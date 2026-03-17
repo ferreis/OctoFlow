@@ -1,7 +1,7 @@
 <template>
   <div class="diagnostics">
-    <h3>🔍 Diagnóstico Module Federation</h3>
-    <button @click="testConnection">Testar Conexão com Remote</button>
+    <h3>Diagnostico OctoFlow Federation</h3>
+    <button @click="testConnection">Testar conexao com remote</button>
     <div v-if="status" class="status" :class="statusClass">
       <pre>{{ status }}</pre>
     </div>
@@ -13,11 +13,11 @@ import { ref } from 'vue'
 
 const status = ref('')
 const statusClass = ref('')
-const fallbackRemoteUrl = import.meta.env.VITE_REMOTE_APP_URL || 'http://localhost:5175/ModFederation-mf/assets/remoteEntry.js'
+const fallbackRemoteUrl = import.meta.env.VITE_REMOTE_APP_URL || 'http://localhost:5175/OctoFlow-mf/assets/remoteEntry.js'
 
 function getRemoteEntryUrl() {
   if (typeof window !== 'undefined' && window.location?.protocol === 'https:') {
-    return `${window.location.origin}/ModFederation-mf/assets/remoteEntry.js`
+    return `${window.location.origin}/OctoFlow-mf/assets/remoteEntry.js`
   }
 
   return fallbackRemoteUrl
@@ -47,12 +47,12 @@ async function testConnection() {
         status.value += `O arquivo está retornando HTML ao invés de JavaScript.\n\n`
         status.value += `SOLUÇÃO:\n`
         status.value += `1. Pare o remote (Ctrl+C)\n`
-        status.value += `2. cd Components\n`
+        status.value += `2. cd Components-app\n`
         status.value += `3. npm run build\n`
         status.value += `4. npm run preview\n`
         statusClass.value = 'warning'
       } else {
-        status.value += `🟢 Content-Type correto! Os componentes devem carregar.`
+        status.value += `🟢 Content-Type correto! Os componentes do OctoFlow devem carregar.`
         statusClass.value = 'success'
       }
     } else {

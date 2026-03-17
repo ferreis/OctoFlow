@@ -2,7 +2,7 @@
 require __DIR__ . '/vendor/autoload.php';
 
 $client = new \GuzzleHttp\Client([
-    'base_uri' => 'https://localhost:4483/ModFederation/api/',
+    'base_uri' => 'https://localhost:4481/OctoFlow/api/',
     'verify' => false,
     'cookies' => true,
 ]);

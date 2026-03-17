@@ -28,7 +28,7 @@ Campos principais relacionados ao fluxo discutido:
 
 ### Fluxo 1: Desenvolvimento via Vite (porta 5173)
 1. Browser chama `http://127.0.0.1:5173/ModFederation/api/auth/login`.
-2. `host-app` (Vite dev server) recebe a chamada e aplica proxy para `https://nginx:443`.
+2. `Host-app` (Vite dev server) recebe a chamada e aplica proxy para `https://nginx:443`.
 3. Nginx aplica regra `location /ModFederation/api` e redireciona para `http://127.0.0.1:85/` dentro do proprio container nginx.
 4. PHP/Symfony processa `POST /auth/login`.
 5. Symfony valida credenciais no PostgreSQL (`app_user`).

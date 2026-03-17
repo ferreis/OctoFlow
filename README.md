@@ -131,14 +131,14 @@ application/
 │   └── docker-compose.yml        # Orquestração de containers
 │
 └── frontend/                      # Frontend Vue 3
-    ├── host-app/                 # Host (Login + Orquestração)
+    ├── Host-app/                 # Host (Login + Orquestração)
     │   ├── src/
     │   │   ├── App.vue           # Login e RemoteTaskCrudPanel
     │   │   └── main.js
     │   ├── vite.config.js        # Consumidor Module Federation
     │   └── package.json
     │
-    └── Components/                # Remote (Componentes Task)
+    └── Components-app                # Remote (Componentes Task)
         ├── src/
         │   ├── components/
         │   │   ├── TaskCrudPanel.vue       # Orquestrador (mount/unmount)
@@ -194,7 +194,7 @@ GOOGLE_OAUTH_ALLOWED_HD=""                     # opcional: restringe ao dominio 
 CORS_ALLOW_ORIGIN="http://localhost:3000,https://ModFederation.example.com"
 ```
 
-**Frontend** (`.env` em host-app e Components):
+**Frontend** (`.env` em Host-app e Components-app):
 
 ```ini
 VITE_API_BASE_URL="http://localhost/api"       # Para dev local
@@ -234,11 +234,11 @@ php bin/console doctrine:migrations:migrate
 
 ```bash
 # Remote (Task Module)
-cd application/frontend/Components
+cd application/frontend/Components-app
 npm install
 
 # Host (Login + Orquestrador)
-cd application/frontend/host-app
+cd application/frontend/Host-app
 npm install
 ```
 
@@ -278,10 +278,10 @@ symfony serve --port 8000
 php -S localhost:8000 -t public
 ```
 
-**Terminal 2 - Remote Module (Components)**
+**Terminal 2 - Remote Module (Components-app)**
 
 ```bash
-cd application/frontend/Components
+cd application/frontend/Components-app
 npm run dev
 # Executa em http://localhost:5173
 ```
@@ -289,7 +289,7 @@ npm run dev
 **Terminal 3 - Host App**
 
 ```bash
-cd application/frontend/host-app
+cd application/frontend/Host-app
 npm run dev
 # Executa em http://localhost:5174
 ```
@@ -550,7 +550,7 @@ curl -X POST http://localhost/api/tasks \
 └─────────────────────────────────┘
 ```
 
-### Configuração do Remote (Components)
+### Configuração do Remote (Components-app)
 
 **vite.config.js:**
 
@@ -566,7 +566,7 @@ export default defineConfig({
       name: 'remoteApp',
       filename: 'remoteEntry.js',
       exposes: {
-        './TaskCrudPanel': './src/components/TaskCrudPanel.vue'
+        './TaskCrudPanel': './src/Components-app/TaskCrudPanel.vue'
         // Apenas TaskCrudPanel é exposto!
       },
       shared: {
@@ -580,7 +580,7 @@ export default defineConfig({
 })
 ```
 
-### Configuração do Host (host-app)
+### Configuração do Host (Host-app)
 
 **vite.config.js:**
 

@@ -28,7 +28,7 @@ const props = defineProps({
   },
   buttonWidth: {
     type: Number,
-    default: 320,
+    default: 280,
   },
 })
 
@@ -233,7 +233,9 @@ defineExpose({
 }
 
 .google-button {
+  max-width: 100%;
   min-height: 44px;
+  overflow: hidden;
 }
 
 .google-button.is-loading {

@@ -1,5 +1,5 @@
 {
-  "name": "Components",
+  "name": "octoflow-components",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -13,7 +13,9 @@
   },
   "devDependencies": {
     "@originjs/vite-plugin-federation": "^1.4.1",
+    "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-vue": "^6.0.2",
+    "tailwindcss": "^4.2.1",
     "vite": "^7.3.1"
   }
 }

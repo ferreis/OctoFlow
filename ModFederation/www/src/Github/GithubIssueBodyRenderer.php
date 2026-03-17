@@ -22,7 +22,7 @@ final class GithubIssueBodyRenderer
         $lines = [
             '> Template: ' . $templateName,
             '> Solicitante: ' . $this->normalizePlainValue($requesterEmail),
-            '> Origem: GitHub Delivery Desk',
+            '> Origem: OctoFlow',
             '',
         ];
 
