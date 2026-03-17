@@ -28,10 +28,12 @@ const detailWarning = ref('')
 const detailSource = ref('cache')
 const selectedTemplateKey = ref('')
 const activePanel = ref('view')
+const templateFieldValues = reactive({})
+const templateDrafts = reactive({})
 const form = reactive({
   title: '',
-  body: '',
   state: 'OPEN',
+  additionalNotes: '',
 })
 
 const canEdit = computed(() => Boolean(currentIssue.value?.viewerCanUpdate))
@@ -39,6 +41,8 @@ const selectedTemplate = computed(() => props.updateTemplates.find((template) =>
 const repositoryName = computed(() => currentIssue.value?.repository?.nameWithOwner || 'Repositorio atual')
 const historyEntries = computed(() => normalizeHistoryEntries(currentHistory.value, currentIssue.value))
 const statusLabel = computed(() => currentIssue.value?.state === 'CLOSED' ? 'Fechada' : 'Aberta')
+const generatedTemplateBlock = computed(() => renderUpdateTemplate(selectedTemplate.value, buildTemplateSubmissionFields(selectedTemplate.value)))
+const finalBody = computed(() => buildFinalBody())
 
 watch(
   () => props.issue,
@@ -46,7 +50,7 @@ watch(
     currentIssue.value = normalizeIssuePayload(issue)
     currentHistory.value = buildFallbackHistory(issue)
     syncFormFromIssue(issue)
-    selectedTemplateKey.value = props.updateTemplates[0]?.key || ''
+    resetTemplateCatalog()
     activePanel.value = 'view'
     error.value = ''
     detailWarning.value = ''
@@ -58,6 +62,16 @@ watch(
   },
   { immediate: true },
 )
+
+watch(selectedTemplateKey, (newKey, oldKey) => {
+  if (oldKey) {
+    persistTemplateDraft(oldKey)
+  }
+
+  if (newKey) {
+    restoreTemplateDraft(newKey)
+  }
+})
 
 async function loadLatestIssue(issueId) {
   detailLoading.value = true
@@ -84,19 +98,233 @@ async function loadLatestIssue(issueId) {
 
 function syncFormFromIssue(issue) {
   form.title = issue?.title || ''
-  form.body = issue?.body || ''
   form.state = issue?.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
+  form.additionalNotes = ''
 }
 
-function applyUpdateTemplate() {
+function resetTemplateCatalog() {
+  selectedTemplateKey.value = ''
+
+  for (const key of Object.keys(templateFieldValues)) {
+    delete templateFieldValues[key]
+  }
+
+  for (const key of Object.keys(templateDrafts)) {
+    delete templateDrafts[key]
+  }
+
+  const firstTemplateKey = props.updateTemplates[0]?.key || ''
+  if (firstTemplateKey !== '') {
+    selectedTemplateKey.value = firstTemplateKey
+  }
+}
+
+function persistTemplateDraft(templateKey = selectedTemplateKey.value) {
+  const template = props.updateTemplates.find((item) => item.key === templateKey)
+  if (!template) {
+    return
+  }
+
+  templateDrafts[templateKey] = {
+    fields: snapshotTemplateFieldValues(template),
+  }
+}
+
+function restoreTemplateDraft(templateKey) {
+  const template = props.updateTemplates.find((item) => item.key === templateKey)
+  if (!template) {
+    return
+  }
+
+  const restoredFields = buildInitialTemplateFieldState(template)
+  const existingDraft = templateDrafts[templateKey]?.fields || {}
+
+  for (const field of template.fields || []) {
+    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
+    if (fieldKey === '') {
+      continue
+    }
+
+    if (typeof existingDraft[fieldKey] === 'string') {
+      restoredFields[fieldKey] = existingDraft[fieldKey]
+    }
+  }
+
+  for (const key of Object.keys(templateFieldValues)) {
+    delete templateFieldValues[key]
+  }
+
+  Object.assign(templateFieldValues, restoredFields)
+}
+
+function buildInitialTemplateFieldState(template) {
+  const state = {}
+
+  for (const field of template?.fields || []) {
+    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
+    if (fieldKey === '') {
+      continue
+    }
+
+    state[fieldKey] = resolveFieldDefaultValue(field)
+  }
+
+  return state
+}
+
+function resolveFieldDefaultValue(field) {
+  if (typeof field?.defaultValue === 'function') {
+    const computedValue = field.defaultValue()
+    return typeof computedValue === 'string' ? computedValue : ''
+  }
+
+  return typeof field?.defaultValue === 'string' ? field.defaultValue : ''
+}
+
+function snapshotTemplateFieldValues(template) {
+  const snapshot = {}
+
+  for (const field of template?.fields || []) {
+    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
+    if (fieldKey === '') {
+      continue
+    }
+
+    snapshot[fieldKey] = typeof templateFieldValues[fieldKey] === 'string' ? templateFieldValues[fieldKey] : ''
+  }
+
+  return snapshot
+}
+
+function buildTemplateSubmissionFields(template) {
+  const submission = {}
+
+  for (const field of template?.fields || []) {
+    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
+    if (fieldKey === '') {
+      continue
+    }
+
+    const rawValue = typeof templateFieldValues[fieldKey] === 'string' ? templateFieldValues[fieldKey] : ''
+
+    if (field.type === 'list') {
+      submission[fieldKey] = splitMultilineItems(rawValue)
+      continue
+    }
+
+    if (field.type === 'select') {
+      submission[fieldKey] = resolveSelectLabel(field, rawValue)
+      continue
+    }
+
+    submission[fieldKey] = rawValue.trim()
+  }
+
+  return submission
+}
+
+function splitMultilineItems(rawValue) {
+  return String(rawValue || '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function resolveSelectLabel(field, value) {
+  const normalizedValue = String(value || '').trim()
+  const option = Array.isArray(field?.options)
+    ? field.options.find((candidate) => candidate.value === normalizedValue)
+    : null
+
+  return option?.label || normalizedValue
+}
+
+function renderUpdateTemplate(template, submissionFields) {
+  if (!template) {
+    return ''
+  }
+
+  const lines = [`## ${template.markdownTitle || template.label || 'Atualizacao'}`]
+  let hasContent = false
+
+  for (const field of template.fields || []) {
+    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
+    if (fieldKey === '') {
+      continue
+    }
+
+    const rawValue = submissionFields[fieldKey]
+
+    if (Array.isArray(rawValue)) {
+      if (rawValue.length === 0) {
+        continue
+      }
+
+      hasContent = true
+      lines.push(`### ${field.label}`)
+
+      for (const item of rawValue) {
+        lines.push(`${field.listStyle === 'checklist' ? '- [ ]' : '-'} ${item}`)
+      }
+
+      lines.push('')
+      continue
+    }
+
+    const normalizedValue = String(rawValue || '').trim()
+    if (normalizedValue === '') {
+      continue
+    }
+
+    hasContent = true
+
+    if (field.renderAs === 'bullet') {
+      lines.push(`- ${field.label}: ${normalizedValue}`)
+      continue
+    }
+
+    lines.push(`### ${field.label}`)
+    lines.push(normalizedValue)
+    lines.push('')
+  }
+
+  return hasContent ? lines.join('\n').trim() : ''
+}
+
+function resetTemplateInputs() {
   if (!selectedTemplate.value) {
     return
   }
 
-  const block = selectedTemplate.value.build()
-  form.body = form.body.trim() === ''
-    ? block
-    : `${form.body.trim()}\n\n${block}`
+  for (const key of Object.keys(templateFieldValues)) {
+    delete templateFieldValues[key]
+  }
+
+  Object.assign(templateFieldValues, buildInitialTemplateFieldState(selectedTemplate.value))
+  templateDrafts[selectedTemplate.value.key] = {
+    fields: snapshotTemplateFieldValues(selectedTemplate.value),
+  }
+}
+
+function buildFinalBody() {
+  const sections = []
+  const currentBody = String(currentIssue.value?.body || '').trim()
+  const updateBlock = generatedTemplateBlock.value.trim()
+  const additionalNotes = String(form.additionalNotes || '').trim()
+
+  if (currentBody !== '') {
+    sections.push(currentBody)
+  }
+
+  if (updateBlock !== '') {
+    sections.push(updateBlock)
+  }
+
+  if (additionalNotes !== '') {
+    sections.push(additionalNotes)
+  }
+
+  return sections.join('\n\n').trim()
 }
 
 async function saveIssue() {
@@ -120,7 +348,7 @@ async function saveIssue() {
       csrfActionId: 'github.issue.update',
       data: {
         title: form.title,
-        body: form.body,
+        body: finalBody.value,
         state: form.state,
       },
     })
@@ -139,6 +367,7 @@ async function saveIssue() {
 
 function resetForm() {
   syncFormFromIssue(currentIssue.value)
+  resetTemplateInputs()
   error.value = ''
 }
 
@@ -300,7 +529,7 @@ function extractHttpMessage(error, fallback) {
               #{{ currentIssue?.number }} {{ currentIssue?.title }}
             </h2>
             <p class="mt-2 text-sm leading-7 text-slate-600">
-              Visualizacao detalhada da issue com historico renderizado e acao de atualizacao.
+              Visualizacao detalhada da issue com historico renderizado e modelos de atualizacao.
             </p>
           </div>
 
@@ -314,14 +543,6 @@ function extractHttpMessage(error, fallback) {
             >
               Abrir no GitHub
             </a>
-            <button
-              v-if="canEdit"
-              type="button"
-              class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
-              @click="activePanel = 'edit'"
-            >
-              Atualizar issue
-            </button>
             <button
               type="button"
               class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -423,20 +644,9 @@ function extractHttpMessage(error, fallback) {
             </div>
 
             <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Descricao</p>
-                  <h3 class="mt-1 text-2xl font-semibold text-slate-950">Conteudo formatado</h3>
-                </div>
-
-                <button
-                  v-if="canEdit"
-                  type="button"
-                  class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                  @click="activePanel = 'edit'"
-                >
-                  Atualizar issue
-                </button>
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Descricao</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Conteudo formatado</h3>
               </div>
 
               <div class="mt-4 overflow-auto rounded-[24px] border border-slate-200 bg-white px-5 py-4">
@@ -514,37 +724,99 @@ function extractHttpMessage(error, fallback) {
 
         <div
           v-else
-          class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(320px,0.95fr)]"
+          class="grid gap-5 xl:grid-cols-[minmax(0,1.08fr),minmax(320px,0.92fr)]"
         >
           <article class="grid gap-4">
-            <div class="grid gap-3 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div class="min-w-0">
-                  <p class="text-sm font-semibold text-slate-900">Templates de atualizacao</p>
-                  <p class="text-sm text-slate-500">Blocos padrao para andamento, bloqueio, repasse ou resolucao.</p>
-                </div>
-
-                <div class="flex flex-wrap gap-2">
-                  <select
-                    v-model="selectedTemplateKey"
-                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                  >
-                    <option v-for="template in updateTemplates" :key="template.key" :value="template.key">
-                      {{ template.label }}
-                    </option>
-                  </select>
-                  <button
-                    type="button"
-                    class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    :disabled="!canEdit"
-                    @click="applyUpdateTemplate"
-                  >
-                    Aplicar template
-                  </button>
-                </div>
+            <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Modelos de atualizacao</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Escolha o formato da atualizacao</h3>
               </div>
 
-              <p class="text-sm text-slate-500">{{ selectedTemplate?.description }}</p>
+              <div v-if="updateTemplates.length" class="mt-4 grid gap-3 md:grid-cols-2">
+                <button
+                  v-for="template in updateTemplates"
+                  :key="template.key"
+                  type="button"
+                  class="grid min-w-0 gap-2 rounded-2xl border p-4 text-left transition"
+                  :class="template.key === selectedTemplateKey ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                  @click="selectedTemplateKey = template.key"
+                >
+                  <span class="text-xs font-black uppercase tracking-[0.18em] text-orange-600">
+                    {{ template.markdownTitle || template.label }}
+                  </span>
+                  <strong class="break-words text-base font-semibold text-slate-950">{{ template.label }}</strong>
+                  <small class="break-words text-sm leading-6 text-slate-500">{{ template.description }}</small>
+                </button>
+              </div>
+            </div>
+
+            <div
+              v-if="selectedTemplate"
+              class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
+            >
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">Campos do modelo</p>
+                  <p class="text-sm text-slate-500">{{ selectedTemplate.description }}</p>
+                </div>
+
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  @click="resetTemplateInputs"
+                >
+                  Limpar modelo
+                </button>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <template v-for="field in selectedTemplate.fields || []" :key="field.key">
+                  <label v-if="field.type === 'textarea'" class="grid gap-2 md:col-span-2">
+                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                    <textarea
+                      v-model="templateFieldValues[field.key]"
+                      rows="5"
+                      :placeholder="field.placeholder || ''"
+                      class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    />
+                  </label>
+
+                  <label v-else-if="field.type === 'list'" class="grid gap-2 md:col-span-2">
+                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                    <textarea
+                      v-model="templateFieldValues[field.key]"
+                      rows="4"
+                      :placeholder="field.placeholder || 'Um item por linha.'"
+                      class="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    />
+                    <small class="text-sm text-slate-500">Use uma linha por item. O preview vira lista automaticamente.</small>
+                  </label>
+
+                  <label v-else-if="field.type === 'select'" class="grid gap-2">
+                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                    <select
+                      v-model="templateFieldValues[field.key]"
+                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    >
+                      <option value="">Selecione</option>
+                      <option v-for="option in field.options || []" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label v-else class="grid gap-2">
+                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                    <input
+                      v-model="templateFieldValues[field.key]"
+                      type="text"
+                      :placeholder="field.placeholder || ''"
+                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    >
+                  </label>
+                </template>
+              </div>
             </div>
 
             <form class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]" @submit.prevent="saveIssue">
@@ -560,12 +832,13 @@ function extractHttpMessage(error, fallback) {
               </label>
 
               <label class="grid gap-2">
-                <span class="text-sm font-semibold text-slate-900">Descricao</span>
+                <span class="text-sm font-semibold text-slate-900">Observacoes adicionais</span>
                 <textarea
-                  v-model="form.body"
-                  rows="15"
+                  v-model="form.additionalNotes"
+                  rows="6"
                   :disabled="!canEdit || saving"
-                  class="min-h-[300px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
+                  class="min-h-[144px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
+                  placeholder="Se precisar complementar a atualizacao, escreva aqui."
                 />
               </label>
 
@@ -602,14 +875,7 @@ function extractHttpMessage(error, fallback) {
                   class="inline-flex max-w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                   @click="resetForm"
                 >
-                  Desfazer alteracoes
-                </button>
-                <button
-                  type="button"
-                  class="inline-flex max-w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                  @click="activePanel = 'view'"
-                >
-                  Voltar para Show/View
+                  Limpar Formulario
                 </button>
               </div>
             </form>
@@ -618,13 +884,16 @@ function extractHttpMessage(error, fallback) {
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Preview Markdown</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Visualizacao renderizada</h3>
+              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Resultado final da atualizacao</h3>
+              <p class="mt-2 text-sm text-slate-500">
+                O preview abaixo considera a descricao atual da issue, o modelo preenchido e as observacoes adicionais.
+              </p>
             </div>
 
             <div class="min-h-[540px] overflow-auto rounded-[24px] border border-slate-200 bg-white px-5 py-4">
               <MarkdownPreview
-                :content="form.body"
-                empty-label="Nenhuma descricao em Markdown foi informada para esta issue."
+                :content="finalBody"
+                empty-label="Preencha os campos do modelo para gerar a atualizacao."
               />
             </div>
           </article>

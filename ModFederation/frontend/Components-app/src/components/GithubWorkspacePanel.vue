@@ -320,7 +320,7 @@ function renderPreview(template, submissionFields) {
   const lines = [
     `> Template: ${template.name || 'Issue'}`,
     `> Solicitante: ${requesterEmail.value}`,
-    '> Origem: OctoFlow',
+    '> Origem:' ,
     '',
   ]
 
