@@ -58,10 +58,10 @@ const navigationItems = [
     key: 'dashboard',
     short: 'DB',
     label: 'Dashboard',
-    description: 'Painel central com resumo, composer e Projects',
-    eyebrow: 'OctoFlow Dashboard',
-    title: 'Painel operacional do OctoFlow',
-    descriptionLong: 'O host monta resumo, composer e Projects separadamente e concentra a operacao principal do GitHub em um dashboard unico.',
+    description: 'Graficos e analises operacionais',
+    eyebrow: '',
+    title: 'Dashboard',
+    descriptionLong: '',
   },
   {
     key: 'tasks',
@@ -509,7 +509,7 @@ function clearAuth() {
     />
 
     <div class="app-main">
-      <header v-if="!isAuthenticated || activeView !== 'tasks'" class="page-header surface-card">
+      <header v-if="!isAuthenticated || (activeView !== 'tasks' && activeView !== 'dashboard')" class="page-header surface-card">
         <div>
           <p class="section-kicker">{{ activeViewConfig.eyebrow }}</p>
           <h1>{{ isAuthenticated ? activeViewConfig.title : 'Autenticacao e acesso' }}</h1>
