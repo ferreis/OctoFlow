@@ -499,7 +499,7 @@ function extractHttpMessage(error, fallback) {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="app-btn app-btn-secondary"
             @click="$emit('close')"
           >
             Fechar
@@ -693,14 +693,14 @@ function extractHttpMessage(error, fallback) {
               <div class="flex flex-wrap gap-2">
                 <button
                   type="submit"
-                  class="inline-flex max-w-full items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
+                  class="app-btn app-btn-primary"
                   :disabled="submitting"
                 >
                   {{ submitting ? 'Criando issue...' : 'Criar issue no GitHub' }}
                 </button>
                 <button
                   type="button"
-                  class="inline-flex max-w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  class="app-btn app-btn-secondary"
                   :disabled="submitting"
                   @click="resetActiveTemplateInputs"
                 >

@@ -552,20 +552,14 @@ function extractHttpMessage(error, fallback) {
           <div
             class="inline-flex w-full max-w-full flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-1.5 md:w-auto">
             <button type="button"
-              class="inline-flex min-w-[120px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
-              :class="activeTab === 'tasks'
-                  ? 'bg-cyan-500 text-white shadow-sm'
-                  : 'bg-white text-slate-700 hover:bg-slate-100'
-                " @click="activeTab = 'tasks'">
+              class="app-btn min-w-[120px]"
+              :class="activeTab === 'tasks' ? 'app-btn-tab-active' : 'app-btn-secondary'" @click="activeTab = 'tasks'">
               Tarefas
             </button>
 
             <button type="button"
-              class="inline-flex min-w-[120px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
-              :class="activeTab === 'finance'
-                  ? 'bg-cyan-500 text-white shadow-sm'
-                  : 'bg-white text-slate-700 hover:bg-slate-100'
-                " @click="activeTab = 'finance'">
+              class="app-btn min-w-[120px]"
+              :class="activeTab === 'finance' ? 'app-btn-tab-active' : 'app-btn-secondary'" @click="activeTab = 'finance'">
               Financeiro
             </button>
           </div>
@@ -573,7 +567,7 @@ function extractHttpMessage(error, fallback) {
 
         <div class="flex items-center justify-start md:justify-end">
           <button type="button"
-            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-600 shadow-lg transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            class="app-btn app-btn-primary app-btn-icon shrink-0"
             :disabled="loading || syncing" title="Atualizar analises" @click="loadDashboardContext(true)">
             <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               aria-hidden="true">

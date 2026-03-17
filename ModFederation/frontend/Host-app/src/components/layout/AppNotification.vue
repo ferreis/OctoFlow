@@ -15,6 +15,20 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 let closeTimer = null
+let timerStartedAt = 0
+let remainingDuration = 0
+
+const effectiveDuration = computed(() => {
+  const payloadDuration = Number(props.notification?.duration)
+  if (Number.isFinite(payloadDuration) && payloadDuration > 0) {
+    return Math.min(Math.max(payloadDuration, 3500), 18000)
+  }
+
+  const messageLength = String(props.notification?.message || '').trim().length
+  const dynamicDuration = props.duration + Math.max(0, messageLength - 90) * 42
+
+  return Math.min(Math.max(dynamicDuration, props.duration), 14000)
+})
 
 const tone = computed(() => {
   const type = String(props.notification?.type || 'info').toLowerCase()
@@ -59,9 +73,8 @@ watch(
       return
     }
 
-    closeTimer = window.setTimeout(() => {
-      emit('close')
-    }, props.duration)
+    remainingDuration = effectiveDuration.value
+    startCloseTimer()
   },
 )
 
@@ -74,6 +87,31 @@ function clearCloseTimer() {
     window.clearTimeout(closeTimer)
     closeTimer = null
   }
+}
+
+function startCloseTimer() {
+  timerStartedAt = Date.now()
+  closeTimer = window.setTimeout(() => {
+    emit('close')
+  }, remainingDuration)
+}
+
+function pauseCloseTimer() {
+  if (closeTimer === null) {
+    return
+  }
+
+  const elapsed = Date.now() - timerStartedAt
+  remainingDuration = Math.max(1200, remainingDuration - elapsed)
+  clearCloseTimer()
+}
+
+function resumeCloseTimer() {
+  if (!props.notification?.id || closeTimer !== null) {
+    return
+  }
+
+  startCloseTimer()
 }
 
 function closeNotification() {
@@ -94,22 +132,24 @@ function closeNotification() {
     >
       <div
         v-if="notification?.message"
-        class="pointer-events-none fixed right-4 top-4 z-[140] w-[min(92vw,380px)]"
+        class="pointer-events-none fixed right-4 top-4 z-[140] w-[min(94vw,460px)]"
       >
         <button
           type="button"
           class="pointer-events-auto grid w-full gap-3 rounded-[24px] border p-4 text-left backdrop-blur"
           :class="tone.frame"
+          @mouseenter="pauseCloseTimer"
+          @mouseleave="resumeCloseTimer"
           @click="closeNotification"
         >
           <div class="flex items-start justify-between gap-3">
             <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.2em]" :class="tone.badge">
               {{ tone.title }}
             </span>
-            <span class="text-xs font-semibold opacity-70">Fechar</span>
+            <span class="text-xs font-semibold opacity-70">Clique para fechar</span>
           </div>
 
-          <p class="text-sm font-semibold leading-6">
+          <p class="whitespace-pre-line text-sm font-semibold leading-6">
             {{ notification.message }}
           </p>
         </button>

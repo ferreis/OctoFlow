@@ -789,14 +789,14 @@ function extractHttpMessage(error, fallback) {
       <div class="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
+          class="app-btn app-btn-primary"
           @click="openCreateModal"
         >
           Nova issue
         </button>
         <button
           type="button"
-          class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          class="app-btn app-btn-secondary"
           :disabled="syncing"
           @click="syncIssues({ announceRefresh: true })"
         >
@@ -813,7 +813,7 @@ function extractHttpMessage(error, fallback) {
         </div>
 
         <button type="button"
-          class="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          class="app-btn app-btn-secondary shrink-0"
           @click="filtersOpen = !filtersOpen">
           {{ filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros' }}
         </button>
@@ -901,14 +901,14 @@ function extractHttpMessage(error, fallback) {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
+            class="app-btn app-btn-primary"
             :disabled="loadingCache"
             @click="applyFilters"
           >
             Filtrar
           </button>
           <button type="button"
-            class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="app-btn app-btn-secondary"
             :disabled="loadingCache" @click="resetFilters">
             Restaurar padrao
           </button>
@@ -1038,7 +1038,7 @@ function extractHttpMessage(error, fallback) {
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
-              class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              class="app-btn app-btn-secondary app-btn-sm"
               :disabled="currentPage === 1"
               @click.stop="goToPage(currentPage - 1)"
             >
@@ -1049,8 +1049,8 @@ function extractHttpMessage(error, fallback) {
               v-for="page in visiblePages"
               :key="page"
               type="button"
-              class="inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition"
-              :class="page === currentPage ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'"
+              class="app-btn app-btn-sm min-w-10"
+              :class="page === currentPage ? 'app-btn-tab-active' : 'app-btn-secondary'"
               @click.stop="goToPage(page)"
             >
               {{ page }}
@@ -1058,7 +1058,7 @@ function extractHttpMessage(error, fallback) {
 
             <button
               type="button"
-              class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              class="app-btn app-btn-secondary app-btn-sm"
               :disabled="currentPage === totalPages"
               @click.stop="goToPage(currentPage + 1)"
             >

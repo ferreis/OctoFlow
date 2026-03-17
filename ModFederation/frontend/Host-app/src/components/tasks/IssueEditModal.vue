@@ -524,7 +524,7 @@ function extractHttpMessage(error, fallback) {
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Show/View</p>
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Visualização</p>
             <h2 class="mt-1 break-words text-2xl font-semibold text-slate-950 sm:text-3xl">
               #{{ currentIssue?.number }} {{ currentIssue?.title }}
             </h2>
@@ -536,7 +536,7 @@ function extractHttpMessage(error, fallback) {
           <div class="flex flex-wrap gap-2">
             <a
               v-if="currentIssue?.url"
-              class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              class="app-btn app-btn-secondary"
               :href="currentIssue.url"
               target="_blank"
               rel="noreferrer noopener"
@@ -545,7 +545,7 @@ function extractHttpMessage(error, fallback) {
             </a>
             <button
               type="button"
-              class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              class="app-btn app-btn-secondary"
               @click="$emit('close')"
             >
               Fechar
@@ -556,20 +556,20 @@ function extractHttpMessage(error, fallback) {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-            :class="activePanel === 'view' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+            class="app-btn"
+            :class="activePanel === 'view' ? 'app-btn-tab-active' : 'app-btn-secondary'"
             @click="activePanel = 'view'"
           >
-            Show/View
+            Visualização
           </button>
           <button
             v-if="canEdit"
             type="button"
-            class="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-            :class="activePanel === 'edit' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+            class="app-btn"
+            :class="activePanel === 'edit' ? 'app-btn-tab-active' : 'app-btn-secondary'"
             @click="activePanel = 'edit'"
           >
-            Atualizar issue
+            Atualização
           </button>
         </div>
       </header>
@@ -763,7 +763,7 @@ function extractHttpMessage(error, fallback) {
 
                 <button
                   type="button"
-                  class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  class="app-btn app-btn-secondary"
                   @click="resetTemplateInputs"
                 >
                   Limpar modelo
@@ -865,14 +865,14 @@ function extractHttpMessage(error, fallback) {
                 <button
                   type="submit"
                   :disabled="!canEdit || saving"
-                  class="inline-flex max-w-full items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="app-btn app-btn-primary"
                 >
                   {{ saving ? 'Salvando...' : 'Salvar issue' }}
                 </button>
                 <button
                   type="button"
                   :disabled="saving"
-                  class="inline-flex max-w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="app-btn app-btn-secondary"
                   @click="resetForm"
                 >
                   Limpar Formulario

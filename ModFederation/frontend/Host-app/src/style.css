@@ -418,7 +418,8 @@ a {
 
 .button-primary,
 .button-secondary,
-.button-danger {
+.button-danger,
+.app-btn {
   align-items: center;
   border-radius: 999px;
   cursor: pointer;
@@ -437,14 +438,15 @@ a {
 
 .button-primary {
   background: var(--button-gradient);
-  border: none;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 32%, transparent);
   box-shadow: var(--button-shadow);
   color: var(--button-primary-text);
 }
 
 .button-secondary {
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-strong) 88%, var(--color-primary) 12%);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--line));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   color: var(--ink);
 }
 
@@ -456,15 +458,76 @@ a {
 
 .button-primary:hover:not(:disabled),
 .button-secondary:hover:not(:disabled),
-.button-danger:hover:not(:disabled) {
+.button-danger:hover:not(:disabled),
+.app-btn:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
 .button-primary:disabled,
 .button-secondary:disabled,
-.button-danger:disabled {
+.button-danger:disabled,
+.app-btn:disabled {
   cursor: not-allowed;
   opacity: 0.62;
+}
+
+.button-primary:focus-visible,
+.button-secondary:focus-visible,
+.button-danger:focus-visible,
+.app-btn:focus-visible,
+.auth-mode-option:focus-visible {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--surface-strong) 72%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--color-secondary) 42%, transparent);
+}
+
+.app-btn {
+  border: 1px solid transparent;
+  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.app-btn-sm {
+  min-height: 40px;
+  padding: 0 13px;
+}
+
+.app-btn-icon {
+  min-height: 44px;
+  padding: 0;
+  width: 44px;
+}
+
+.app-btn-primary {
+  background: var(--button-gradient);
+  border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+  box-shadow: var(--button-shadow);
+  color: var(--button-primary-text);
+}
+
+.app-btn-secondary {
+  background: color-mix(in srgb, var(--surface-strong) 88%, var(--color-primary) 12%);
+  border-color: color-mix(in srgb, var(--color-primary) 28%, var(--line));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  color: var(--ink);
+}
+
+.app-btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--color-primary) 22%);
+}
+
+.app-btn-danger {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  color: var(--danger);
+}
+
+.app-btn-tab-active {
+  background: color-mix(in srgb, var(--secondary-soft) 78%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--color-secondary) 52%, var(--line));
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+  color: var(--color-secondary);
 }
 
 .field {

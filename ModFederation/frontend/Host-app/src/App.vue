@@ -758,11 +758,15 @@ function showNotification(payload, type = 'info') {
   const notificationType = typeof payload?.type === 'string' && payload.type.trim() !== ''
     ? payload.type.trim()
     : type
+  const notificationDuration = Number(payload?.duration)
 
   notification.value = {
     id: ++notificationSeed,
     message,
     type: notificationType,
+    duration: Number.isFinite(notificationDuration) && notificationDuration > 0
+      ? notificationDuration
+      : null,
   }
 }
 
