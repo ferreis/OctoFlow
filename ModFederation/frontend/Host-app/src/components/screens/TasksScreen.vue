@@ -667,13 +667,116 @@ function extractHttpMessage(error, fallback) {
         >
           {{ syncing ? 'Sincronizando...' : 'Atualizar lista' }}
         </button>
-        <button
-          type="button"
-          class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          @click="filtersOpen = !filtersOpen"
-        >
-          {{ filtersOpen ? 'Fechar filtros' : 'Abrir filtros' }}
+      </div>
+    </article>
+
+    <article
+      class="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0">
+          <h3 class="mt-1 text-2xl font-semibold text-slate-950">Filtros</h3>
+        </div>
+
+        <button type="button"
+          class="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          @click="filtersOpen = !filtersOpen">
+          {{ filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros' }}
         </button>
+      </div>
+
+      <div v-if="filtersOpen" class="mt-5 grid gap-5">
+        <div class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <p class="text-sm font-semibold text-slate-900">Escopo</p>
+
+          <div class="flex flex-wrap gap-2">
+            <button type="button"
+              class="inline-flex max-w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
+              :class="issueScope === 'all' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+              @click="switchScope('all')">
+              Todos os repositorios
+            </button>
+
+            <button type="button"
+              class="inline-flex max-w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
+              :class="issueScope === 'assigned' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+              @click="switchScope('assigned')">
+              Atribuidas a mim
+            </button>
+
+            <button type="button"
+              class="inline-flex max-w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
+              :class="issueScope === 'repository' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+              @click="switchScope('repository')">
+              Repositorio especifico
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <label class="grid min-w-0 gap-2 xl:col-span-2">
+            <span class="text-sm font-semibold text-slate-900">Buscar</span>
+            <input v-model="searchTerm" type="text" placeholder="Titulo, label, autor, repositorio..."
+              class="h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+          </label>
+
+          <label class="grid min-w-0 gap-2">
+            <span class="text-sm font-semibold text-slate-900">Estado</span>
+            <select v-model="stateFilter"
+              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              <option value="all">Todos</option>
+              <option value="open">Abertas</option>
+              <option value="closed">Fechadas</option>
+            </select>
+          </label>
+
+          <label class="grid min-w-0 gap-2">
+            <span class="text-sm font-semibold text-slate-900">Repositorio</span>
+            <select v-model="selectedRepositoryKey"
+              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              <option value="all">Todos os repositorios</option>
+              <option v-for="repository in repositories" :key="repository.nameWithOwner"
+                :value="repository.nameWithOwner">
+                {{ repository.nameWithOwner }}
+              </option>
+            </select>
+          </label>
+
+          <label class="grid min-w-0 gap-2">
+            <span class="text-sm font-semibold text-slate-900">Label</span>
+            <select v-model="selectedLabel"
+              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              <option value="all">Todas as labels</option>
+              <option v-for="label in availableLabels" :key="label.id" :value="label.name">
+                {{ label.name }}
+              </option>
+            </select>
+          </label>
+
+          <label class="grid min-w-0 gap-2">
+            <span class="text-sm font-semibold text-slate-900">Tipo de chamado</span>
+            <select v-model="selectedTicketType"
+              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              <option value="all">Todos os tipos</option>
+              <option v-for="type in availableTicketTypes" :key="type.key" :value="type.key">
+                {{ type.label }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button type="button"
+            class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
+            :disabled="syncing" @click="syncIssues({ announceRefresh: true })">
+            {{ syncing ? 'Sincronizando...' : 'Atualizar agora no GitHub' }}
+          </button>
+
+          <button type="button"
+            class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            :disabled="loadingCache" @click="resetFilters">
+            Restaurar padrao
+          </button>
+        </div>
       </div>
     </article>
 
@@ -692,20 +795,6 @@ function extractHttpMessage(error, fallback) {
           </span>
         </div>
       </div>
-
-      <p
-        v-if="loadingCache && issues.length === 0"
-        class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500"
-      >
-        Carregando cache local das issues...
-      </p>
-
-      <p
-        v-else-if="syncing"
-        class="mt-5 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800"
-      >
-        Sincronizando com o GitHub sem travar a listagem exibida.
-      </p>
 
       <div v-if="!loadingCache || issues.length > 0" class="mt-4 grid gap-2">
         <button v-for="issue in paginatedIssues" :key="issue.id" type="button"
@@ -842,155 +931,6 @@ function extractHttpMessage(error, fallback) {
           </div>
         </div>
       </div>
-    </article>
-
-    <article class="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Filtros</p>
-          <h3 class="mt-1 text-2xl font-semibold text-slate-950">Painel recolhivel</h3>
-          <p class="mt-2 text-sm leading-7 text-slate-600">
-            O painel principal de filtros fica fechado por padrao, mas pode ser aberto sempre que voce precisar refinar a busca.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          @click="filtersOpen = !filtersOpen"
-        >
-          {{ filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros' }}
-        </button>
-      </div>
-
-      <div v-if="filtersOpen" class="mt-5 grid gap-5">
-        <div class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <div>
-            <p class="text-sm font-semibold text-slate-900">Escopo da consulta</p>
-            <p class="mt-1 text-sm text-slate-500">O padrao do sistema e preencher pelo banco local e consultar o GitHub so quando o cache expira ou voce pede atualizacao.</p>
-          </div>
-
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="button"
-              class="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-              :class="issueScope === 'all' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              @click="switchScope('all')"
-            >
-              Todos os repositorios
-            </button>
-            <button
-              type="button"
-              class="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-              :class="issueScope === 'assigned' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              @click="switchScope('assigned')"
-            >
-              Atribuidas a mim
-            </button>
-            <button
-              type="button"
-              class="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-              :class="issueScope === 'repository' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              @click="switchScope('repository')"
-            >
-              Repositorio especifico
-            </button>
-          </div>
-        </div>
-
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <label class="grid gap-2 xl:col-span-2">
-            <span class="text-sm font-semibold text-slate-900">Buscar</span>
-            <input
-              v-model="searchTerm"
-              type="text"
-              placeholder="Titulo, label, autor, repositorio..."
-              class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-            >
-          </label>
-
-          <label class="grid gap-2">
-            <span class="text-sm font-semibold text-slate-900">Estado</span>
-            <select
-              v-model="stateFilter"
-              class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-            >
-              <option value="all">Todos</option>
-              <option value="open">Abertas</option>
-              <option value="closed">Fechadas</option>
-            </select>
-          </label>
-
-          <label class="grid gap-2">
-            <span class="text-sm font-semibold text-slate-900">Repositorio</span>
-            <select
-              v-model="selectedRepositoryKey"
-              class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-            >
-              <option value="all">Todos os repositorios</option>
-              <option
-                v-for="repository in repositories"
-                :key="repository.nameWithOwner"
-                :value="repository.nameWithOwner"
-              >
-                {{ repository.nameWithOwner }}
-              </option>
-            </select>
-          </label>
-
-          <label class="grid gap-2">
-            <span class="text-sm font-semibold text-slate-900">Label</span>
-            <select
-              v-model="selectedLabel"
-              class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-            >
-              <option value="all">Todas as labels</option>
-              <option v-for="label in availableLabels" :key="label.id" :value="label.name">
-                {{ label.name }}
-              </option>
-            </select>
-          </label>
-
-          <label class="grid gap-2">
-            <span class="text-sm font-semibold text-slate-900">Tipo de chamado</span>
-            <select
-              v-model="selectedTicketType"
-              class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-            >
-              <option value="all">Todos os tipos</option>
-              <option v-for="type in availableTicketTypes" :key="type.key" :value="type.key">
-                {{ type.label }}
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
-            :disabled="syncing"
-            @click="syncIssues({ announceRefresh: true })"
-          >
-            {{ syncing ? 'Sincronizando...' : 'Atualizar agora no GitHub' }}
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            :disabled="loadingCache"
-            @click="resetFilters"
-          >
-            Restaurar padrao
-          </button>
-        </div>
-      </div>
-
-      <p
-        v-else
-        class="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
-      >
-        Filtros recolhidos. O comportamento padrao ja usa o cache do banco e so renova as issues no GitHub quando necessario.
-      </p>
     </article>
 
     <IssueCreateModal

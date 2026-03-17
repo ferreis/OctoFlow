@@ -57,9 +57,15 @@ function navigate(key) {
     :class="props.collapsed ? 'px-2 py-4 lg:px-2.5' : 'px-3 py-4 lg:px-4'"
   >
     <div class="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-      <div class="min-w-0">
-        <h1 class="truncate text-xl font-semibold text-[var(--nav-text)]">
-          {{ props.collapsed ? 'OF' : 'OctoFlow' }}
+      <div class="flex min-w-0 items-center gap-3">
+        <img
+          src="/icon.ico"
+          alt="OctoFlow"
+          class="h-10 w-10 shrink-0 rounded-xl border border-white/10 bg-white/10 object-cover p-1"
+        >
+
+        <h1 v-if="!props.collapsed" class="truncate text-xl font-semibold text-[var(--nav-text)]">
+          OctoFlow
         </h1>
       </div>
 
