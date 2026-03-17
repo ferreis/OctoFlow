@@ -31,6 +31,7 @@ query GithubIssueDetail($issueId: ID!) {
       state
       url
       createdAt
+      closedAt
       updatedAt
       viewerCanUpdate
       viewerCanClose
@@ -57,6 +58,18 @@ query GithubIssueDetail($issueId: ID!) {
       repository {
         nameWithOwner
         url
+      }
+      comments(first: 30) {
+        nodes {
+          id
+          body
+          createdAt
+          updatedAt
+          url
+          author {
+            login
+          }
+        }
       }
     }
   }
@@ -289,7 +302,7 @@ GRAPHQL;
     }
 
     /**
-     * @return array{item: array<string, mixed>, source: string, warning: ?string}
+     * @return array{item: array<string, mixed>, history: list<array<string, mixed>>, source: string, warning: ?string}
      */
     public function fetchIssue(User $user, string $issueId): array
     {
@@ -313,7 +326,11 @@ GRAPHQL;
             $cachedIssue = $this->cacheService->upsertIssue($user, $normalizedIssue);
 
             return [
-                'item' => $cachedIssue,
+                'item' => [
+                    ...$cachedIssue,
+                    'closedAt' => $normalizedIssue['closedAt'] ?? null,
+                ],
+                'history' => $normalizedIssue['history'] ?? [],
                 'source' => 'github',
                 'warning' => null,
             ];
@@ -322,6 +339,7 @@ GRAPHQL;
             if ($cachedIssue !== null) {
                 return [
                     'item' => $cachedIssue,
+                    'history' => $this->buildFallbackHistory($cachedIssue),
                     'source' => 'cache',
                     'warning' => sprintf('GitHub detail refresh failed: %s', $exception->getMessage()),
                 ];
@@ -536,6 +554,10 @@ GRAPHQL;
         $state = strtoupper(trim((string) ($rawIssue['state'] ?? 'OPEN')));
         $author = $rawIssue['author'] ?? null;
         $repository = $rawIssue['repository'] ?? null;
+        $authorLogin = is_array($author) ? trim((string) ($author['login'] ?? '')) : '';
+        $createdAt = trim((string) ($rawIssue['createdAt'] ?? ''));
+        $updatedAt = trim((string) ($rawIssue['updatedAt'] ?? ''));
+        $closedAt = $this->normalizeNullableString($rawIssue['closedAt'] ?? null);
 
         return [
             'id' => trim((string) ($rawIssue['id'] ?? '')),
@@ -544,19 +566,140 @@ GRAPHQL;
             'body' => (string) ($rawIssue['body'] ?? ''),
             'state' => $state === 'CLOSED' ? 'CLOSED' : 'OPEN',
             'url' => trim((string) ($rawIssue['url'] ?? '')),
-            'createdAt' => trim((string) ($rawIssue['createdAt'] ?? '')),
-            'updatedAt' => trim((string) ($rawIssue['updatedAt'] ?? '')),
+            'createdAt' => $createdAt,
+            'updatedAt' => $updatedAt,
+            'closedAt' => $closedAt,
             'viewerCanUpdate' => (bool) ($rawIssue['viewerCanUpdate'] ?? false),
             'viewerCanClose' => (bool) ($rawIssue['viewerCanClose'] ?? false),
             'viewerCanReopen' => (bool) ($rawIssue['viewerCanReopen'] ?? false),
-            'authorLogin' => is_array($author) ? trim((string) ($author['login'] ?? '')) : null,
+            'authorLogin' => $authorLogin !== '' ? $authorLogin : null,
             'assignees' => $this->normalizeAssignees($rawIssue['assignees']['nodes'] ?? []),
             'labels' => $this->normalizeLabels($rawIssue['labels']['nodes'] ?? []),
             'repository' => [
                 'nameWithOwner' => is_array($repository) ? trim((string) ($repository['nameWithOwner'] ?? '')) : '',
                 'url' => is_array($repository) ? trim((string) ($repository['url'] ?? '')) : '',
             ],
+            'history' => $this->buildIssueHistory(
+                trim((string) ($rawIssue['id'] ?? '')),
+                $authorLogin,
+                $createdAt,
+                $updatedAt,
+                $closedAt,
+                (string) ($rawIssue['state'] ?? 'OPEN'),
+                $rawIssue['comments']['nodes'] ?? []
+            ),
         ];
+    }
+
+    /**
+     * @param mixed $rawComments
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildIssueHistory(
+        string $issueId,
+        string $authorLogin,
+        string $createdAt,
+        string $updatedAt,
+        ?string $closedAt,
+        string $state,
+        mixed $rawComments,
+    ): array {
+        $history = [];
+        $normalizedIssueId = trim($issueId);
+        $normalizedAuthorLogin = trim($authorLogin);
+        $normalizedCreatedAt = trim($createdAt);
+        $normalizedUpdatedAt = trim($updatedAt);
+        $normalizedClosedAt = trim((string) ($closedAt ?? ''));
+
+        if ($normalizedCreatedAt !== '') {
+            $history[] = [
+                'id' => sprintf('%s-created', $normalizedIssueId !== '' ? $normalizedIssueId : 'issue'),
+                'kind' => 'created',
+                'title' => 'Issue criada',
+                'actorLogin' => $normalizedAuthorLogin !== '' ? $normalizedAuthorLogin : null,
+                'createdAt' => $normalizedCreatedAt,
+                'updatedAt' => $normalizedCreatedAt,
+                'body' => null,
+                'url' => null,
+            ];
+        }
+
+        if ($normalizedUpdatedAt !== '' && $normalizedUpdatedAt !== $normalizedCreatedAt) {
+            $history[] = [
+                'id' => sprintf('%s-updated', $normalizedIssueId !== '' ? $normalizedIssueId : 'issue'),
+                'kind' => 'updated',
+                'title' => 'Issue atualizada',
+                'actorLogin' => null,
+                'createdAt' => $normalizedUpdatedAt,
+                'updatedAt' => $normalizedUpdatedAt,
+                'body' => null,
+                'url' => null,
+            ];
+        }
+
+        if (strtoupper(trim($state)) === 'CLOSED' && $normalizedClosedAt !== '') {
+            $history[] = [
+                'id' => sprintf('%s-closed', $normalizedIssueId !== '' ? $normalizedIssueId : 'issue'),
+                'kind' => 'closed',
+                'title' => 'Issue fechada',
+                'actorLogin' => null,
+                'createdAt' => $normalizedClosedAt,
+                'updatedAt' => $normalizedClosedAt,
+                'body' => null,
+                'url' => null,
+            ];
+        }
+
+        if (is_array($rawComments)) {
+            foreach ($rawComments as $rawComment) {
+                if (!is_array($rawComment)) {
+                    continue;
+                }
+
+                $commentId = trim((string) ($rawComment['id'] ?? ''));
+                $commentCreatedAt = trim((string) ($rawComment['createdAt'] ?? ''));
+                if ($commentId === '' || $commentCreatedAt === '') {
+                    continue;
+                }
+
+                $commentAuthor = $rawComment['author'] ?? null;
+                $history[] = [
+                    'id' => $commentId,
+                    'kind' => 'comment',
+                    'title' => 'Comentario',
+                    'actorLogin' => is_array($commentAuthor) ? $this->normalizeNullableString($commentAuthor['login'] ?? null) : null,
+                    'createdAt' => $commentCreatedAt,
+                    'updatedAt' => trim((string) ($rawComment['updatedAt'] ?? $commentCreatedAt)),
+                    'body' => $this->normalizeNullableString($rawComment['body'] ?? null),
+                    'url' => $this->normalizeNullableString($rawComment['url'] ?? null),
+                ];
+            }
+        }
+
+        usort($history, static function (array $left, array $right): int {
+            return strcmp((string) ($right['createdAt'] ?? ''), (string) ($left['createdAt'] ?? ''));
+        });
+
+        return array_values($history);
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildFallbackHistory(array $issue): array
+    {
+        return $this->buildIssueHistory(
+            trim((string) ($issue['id'] ?? '')),
+            trim((string) ($issue['authorLogin'] ?? '')),
+            trim((string) ($issue['createdAt'] ?? '')),
+            trim((string) ($issue['updatedAt'] ?? '')),
+            $this->normalizeNullableString($issue['closedAt'] ?? null),
+            (string) ($issue['state'] ?? 'OPEN'),
+            []
+        );
     }
 
     /**

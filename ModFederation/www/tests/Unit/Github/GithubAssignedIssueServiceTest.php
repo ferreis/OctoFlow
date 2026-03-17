@@ -221,6 +221,114 @@ final class GithubAssignedIssueServiceTest extends TestCase
         $this->assertSame('acme/alpha', $issuesBoard['items'][1]['repository']['nameWithOwner']);
     }
 
+    public function testFetchIssueReturnsHistoryFromGithubDetail(): void
+    {
+        $this->graphqlClient
+            ->expects($this->once())
+            ->method('query')
+            ->with(
+                'ghp_test_token',
+                $this->stringContains('comments(first: 30)'),
+                ['issueId' => 'issue-node-1']
+            )
+            ->willReturn([
+                'node' => [
+                    '__typename' => 'Issue',
+                    'id' => 'issue-node-1',
+                    'number' => 14,
+                    'title' => '[feat] Nova tela operacional',
+                    'body' => "## Contexto\nDetalhes",
+                    'state' => 'CLOSED',
+                    'url' => 'https://github.com/acme/alpha/issues/14',
+                    'createdAt' => '2026-03-10T08:00:00Z',
+                    'closedAt' => '2026-03-13T09:30:00Z',
+                    'updatedAt' => '2026-03-13T10:15:00Z',
+                    'viewerCanUpdate' => true,
+                    'viewerCanClose' => false,
+                    'viewerCanReopen' => true,
+                    'author' => [
+                        'login' => 'alice',
+                    ],
+                    'assignees' => [
+                        'nodes' => [],
+                    ],
+                    'labels' => [
+                        'nodes' => [],
+                    ],
+                    'repository' => [
+                        'nameWithOwner' => 'acme/alpha',
+                        'url' => 'https://github.com/acme/alpha',
+                    ],
+                    'comments' => [
+                        'nodes' => [
+                            [
+                                'id' => 'comment-1',
+                                'body' => "## Atualizacao\nTudo validado",
+                                'createdAt' => '2026-03-12T12:00:00Z',
+                                'updatedAt' => '2026-03-12T12:30:00Z',
+                                'url' => 'https://github.com/acme/alpha/issues/14#issuecomment-1',
+                                'author' => [
+                                    'login' => 'bob',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $this->cacheService
+            ->expects($this->once())
+            ->method('upsertIssue')
+            ->with(
+                $this->isInstanceOf(User::class),
+                $this->callback(function (array $issue): bool {
+                    return ($issue['id'] ?? null) === 'issue-node-1'
+                        && ($issue['closedAt'] ?? null) === '2026-03-13T09:30:00Z'
+                        && isset($issue['history'])
+                        && count($issue['history']) === 4;
+                })
+            )
+            ->willReturn([
+                'id' => 'issue-node-1',
+                'number' => 14,
+                'title' => '[feat] Nova tela operacional',
+                'body' => "## Contexto\nDetalhes",
+                'state' => 'CLOSED',
+                'url' => 'https://github.com/acme/alpha/issues/14',
+                'createdAt' => '2026-03-10T08:00:00Z',
+                'updatedAt' => '2026-03-13T10:15:00Z',
+                'viewerCanUpdate' => true,
+                'viewerCanClose' => false,
+                'viewerCanReopen' => true,
+                'authorLogin' => 'alice',
+                'assignees' => [],
+                'labels' => [],
+                'repository' => [
+                    'nameWithOwner' => 'acme/alpha',
+                    'url' => 'https://github.com/acme/alpha',
+                ],
+            ]);
+
+        $service = new GithubAssignedIssueService(
+            $this->profileService,
+            $this->graphqlClient,
+            $this->cacheService,
+            $this->registryService
+        );
+
+        $payload = $service->fetchIssue($this->buildTokenOnlyUser(), 'issue-node-1');
+
+        $this->assertSame('github', $payload['source']);
+        $this->assertNull($payload['warning']);
+        $this->assertCount(4, $payload['history']);
+        $this->assertSame('updated', $payload['history'][0]['kind']);
+        $this->assertSame('closed', $payload['history'][1]['kind']);
+        $this->assertSame('comment', $payload['history'][2]['kind']);
+        $this->assertSame('comment-1', $payload['history'][2]['id']);
+        $this->assertSame('CLOSED', $payload['item']['state']);
+        $this->assertSame('2026-03-13T09:30:00Z', $payload['item']['closedAt']);
+    }
+
     private function buildTokenOnlyUser(): User
     {
         $cipher = new GithubTokenCipher('test-app-secret');

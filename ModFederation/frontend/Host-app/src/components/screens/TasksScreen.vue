@@ -477,7 +477,6 @@ function handleIssueUpdated(updatedIssue) {
     mergeIssueIntoBoard(updatedIssue)
   }
 
-  editingIssueId.value = ''
   success.value = updatedIssue?.number
     ? `Issue #${updatedIssue.number} atualizada com sucesso.`
     : 'Issue atualizada com sucesso.'
