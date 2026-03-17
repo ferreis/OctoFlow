@@ -318,10 +318,10 @@ function extractHttpMessage(error, fallback) {
 }
 
 .summary-chip {
-  background: rgba(15, 118, 110, 0.12);
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
   border-radius: 999px;
-  color: #0f766e;
+  color: var(--accent-strong);
   font-size: 0.82rem;
   font-weight: 700;
   padding: 8px 12px;
@@ -331,13 +331,17 @@ function extractHttpMessage(error, fallback) {
 .hint,
 .empty-state,
 .loading-state {
-  color: #475569;
+  color: var(--muted);
   margin: 0;
 }
 
 .default-banner {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(249, 115, 22, 0.1));
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary) 14%, transparent),
+    color-mix(in srgb, var(--color-secondary) 12%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
   border-radius: 20px;
   display: grid;
   gap: 6px;
@@ -345,7 +349,7 @@ function extractHttpMessage(error, fallback) {
 }
 
 .default-banner span {
-  color: #64748b;
+  color: var(--muted);
   font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -362,8 +366,8 @@ function extractHttpMessage(error, fallback) {
 
 .email-row {
   align-items: center;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 20px;
   display: flex;
   gap: 16px;
@@ -404,18 +408,18 @@ function extractHttpMessage(error, fallback) {
 }
 
 .primary-pill {
-  background: #0f766e;
-  color: #f8fafc;
+  background: var(--color-primary);
+  color: var(--button-primary-text);
 }
 
 .provider-pill {
-  background: rgba(15, 23, 42, 0.06);
-  color: #0f172a;
+  background: var(--surface-muted);
+  color: var(--ink);
 }
 
 .verified-pill {
-  background: rgba(14, 165, 233, 0.12);
-  color: #0369a1;
+  background: color-mix(in srgb, var(--color-secondary) 14%, transparent);
+  color: var(--color-secondary);
 }
 
 .link-actions {
@@ -425,8 +429,8 @@ function extractHttpMessage(error, fallback) {
 }
 
 .action-card {
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 22px;
   display: grid;
   gap: 14px;
@@ -441,7 +445,7 @@ function extractHttpMessage(error, fallback) {
 }
 
 .action-copy p {
-  color: #475569;
+  color: var(--muted);
   margin: 0;
 }
 
@@ -457,15 +461,15 @@ function extractHttpMessage(error, fallback) {
 }
 
 .feedback.error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+  color: var(--danger);
 }
 
 .feedback.success {
-  background: #ecfdf5;
-  border: 1px solid #bbf7d0;
-  color: #166534;
+  background: var(--success-bg);
+  border: 1px solid color-mix(in srgb, var(--success) 28%, transparent);
+  color: var(--success);
 }
 
 button.primary,
@@ -479,16 +483,16 @@ button.ghost {
 }
 
 button.primary {
-  background: linear-gradient(135deg, #0f766e, #0ea5e9);
+  background: var(--button-gradient);
   border: none;
-  box-shadow: 0 12px 24px rgba(14, 116, 144, 0.18);
-  color: #f8fafc;
+  box-shadow: var(--button-shadow);
+  color: var(--button-primary-text);
 }
 
 button.ghost {
   background: transparent;
-  border: 1px solid rgba(15, 23, 42, 0.16);
-  color: #0f172a;
+  border: 1px solid var(--line);
+  color: var(--ink);
 }
 
 button.primary:hover:not(:disabled),

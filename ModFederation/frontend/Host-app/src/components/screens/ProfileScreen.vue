@@ -8,12 +8,28 @@ const props = defineProps({
     type: Function,
     required: true,
   },
+  activeThemeKey: {
+    type: String,
+    default: 'original',
+  },
+  availableThemes: {
+    type: Array,
+    default: () => [],
+  },
+  notify: {
+    type: Function,
+    default: null,
+  },
   apiClient: {
     type: Object,
     required: true,
   },
   currentUser: {
     type: Object,
+    default: null,
+  },
+  setTheme: {
+    type: Function,
     default: null,
   },
 })
@@ -37,6 +53,20 @@ const displayEmail = computed(() => props.currentUser?.defaultEmail || props.cur
 const linkedEmailCount = computed(() => Array.isArray(props.currentUser?.linkedEmails) ? props.currentUser.linkedEmails.length : 0)
 const tokenConfigured = computed(() => Boolean(profile.value?.tokenConfigured))
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
+const themeOptions = computed(() => Array.isArray(props.availableThemes) ? props.availableThemes : [])
+
+function notifyUser(message, type = 'info') {
+  const normalizedMessage = String(message || '').trim()
+
+  if (normalizedMessage === '' || typeof props.notify !== 'function') {
+    return
+  }
+
+  props.notify({
+    message: normalizedMessage,
+    type,
+  })
+}
 
 onMounted(async () => {
   await loadProfile()
@@ -52,6 +82,24 @@ watch(
     await loadProfile()
   },
 )
+
+watch(profileError, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'error')
+  profileError.value = ''
+})
+
+watch(profileSuccess, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'success')
+  profileSuccess.value = ''
+})
 
 async function loadProfile() {
   profileLoading.value = true
@@ -111,6 +159,12 @@ async function saveProfile() {
 
 function forwardSessionUpdate(session) {
   emit('session-updated', session)
+}
+
+function selectTheme(themeKey) {
+  if (typeof props.setTheme === 'function') {
+    props.setTheme(themeKey)
+  }
 }
 
 function extractHttpMessage(error, fallback) {
@@ -202,9 +256,6 @@ function extractHttpMessage(error, fallback) {
           </div>
         </div>
 
-        <p v-if="profileError" class="feedback-banner error">{{ profileError }}</p>
-        <p v-if="profileSuccess" class="feedback-banner success">{{ profileSuccess }}</p>
-
         <form class="settings-form" @submit.prevent="saveProfile">
           <div class="field-grid">
             <label class="field">
@@ -251,6 +302,42 @@ function extractHttpMessage(error, fallback) {
       </template>
     </article>
 
+    <article class="surface-card profile-theme-card">
+      <div>
+        <p class="section-kicker">Tema</p>
+        <h2>Aparencia do sistema</h2>
+        <p class="muted-copy">Escolha um dos 5 padroes visuais. A preferencia fica salva no navegador para este usuario.</p>
+      </div>
+
+      <div class="theme-grid">
+        <button
+          v-for="theme in themeOptions"
+          :key="theme.key"
+          type="button"
+          class="theme-option"
+          :class="{ selected: theme.key === activeThemeKey }"
+          :aria-pressed="theme.key === activeThemeKey"
+          @click="selectTheme(theme.key)"
+        >
+          <div class="theme-swatch-row" aria-hidden="true">
+            <span class="theme-swatch" :style="{ background: theme.colors.primary }" />
+            <span class="theme-swatch" :style="{ background: theme.colors.secondary }" />
+            <span class="theme-swatch" :style="{ background: theme.colors.accent }" />
+            <span class="theme-swatch theme-swatch-large" :style="{ background: theme.colors.bg }" />
+            <span class="theme-swatch theme-swatch-large" :style="{ background: theme.colors.text }" />
+          </div>
+
+          <div class="theme-copy">
+            <div class="theme-copy-head">
+              <strong>{{ theme.label }}</strong>
+              <span class="theme-badge">{{ theme.key === activeThemeKey ? 'Ativo' : 'Aplicar' }}</span>
+            </div>
+            <p>{{ theme.description }}</p>
+          </div>
+        </button>
+      </div>
+    </article>
+
     <article class="surface-card profile-emails-card">
       <AccountEmailsPanel
         :request="request"
@@ -270,6 +357,7 @@ function extractHttpMessage(error, fallback) {
 
 .profile-summary-card,
 .github-settings-card,
+.profile-theme-card,
 .profile-emails-card {
   display: grid;
   gap: 18px;
@@ -283,9 +371,14 @@ function extractHttpMessage(error, fallback) {
 
 .profile-avatar {
   align-items: center;
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.18), rgba(234, 88, 12, 0.14));
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary) 20%, transparent),
+    color-mix(in srgb, var(--color-secondary) 18%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--color-primary) 22%, transparent);
   border-radius: 22px;
+  color: var(--ink);
   display: inline-flex;
   font-size: 1.6rem;
   font-weight: 900;
@@ -301,8 +394,8 @@ function extractHttpMessage(error, fallback) {
 }
 
 .stat-chip {
-  background: rgba(15, 23, 42, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
   border-radius: 20px;
   display: grid;
   gap: 6px;
@@ -321,12 +414,84 @@ function extractHttpMessage(error, fallback) {
 }
 
 .role-pill {
-  background: rgba(14, 165, 233, 0.12);
+  background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
   border-radius: 999px;
-  color: #0369a1;
+  color: var(--accent-strong);
   font-size: 0.8rem;
   font-weight: 800;
   padding: 8px 12px;
+}
+
+.theme-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.theme-option {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  cursor: pointer;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  text-align: left;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.theme-option:hover {
+  transform: translateY(-1px);
+}
+
+.theme-option.selected {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--color-primary) 68%, transparent);
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.theme-swatch-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.theme-swatch {
+  border: 1px solid color-mix(in srgb, var(--color-bg) 12%, transparent);
+  border-radius: 999px;
+  display: block;
+  height: 14px;
+}
+
+.theme-swatch-large {
+  height: 18px;
+}
+
+.theme-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.theme-copy p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.theme-copy-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.theme-badge {
+  background: color-mix(in srgb, var(--color-secondary) 14%, transparent);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 6px 10px;
+  white-space: nowrap;
 }
 
 .panel-head-inline {
@@ -361,7 +526,8 @@ function extractHttpMessage(error, fallback) {
 
 @media (max-width: 980px) {
   .profile-stats,
-  .field-grid {
+  .field-grid,
+  .theme-grid {
     grid-template-columns: 1fr;
   }
 }

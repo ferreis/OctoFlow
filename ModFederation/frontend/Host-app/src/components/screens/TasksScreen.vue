@@ -9,6 +9,10 @@ const props = defineProps({
     type: Function,
     required: true,
   },
+  notify: {
+    type: Function,
+    default: null,
+  },
   currentUser: {
     type: Object,
     default: null,
@@ -243,6 +247,19 @@ const lastSyncedLabel = computed(() => {
     : 'sem sincronizacao anterior'
 })
 
+function notifyUser(message, type = 'info') {
+  const normalizedMessage = String(message || '').trim()
+
+  if (normalizedMessage === '' || typeof props.notify !== 'function') {
+    return
+  }
+
+  props.notify({
+    message: normalizedMessage,
+    type,
+  })
+}
+
 onMounted(async () => {
   await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
 })
@@ -258,6 +275,33 @@ watch(totalPages, (nextTotalPages) => {
   if (currentPage.value > nextTotalPages) {
     currentPage.value = nextTotalPages
   }
+})
+
+watch(error, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'error')
+  error.value = ''
+})
+
+watch(success, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'success')
+  success.value = ''
+})
+
+watch(info, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'info')
+  info.value = ''
 })
 
 async function loadCachedIssues(options = {}) {
@@ -632,27 +676,6 @@ function extractHttpMessage(error, fallback) {
         </button>
       </div>
     </article>
-
-    <p
-      v-if="error"
-      class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
-    >
-      {{ error }}
-    </p>
-
-    <p
-      v-if="success"
-      class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"
-    >
-      {{ success }}
-    </p>
-
-    <p
-      v-if="info"
-      class="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-medium text-cyan-800"
-    >
-      {{ info }}
-    </p>
 
     <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

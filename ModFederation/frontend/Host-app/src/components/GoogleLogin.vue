@@ -214,7 +214,7 @@ defineExpose({
 
 .separator {
   align-items: center;
-  color: #64748b;
+  color: var(--muted);
   display: flex;
   font-size: 0.9rem;
   gap: 12px;
@@ -222,7 +222,7 @@ defineExpose({
 
 .separator::before,
 .separator::after {
-  border-top: 1px solid #dbe4ee;
+  border-top: 1px solid var(--line);
   content: '';
   flex: 1;
 }
@@ -244,7 +244,7 @@ defineExpose({
 }
 
 .hint {
-  color: #64748b;
+  color: var(--muted);
   font-size: 0.9rem;
   margin: 0;
 }
@@ -257,14 +257,14 @@ defineExpose({
 }
 
 .feedback.error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+  color: var(--danger);
 }
 
 .feedback.info {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  color: #075985;
+  background: var(--secondary-soft);
+  border: 1px solid color-mix(in srgb, var(--color-secondary) 28%, transparent);
+  color: var(--color-secondary);
 }
 </style>

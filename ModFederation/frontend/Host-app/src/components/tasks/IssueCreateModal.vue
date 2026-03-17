@@ -439,12 +439,20 @@ async function submitIssue() {
 }
 
 function labelChipStyle(label) {
-  const color = typeof label?.color === 'string' && label.color.trim() !== '' ? `#${label.color.trim()}` : '#0f766e'
+  if (typeof label?.color === 'string' && label.color.trim() !== '') {
+    const color = `#${label.color.trim()}`
+
+    return {
+      borderColor: color,
+      background: `${color}18`,
+      color,
+    }
+  }
 
   return {
-    borderColor: color,
-    background: `${color}18`,
-    color,
+    borderColor: 'var(--color-primary)',
+    background: 'color-mix(in srgb, var(--color-primary) 14%, transparent)',
+    color: 'var(--color-primary)',
   }
 }
 
@@ -478,7 +486,7 @@ function extractHttpMessage(error, fallback) {
 
 <template>
   <div class="fixed inset-0 z-50 bg-slate-950/55 px-4 py-6 backdrop-blur-sm" @click.self="$emit('close')">
-    <div class="mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-[linear-gradient(155deg,#ffffff_0%,#f8fafc_48%,#ecfeff_100%)] shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+    <div class="themed-modal-surface mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Nova issue</p>

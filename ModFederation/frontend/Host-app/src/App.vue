@@ -2,11 +2,21 @@
 import axios from 'axios'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppFooter from './components/layout/AppFooter.vue'
+import AppNotification from './components/layout/AppNotification.vue'
 import MenuSidebar from './components/layout/MenuSidebar.vue'
 import DashboardScreen from './components/screens/DashboardScreen.vue'
 import ProfileScreen from './components/screens/ProfileScreen.vue'
 import TasksScreen from './components/screens/TasksScreen.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
+import {
+  APP_THEME_OPTIONS,
+  DEFAULT_APP_THEME_KEY,
+  applyThemeToDocument,
+  getThemeDefinition,
+  normalizeThemeKey,
+  readStoredThemeKey,
+  writeStoredThemeKey,
+} from './theme'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/OctoFlow/api').replace(/\/$/, '')
 const DEFAULT_CSRF_HEADER_NAME = 'X-CSRF-Token'
@@ -92,9 +102,9 @@ const csrfActionHeaderName = ref(DEFAULT_CSRF_ACTION_HEADER_NAME)
 const currentUser = ref(null)
 const loginLoading = ref(false)
 const actionLoading = ref(false)
-const authError = ref('')
-const googleError = ref('')
-const statusMessage = ref('')
+const notification = ref(null)
+const activeThemeKey = ref(DEFAULT_APP_THEME_KEY)
+const availableThemes = APP_THEME_OPTIONS
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 const activeViewConfig = computed(() => navigationItems.find((item) => item.key === activeView.value) || navigationItems[0])
@@ -103,6 +113,7 @@ const effectiveSidebarCollapsed = computed(() => !isCompactViewport.value && sid
 
 let viewportMediaQuery = null
 let removeViewportListener = null
+let notificationSeed = 0
 
 onMounted(async () => {
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
@@ -134,7 +145,6 @@ onBeforeUnmount(() => {
 watch(isAuthenticated, (authenticated) => {
   if (!authenticated) {
     activeView.value = 'dashboard'
-    googleError.value = ''
   }
 })
 
@@ -142,11 +152,22 @@ watch(sidebarCollapsed, (collapsed) => {
   window.localStorage.setItem('host.sidebar.collapsed', collapsed ? '1' : '0')
 })
 
+watch(
+  () => [
+    currentUser.value?.id ?? '',
+    currentUser.value?.defaultEmail ?? '',
+    currentUser.value?.email ?? '',
+  ].join('|'),
+  () => {
+    syncThemeFromStorage(currentUser.value)
+  },
+  {
+    immediate: true,
+  },
+)
+
 async function handleLogin() {
   loginLoading.value = true
-  authError.value = ''
-  googleError.value = ''
-  statusMessage.value = ''
 
   try {
     const { data } = await requestWithCsrf({
@@ -168,9 +189,9 @@ async function handleLogin() {
 
     loginForm.password = ''
     activeView.value = 'dashboard'
-    statusMessage.value = 'Login realizado com sucesso.'
+    showNotification('Login realizado com sucesso.', 'success')
   } catch (error) {
-    authError.value = extractHttpMessage(error, 'Falha no login.')
+    showNotification(extractHttpMessage(error, 'Falha no login.'), 'error')
   } finally {
     loginLoading.value = false
   }
@@ -179,9 +200,6 @@ async function handleLogin() {
 async function handleGoogleCredential(credential) {
   const wasLoading = loginLoading.value
   loginLoading.value = true
-  authError.value = ''
-  googleError.value = ''
-  statusMessage.value = ''
 
   try {
     const { data } = await requestWithCsrf({
@@ -200,16 +218,16 @@ async function handleGoogleCredential(credential) {
 
     activeView.value = 'dashboard'
     loginForm.password = ''
-    statusMessage.value = 'Login com Google realizado com sucesso.'
+    showNotification('Login com Google realizado com sucesso.', 'success')
   } catch (error) {
-    googleError.value = extractHttpMessage(error, 'Falha no login com Google.')
+    showNotification(extractHttpMessage(error, 'Falha no login com Google.'), 'error')
   } finally {
     loginLoading.value = wasLoading
   }
 }
 
 function handleGoogleLoginError(error) {
-  googleError.value = error
+  showNotification(error, 'error')
 }
 
 async function loadCurrentUser(canRetry = true) {
@@ -274,9 +292,7 @@ async function logout() {
     })
   } finally {
     clearAuth()
-    authError.value = ''
-    googleError.value = ''
-    statusMessage.value = 'Sessao encerrada com sucesso.'
+    showNotification('Sessao encerrada com sucesso.', 'success')
     actionLoading.value = false
   }
 }
@@ -287,7 +303,6 @@ function navigateTo(viewKey) {
   }
 
   activeView.value = viewKey
-  statusMessage.value = ''
 }
 
 function toggleSidebar() {
@@ -491,10 +506,58 @@ function clearAuth() {
   setAccessToken('')
   currentUser.value = null
 }
+
+function syncThemeFromStorage(user = currentUser.value) {
+  const nextThemeKey = readStoredThemeKey(user)
+  activeThemeKey.value = nextThemeKey
+  applyThemeToDocument(nextThemeKey)
+}
+
+function setAppTheme(themeKey, options = {}) {
+  const normalizedThemeKey = normalizeThemeKey(themeKey)
+
+  activeThemeKey.value = normalizedThemeKey
+  applyThemeToDocument(normalizedThemeKey)
+  writeStoredThemeKey(currentUser.value, normalizedThemeKey)
+
+  if (options.notify === false) {
+    return
+  }
+
+  showNotification(`Tema ${getThemeDefinition(normalizedThemeKey).label} aplicado.`, 'success')
+}
+
+function showNotification(payload, type = 'info') {
+  const message = typeof payload === 'string'
+    ? payload.trim()
+    : typeof payload?.message === 'string'
+      ? payload.message.trim()
+      : ''
+
+  if (message === '') {
+    return
+  }
+
+  const notificationType = typeof payload?.type === 'string' && payload.type.trim() !== ''
+    ? payload.type.trim()
+    : type
+
+  notification.value = {
+    id: ++notificationSeed,
+    message,
+    type: notificationType,
+  }
+}
+
+function clearNotification() {
+  notification.value = null
+}
 </script>
 
 <template>
   <div class="app-shell" :class="{ collapsed: effectiveSidebarCollapsed, compact: isCompactViewport }">
+    <AppNotification :notification="notification" @close="clearNotification" />
+
     <MenuSidebar
       :items="navigationItems"
       :active-key="activeView"
@@ -584,10 +647,6 @@ function clearAuth() {
                 @error="handleGoogleLoginError"
               />
             </form>
-
-            <p v-if="authError" class="feedback-banner error">{{ authError }}</p>
-            <p v-if="googleError" class="feedback-banner error">{{ googleError }}</p>
-            <p v-if="statusMessage" class="feedback-banner success">{{ statusMessage }}</p>
           </article>
         </section>
 
@@ -595,6 +654,7 @@ function clearAuth() {
           v-else-if="activeView === 'dashboard'"
           :request="authRequest"
           :current-user="currentUser"
+          :notify="showNotification"
           :summary-component="RemoteGithubWorkspaceSummaryCard"
           :composer-component="RemoteGithubIssueComposerPanel"
           :projects-component="RemoteGithubProjectsCard"
@@ -605,6 +665,7 @@ function clearAuth() {
           v-else-if="activeView === 'tasks'"
           :request="authRequest"
           :current-user="currentUser"
+          :notify="showNotification"
         />
 
         <ProfileScreen
@@ -612,6 +673,10 @@ function clearAuth() {
           :request="authRequest"
           :api-client="apiClient"
           :current-user="currentUser"
+          :active-theme-key="activeThemeKey"
+          :available-themes="availableThemes"
+          :notify="showNotification"
+          :set-theme="setAppTheme"
           @session-updated="handleSessionUpdated"
         />
       </main>

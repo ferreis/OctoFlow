@@ -53,12 +53,12 @@ function navigate(key) {
 
 <template>
   <aside
-    class="sticky top-0 flex h-screen max-h-screen min-w-0 flex-col gap-4 self-start overflow-hidden border-r border-white/10 bg-slate-950/90 text-slate-100 backdrop-blur"
+    class="sticky top-0 flex h-screen max-h-screen min-w-0 flex-col gap-4 self-start overflow-hidden border-r border-white/10 bg-slate-950/90 text-[var(--nav-text)] backdrop-blur"
     :class="props.collapsed ? 'px-2 py-4 lg:px-2.5' : 'px-3 py-4 lg:px-4'"
   >
     <div class="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
       <div class="min-w-0">
-        <h1 class="truncate text-xl font-semibold text-white">
+        <h1 class="truncate text-xl font-semibold text-[var(--nav-text)]">
           {{ props.collapsed ? 'OF' : 'OctoFlow' }}
         </h1>
       </div>
@@ -66,7 +66,7 @@ function navigate(key) {
       <button
         v-if="props.collapsible"
         type="button"
-        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs font-black text-cyan-100 transition hover:bg-white/15"
+        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs font-black text-[var(--nav-muted)] transition hover:bg-white/15"
         :title="props.collapsed ? 'Abrir menu' : 'Recolher menu'"
         @click="$emit('toggle-collapse')"
       >
@@ -95,13 +95,13 @@ function navigate(key) {
           ]"
           @click="navigate(item.key)"
         >
-          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xs font-black tracking-wide text-slate-100">
+          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xs font-black tracking-wide text-[var(--nav-text)]">
             {{ item.short }}
           </span>
 
           <span v-if="!props.collapsed" class="grid min-w-0 gap-1">
-            <strong class="truncate text-base font-semibold text-white">{{ item.label }}</strong>
-            <small class="line-clamp-2 text-xs leading-5 text-slate-300">{{ item.description }}</small>
+            <strong class="truncate text-base font-semibold text-[var(--nav-text)]">{{ item.label }}</strong>
+            <small class="line-clamp-2 text-xs leading-5 text-[var(--nav-muted)]">{{ item.description }}</small>
           </span>
         </button>
       </nav>
@@ -111,19 +111,19 @@ function navigate(key) {
         :class="props.collapsed ? 'justify-items-center' : ''"
       >
         <div class="flex min-w-0 items-center gap-3" :class="props.collapsed ? 'justify-center' : ''">
-          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/12 text-sm font-black text-cyan-50">
+          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/12 text-sm font-black text-[var(--nav-text)]">
             {{ userInitial }}
           </span>
 
           <div v-if="!props.collapsed" class="min-w-0">
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200/70">Sessao</p>
-            <strong class="block overflow-hidden text-ellipsis text-sm font-semibold text-white break-all">
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--nav-muted)]">Sessao</p>
+            <strong class="block overflow-hidden text-ellipsis text-sm font-semibold text-[var(--nav-text)] break-all">
               {{ userLabel }}
             </strong>
           </div>
         </div>
 
-        <p v-if="!props.collapsed" class="text-sm leading-6 text-slate-300">
+        <p v-if="!props.collapsed" class="text-sm leading-6 text-[var(--nav-muted)]">
           {{ props.authenticated ? 'Use o menu para navegar entre Dashboard, Tarefas e Perfil.' : 'Faca login para liberar todas as areas.' }}
         </p>
 

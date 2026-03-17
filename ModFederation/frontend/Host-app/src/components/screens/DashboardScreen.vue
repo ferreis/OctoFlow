@@ -7,6 +7,10 @@ const props = defineProps({
     type: Function,
     required: true,
   },
+  notify: {
+    type: Function,
+    default: null,
+  },
   currentUser: {
     type: Object,
     default: null,
@@ -36,6 +40,19 @@ const syncing = ref(false)
 const error = ref('')
 const status = ref('')
 const activeTab = ref('tasks')
+
+function notifyUser(message, type = 'info') {
+  const normalizedMessage = String(message || '').trim()
+
+  if (normalizedMessage === '' || typeof props.notify !== 'function') {
+    return
+  }
+
+  props.notify({
+    message: normalizedMessage,
+    type,
+  })
+}
 
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
 const repositoryLabel = computed(() => {
@@ -231,6 +248,24 @@ watch(
     }
   },
 )
+
+watch(error, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'error')
+  error.value = ''
+})
+
+watch(status, (message) => {
+  if (!message) {
+    return
+  }
+
+  notifyUser(message, 'info')
+  status.value = ''
+})
 
 async function loadDashboardContext(showStatus = false) {
   if (!props.currentUser?.id) {
@@ -517,25 +552,11 @@ function extractHttpMessage(error, fallback) {
 
 <template>
   <section class="grid gap-5">
-    <article class="rounded-[28px] border border-white/60 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_44%,#ecfeff_100%)] p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+    <article class="themed-hero-surface rounded-[28px] border border-white/60 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
       <div class="min-w-0">
         <h2 class="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Dashboard</h2>
       </div>
     </article>
-
-    <p
-      v-if="status"
-      class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"
-    >
-      {{ status }}
-    </p>
-
-    <p
-      v-if="error"
-      class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
-    >
-      {{ error }}
-    </p>
 
     <article class="grid gap-6 rounded-[28px] border border-white/60 bg-white/80 p-5 md:p-6 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
       <div class="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
@@ -564,9 +585,9 @@ function extractHttpMessage(error, fallback) {
 
         <div class="flex items-center justify-start md:justify-end">
           <button type="button"
-            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-600 shadow-lg transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="loading || syncing" title="Atualizar analises" @click="loadDashboardContext(true)">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-2.64-6.36" />
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 3v6h-6" />
@@ -828,7 +849,7 @@ function extractHttpMessage(error, fallback) {
 
       <article
         v-else
-        class="grid gap-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_52%,#fff7ed_100%)] p-6"
+        class="themed-soft-surface grid gap-4 rounded-[24px] border border-slate-200 p-6"
       >
         <div>
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Financeiro</p>

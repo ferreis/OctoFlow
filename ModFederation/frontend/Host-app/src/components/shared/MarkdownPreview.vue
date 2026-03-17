@@ -45,13 +45,13 @@ function escapeHtml(value) {
 
 <style scoped>
 .markdown-preview {
-  color: #0f172a;
+  color: var(--ink);
   line-height: 1.75;
   word-break: break-word;
 }
 
 .markdown-preview :deep(.markdown-empty) {
-  color: #64748b;
+  color: var(--muted);
   margin: 0;
 }
 
@@ -61,7 +61,7 @@ function escapeHtml(value) {
 .markdown-preview :deep(h4),
 .markdown-preview :deep(h5),
 .markdown-preview :deep(h6) {
-  color: #020617;
+  color: var(--ink);
   font-weight: 700;
   line-height: 1.3;
   margin: 1.3em 0 0.45em;
@@ -98,26 +98,26 @@ function escapeHtml(value) {
 }
 
 .markdown-preview :deep(blockquote) {
-  background: #f8fafc;
-  border-left: 4px solid #22c55e;
+  background: var(--surface-muted);
+  border-left: 4px solid var(--color-secondary);
   border-radius: 0 16px 16px 0;
-  color: #334155;
+  color: var(--muted);
   margin-left: 0;
   padding: 0.85rem 1rem;
 }
 
 .markdown-preview :deep(code) {
-  background: rgba(15, 23, 42, 0.08);
+  background: var(--markdown-code-bg);
   border-radius: 0.4rem;
-  color: #0f172a;
+  color: var(--ink);
   font-size: 0.92em;
   padding: 0.12rem 0.35rem;
 }
 
 .markdown-preview :deep(pre) {
-  background: #0f172a;
+  background: var(--markdown-pre-bg);
   border-radius: 1rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   overflow-x: auto;
   padding: 1rem;
 }
@@ -129,14 +129,14 @@ function escapeHtml(value) {
 }
 
 .markdown-preview :deep(a) {
-  color: #0369a1;
+  color: var(--color-secondary);
   font-weight: 600;
   text-decoration: underline;
 }
 
 .markdown-preview :deep(hr) {
   border: 0;
-  border-top: 1px solid #cbd5e1;
+  border-top: 1px solid var(--line);
   margin: 1.25rem 0;
 }
 
@@ -147,17 +147,17 @@ function escapeHtml(value) {
 
 .markdown-preview :deep(th),
 .markdown-preview :deep(td) {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--line);
   padding: 0.6rem 0.75rem;
   text-align: left;
 }
 
 .markdown-preview :deep(th) {
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .markdown-preview :deep(input[type='checkbox']) {
-  accent-color: #0891b2;
+  accent-color: var(--color-secondary);
   margin-right: 0.45rem;
   pointer-events: none;
 }

@@ -160,7 +160,7 @@ function extractHttpMessage(error, fallback) {
 
 <template>
   <div class="fixed inset-0 z-50 bg-slate-950/55 px-4 py-6 backdrop-blur-sm" @click.self="$emit('close')">
-    <div class="mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-[linear-gradient(155deg,#ffffff_0%,#f8fafc_48%,#ecfeff_100%)] shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+    <div class="themed-modal-surface mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Issue selecionada</p>
