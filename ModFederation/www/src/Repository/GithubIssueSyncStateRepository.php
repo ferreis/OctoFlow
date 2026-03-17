@@ -10,7 +10,7 @@ use Doctrine\Persistence\ManagerRegistry;
 /**
  * @extends ServiceEntityRepository<GithubIssueSyncState>
  */
-final class GithubIssueSyncStateRepository extends ServiceEntityRepository
+class GithubIssueSyncStateRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
     {

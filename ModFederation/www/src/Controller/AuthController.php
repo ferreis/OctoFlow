@@ -285,9 +285,20 @@ class AuthController
     {
         $refreshToken = $request->cookies->get($this->refreshCookieName);
         $this->refreshTokenManager->revokeByPlainToken($refreshToken);
+        $sessionCookieName = null;
+
+        if ($request->hasSession()) {
+            $session = $request->getSession();
+            $sessionCookieName = $session->getName();
+            $session->invalidate();
+        }
 
         $response = new JsonResponse(['message' => 'Logged out successfully.']);
         $response->headers->setCookie($this->buildClearRefreshCookie());
+
+        if (is_string($sessionCookieName) && trim($sessionCookieName) !== '') {
+            $response->headers->setCookie($this->buildClearSessionCookie($sessionCookieName));
+        }
 
         return $response;
     }
@@ -331,6 +342,17 @@ class AuthController
     private function buildClearRefreshCookie(): Cookie
     {
         return Cookie::create($this->refreshCookieName)
+            ->withValue('')
+            ->withPath('/')
+            ->withExpires(new \DateTimeImmutable('-1 day'))
+            ->withHttpOnly(true)
+            ->withSecure($this->refreshCookieSecure)
+            ->withSameSite($this->resolveSameSite($this->refreshCookieSameSite));
+    }
+
+    private function buildClearSessionCookie(string $cookieName): Cookie
+    {
+        return Cookie::create(trim($cookieName))
             ->withValue('')
             ->withPath('/')
             ->withExpires(new \DateTimeImmutable('-1 day'))

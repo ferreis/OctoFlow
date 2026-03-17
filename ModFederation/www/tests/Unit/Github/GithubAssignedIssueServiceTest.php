@@ -4,9 +4,10 @@ namespace App\Tests\Unit\Github;
 
 use App\Entity\User;
 use App\Github\GithubAssignedIssueService;
-use App\Github\GithubIssueCacheService;
 use App\Github\GithubGraphQLClientInterface;
+use App\Github\GithubIssueCacheService;
 use App\Github\GithubProfileService;
+use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -17,20 +18,33 @@ final class GithubAssignedIssueServiceTest extends TestCase
     private GithubGraphQLClientInterface&MockObject $graphqlClient;
     private GithubIssueCacheService&MockObject $cacheService;
     private GithubProfileService $profileService;
+    private GithubRegistryService&MockObject $registryService;
 
     protected function setUp(): void
     {
         $this->graphqlClient = $this->createMock(GithubGraphQLClientInterface::class);
         $this->cacheService = $this->createMock(GithubIssueCacheService::class);
+        $this->registryService = $this->createMock(GithubRegistryService::class);
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
-            new GithubTokenCipher('test-app-secret')
+            new GithubTokenCipher('test-app-secret'),
+            $this->registryService
         );
     }
 
-    public function testFetchIssuesAggregatesAllRepositoriesByDefault(): void
+    public function testFetchIssuesAggregatesAllRegisteredRepositoriesByDefault(): void
     {
         $call = 0;
+        $registeredRepositories = [
+            $this->buildRegisteredRepository('acme', 'alpha'),
+            $this->buildRegisteredRepository('acme', 'beta'),
+        ];
+
+        $this->registryService
+            ->expects($this->once())
+            ->method('buildCatalog')
+            ->with($this->isInstanceOf(User::class), false)
+            ->willReturn($registeredRepositories);
 
         $this->graphqlClient
             ->expects($this->exactly(3))
@@ -40,42 +54,11 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 $this->assertSame('ghp_test_token', $token);
 
                 if ($call === 1) {
-                    $this->assertArrayHasKey('after', $variables);
-                    $this->assertNull($variables['after']);
+                    $this->assertSame([], $variables);
 
                     return [
                         'viewer' => [
                             'login' => 'octocat',
-                            'repositories' => [
-                                'nodes' => [
-                                    [
-                                        'id' => 'repo-1',
-                                        'name' => 'alpha',
-                                        'nameWithOwner' => 'acme/alpha',
-                                        'description' => 'Alpha backlog',
-                                        'url' => 'https://github.com/acme/alpha',
-                                        'isPrivate' => false,
-                                        'owner' => [
-                                            'login' => 'acme',
-                                        ],
-                                    ],
-                                    [
-                                        'id' => 'repo-2',
-                                        'name' => 'beta',
-                                        'nameWithOwner' => 'acme/beta',
-                                        'description' => 'Beta backlog',
-                                        'url' => 'https://github.com/acme/beta',
-                                        'isPrivate' => true,
-                                        'owner' => [
-                                            'login' => 'acme',
-                                        ],
-                                    ],
-                                ],
-                                'pageInfo' => [
-                                    'hasNextPage' => false,
-                                    'endCursor' => null,
-                                ],
-                            ],
                         ],
                     ];
                 }
@@ -83,6 +66,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 if ($call === 2) {
                     $this->assertSame('acme', $variables['owner']);
                     $this->assertSame('alpha', $variables['name']);
+                    $this->assertArrayHasKey('after', $variables);
+                    $this->assertNull($variables['after']);
 
                     return [
                         'repository' => [
@@ -134,6 +119,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
 
                 $this->assertSame('acme', $variables['owner']);
                 $this->assertSame('beta', $variables['name']);
+                $this->assertArrayHasKey('after', $variables);
+                $this->assertNull($variables['after']);
 
                 return [
                     'repository' => [
@@ -196,7 +183,6 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 'all',
                 $this->callback(static fn (array $items): bool => count($items) === 2),
                 'octocat',
-                $this->callback(static fn (array $repositories): bool => count($repositories) === 2),
                 null,
                 null,
             );
@@ -224,7 +210,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
         $service = new GithubAssignedIssueService(
             $this->profileService,
             $this->graphqlClient,
-            $this->cacheService
+            $this->cacheService,
+            $this->registryService
         );
 
         $issuesBoard = $service->fetchIssues($this->buildTokenOnlyUser());
@@ -246,5 +233,20 @@ final class GithubAssignedIssueServiceTest extends TestCase
             ->setEmail('owner@example.com')
             ->setPassword('not-used')
             ->setGithubTokenEncrypted($cipher->encrypt('ghp_test_token'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildRegisteredRepository(string $ownerLogin, string $name): array
+    {
+        return [
+            'id' => sprintf('%s-%s', $ownerLogin, $name),
+            'ownerLogin' => $ownerLogin,
+            'name' => $name,
+            'nameWithOwner' => sprintf('%s/%s', $ownerLogin, $name),
+            'url' => sprintf('https://github.com/%s/%s', $ownerLogin, $name),
+            'isIgnored' => false,
+        ];
     }
 }

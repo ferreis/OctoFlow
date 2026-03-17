@@ -9,6 +9,7 @@ use App\Github\GithubIssueCacheService;
 use App\Github\GithubIssueService;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubProfileService;
+use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
 use App\Github\GithubWorkspaceService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -22,6 +23,7 @@ final class GithubIssueServiceTest extends TestCase
     private GithubIssueBodyRenderer $renderer;
     private GithubProfileService $profileService;
     private GithubIssueCacheService&MockObject $cacheService;
+    private GithubRegistryService&MockObject $registryService;
 
     protected function setUp(): void
     {
@@ -29,9 +31,18 @@ final class GithubIssueServiceTest extends TestCase
         $this->templateCatalog = new GithubIssueTemplateCatalog();
         $this->renderer = new GithubIssueBodyRenderer();
         $this->cacheService = $this->createMock(GithubIssueCacheService::class);
+        $this->registryService = $this->createMock(GithubRegistryService::class);
+        $this->registryService
+            ->method('buildCatalog')
+            ->willReturn([$this->buildRegisteredRepository()]);
+        $this->registryService
+            ->method('resolveDefaultRepository')
+            ->willReturn($this->buildRegisteredRepository());
+
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
-            new GithubTokenCipher('test-app-secret')
+            new GithubTokenCipher('test-app-secret'),
+            $this->registryService
         );
     }
 
@@ -216,6 +227,8 @@ final class GithubIssueServiceTest extends TestCase
         $result = $service->createIssue($this->buildConfiguredUser(), [
             'template' => 'feature-request',
             'title' => 'Entregar workspace GitHub',
+            'repositoryOwner' => 'acme',
+            'repositoryName' => 'delivery-desk',
             'fields' => [
                 'problem' => 'Hoje o backlog vive fora da aplicacao.',
                 'proposal' => 'Criar um painel com templates e preview.',
@@ -245,7 +258,21 @@ final class GithubIssueServiceTest extends TestCase
             ->setEmail('owner@example.com')
             ->setPassword('not-used')
             ->setGithubRepositoryOwner('acme')
-            ->setGithubRepositoryName('delivery-desk')
             ->setGithubTokenEncrypted($cipher->encrypt('ghp_test_token'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildRegisteredRepository(): array
+    {
+        return [
+            'id' => 10,
+            'ownerLogin' => 'acme',
+            'name' => 'delivery-desk',
+            'nameWithOwner' => 'acme/delivery-desk',
+            'url' => 'https://github.com/acme/delivery-desk',
+            'isIgnored' => false,
+        ];
     }
 }

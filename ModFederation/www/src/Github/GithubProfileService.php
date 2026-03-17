@@ -11,6 +11,7 @@ final class GithubProfileService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly GithubTokenCipher $tokenCipher,
+        private readonly GithubRegistryService $registryService,
     ) {
     }
 
@@ -19,11 +20,19 @@ final class GithubProfileService
      */
     public function buildProfilePayload(User $user): array
     {
+        $repositories = $this->registryService->buildCatalog($user);
+        $defaultRepository = $this->registryService->resolveDefaultRepository(
+            $user,
+            trim((string) $user->getGithubRepositoryOwner()),
+        );
+
         return [
             'repositoryOwner' => $user->getGithubRepositoryOwner(),
-            'repositoryName' => $user->getGithubRepositoryName(),
+            'repositoryName' => $defaultRepository['name'] ?? null,
+            'defaultRepositoryKey' => $defaultRepository['nameWithOwner'] ?? null,
+            'repositories' => $repositories,
             'tokenConfigured' => $user->hasGithubTokenConfigured(),
-            'workspaceReady' => $user->hasGithubWorkspaceConfiguration(),
+            'workspaceReady' => $user->hasGithubTokenConfigured() && $defaultRepository !== null,
         ];
     }
 
@@ -35,17 +44,11 @@ final class GithubProfileService
     public function updateProfile(User $user, array $payload): array
     {
         $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
-        $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
         $token = trim((string) ($payload['token'] ?? ''));
         $clearToken = (bool) ($payload['clearToken'] ?? false);
 
-        if ($repositoryOwner === '' || $repositoryName === '') {
-            throw new \InvalidArgumentException('Repository owner and repository name are required.');
-        }
-
         $user
-            ->setGithubRepositoryOwner($repositoryOwner)
-            ->setGithubRepositoryName($repositoryName);
+            ->setGithubRepositoryOwner($repositoryOwner !== '' ? $repositoryOwner : null);
 
         if ($token !== '') {
             $user->setGithubTokenEncrypted($this->tokenCipher->encrypt($token));
@@ -62,11 +65,42 @@ final class GithubProfileService
 
     public function buildRuntimeConfiguration(User $user, ?string $repositoryOwner = null, ?string $repositoryName = null): GithubRuntimeConfiguration
     {
-        $resolvedRepositoryOwner = trim($repositoryOwner ?? (string) $user->getGithubRepositoryOwner());
-        $resolvedRepositoryName = trim($repositoryName ?? (string) $user->getGithubRepositoryName());
+        $resolvedRepositoryOwner = trim((string) $repositoryOwner);
+        $resolvedRepositoryName = trim((string) $repositoryName);
 
         if ($resolvedRepositoryOwner === '' || $resolvedRepositoryName === '') {
-            throw new GithubConfigurationException('Configure the GitHub repository owner and repository name in your profile before using the GitHub workspace.');
+            $defaultRepository = $this->registryService->resolveDefaultRepository(
+                $user,
+                $resolvedRepositoryOwner !== '' ? $resolvedRepositoryOwner : trim((string) $user->getGithubRepositoryOwner()),
+            );
+
+            if ($defaultRepository !== null) {
+                $resolvedRepositoryOwner = $defaultRepository['ownerLogin'] ?? '';
+                $resolvedRepositoryName = $defaultRepository['name'] ?? '';
+            }
+        }
+
+        if ($resolvedRepositoryOwner === '' || $resolvedRepositoryName === '') {
+            throw new GithubConfigurationException('Register at least one GitHub repository in your profile before using the GitHub workspace.');
+        }
+
+        $repositoryKey = sprintf('%s/%s', $resolvedRepositoryOwner, $resolvedRepositoryName);
+        $registeredRepositories = $this->registryService->buildCatalog($user);
+        $selectedRepository = null;
+
+        foreach ($registeredRepositories as $repository) {
+            if (($repository['nameWithOwner'] ?? null) === $repositoryKey) {
+                $selectedRepository = $repository;
+                break;
+            }
+        }
+
+        if ($selectedRepository === null) {
+            throw new GithubConfigurationException('Register the selected GitHub repository in your profile before using the GitHub workspace.');
+        }
+
+        if ((bool) ($selectedRepository['isIgnored'] ?? false)) {
+            throw new GithubConfigurationException('The selected repository is ignored in this account.');
         }
 
         return new GithubRuntimeConfiguration(

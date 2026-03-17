@@ -47,9 +47,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 191, nullable: true)]
     private ?string $githubRepositoryOwner = null;
 
-    #[ORM\Column(length: 191, nullable: true)]
-    private ?string $githubRepositoryName = null;
-
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $githubTokenEncrypted = null;
 
@@ -87,6 +84,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: UserEmail::class, mappedBy: 'user', orphanRemoval: true, cascade: ['persist'])]
     private Collection $emailAddresses;
 
+    /**
+     * @var Collection<int, Github>
+     */
+    #[ORM\OneToMany(targetEntity: Github::class, mappedBy: 'owner', orphanRemoval: true, cascade: ['persist', 'remove'])]
+    private Collection $githubRepositories;
+
+    #[ORM\OneToOne(mappedBy: 'user', targetEntity: UISettings::class, cascade: ['persist', 'remove'], orphanRemoval: true)]
+    private ?UISettings $uiSettings = null;
+
     public function __construct()
     {
         $now = new \DateTimeImmutable();
@@ -94,6 +100,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->updatedAt = $now;
         $this->refreshTokens = new ArrayCollection();
         $this->emailAddresses = new ArrayCollection();
+        $this->githubRepositories = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -142,20 +149,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-    public function getGithubRepositoryName(): ?string
-    {
-        return $this->githubRepositoryName;
-    }
-
-    public function setGithubRepositoryName(?string $githubRepositoryName): self
-    {
-        $normalized = $githubRepositoryName === null ? null : trim($githubRepositoryName);
-        $this->githubRepositoryName = $normalized === '' ? null : $normalized;
-        $this->touch();
-
-        return $this;
-    }
-
     public function getGithubTokenEncrypted(): ?string
     {
         return $this->githubTokenEncrypted;
@@ -177,11 +170,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function hasGithubWorkspaceConfiguration(): bool
     {
-        return $this->hasGithubTokenConfigured()
-            && $this->githubRepositoryOwner !== null
-            && $this->githubRepositoryOwner !== ''
-            && $this->githubRepositoryName !== null
-            && $this->githubRepositoryName !== '';
+        return $this->hasGithubTokenConfigured();
     }
 
     /**
@@ -278,6 +267,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this->refreshTokens;
     }
 
+    /**
+     * @return Collection<int, Github>
+     */
+    public function getGithubRepositories(): Collection
+    {
+        return $this->githubRepositories;
+    }
+
+    public function addGithubRepository(Github $githubRepository): self
+    {
+        if (!$this->githubRepositories->contains($githubRepository)) {
+            $this->githubRepositories->add($githubRepository);
+        }
+
+        if ($githubRepository->getOwner() !== $this) {
+            $githubRepository->setOwner($this);
+        }
+
+        return $this;
+    }
+
+    public function removeGithubRepository(Github $githubRepository): self
+    {
+        if ($this->githubRepositories->removeElement($githubRepository) && $githubRepository->getOwner() === $this) {
+            $githubRepository->setOwner(null);
+        }
+
+        return $this;
+    }
+
     public function addRefreshToken(RefreshToken $refreshToken): self
     {
         if (!$this->refreshTokens->contains($refreshToken)) {
@@ -319,6 +338,22 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         if ($this->emailAddresses->removeElement($emailAddress) && $emailAddress->getUser() === $this) {
             $emailAddress->setUser(null);
+        }
+
+        return $this;
+    }
+
+    public function getUiSettings(): ?UISettings
+    {
+        return $this->uiSettings;
+    }
+
+    public function setUiSettings(?UISettings $uiSettings): self
+    {
+        $this->uiSettings = $uiSettings;
+
+        if ($uiSettings !== null && $uiSettings->getUser() !== $this) {
+            $uiSettings->setUser($this);
         }
 
         return $this;

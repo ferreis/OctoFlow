@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Account\Exception\UserEmailConflictException;
+use App\Entity\Github;
 use App\Account\UserPayloadBuilder;
 use App\Entity\User;
 use App\Github\Exception\GithubApiException;
@@ -10,6 +11,7 @@ use App\Github\Exception\GithubConfigurationException;
 use App\Github\Exception\GithubGraphQLException;
 use App\Github\GithubAssignedIssueService;
 use App\Github\GithubLinkedEmailService;
+use App\Github\GithubRegistryService;
 use App\Github\GithubIssueService;
 use App\Github\GithubProfileService;
 use App\Github\GithubWorkspaceService;
@@ -30,6 +32,7 @@ final class GithubController
         private readonly GithubIssueService $issueService,
         private readonly GithubAssignedIssueService $assignedIssueService,
         private readonly GithubProfileService $profileService,
+        private readonly GithubRegistryService $registryService,
         private readonly GithubLinkedEmailService $linkedEmailService,
         private readonly UserPayloadBuilder $userPayloadBuilder,
     ) {
@@ -63,6 +66,90 @@ final class GithubController
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
         } catch (GithubConfigurationException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
+        }
+    }
+
+    #[Route('/repositories', name: 'github_repository_list', methods: ['GET'])]
+    public function repositories(#[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        return new JsonResponse([
+            'items' => $this->registryService->buildCatalog($user),
+        ]);
+    }
+
+    #[Route('/repositories', name: 'github_repository_create', methods: ['POST'])]
+    public function createRepository(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $repository = $this->registryService->createRepository($user, $payload);
+
+            return new JsonResponse([
+                'item' => $this->registryService->buildPayload($repository),
+            ], JsonResponse::HTTP_CREATED);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
+    #[Route('/repositories/{id<\d+>}', name: 'github_repository_update', methods: ['PATCH', 'PUT'])]
+    public function updateRepository(int $id, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $repository = $this->registryService->findOwnedRepository($user, $id);
+        if (!$repository instanceof Github) {
+            return new JsonResponse(['message' => 'GitHub repository not found.'], JsonResponse::HTTP_NOT_FOUND);
+        }
+
+        try {
+            $updatedRepository = $this->registryService->updateRepository($user, $repository, $payload);
+
+            return new JsonResponse([
+                'item' => $this->registryService->buildPayload($updatedRepository),
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
+    #[Route('/repositories/{id<\d+>}', name: 'github_repository_delete', methods: ['DELETE'])]
+    public function deleteRepository(int $id, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $repository = $this->registryService->findOwnedRepository($user, $id);
+        if (!$repository instanceof Github) {
+            return new JsonResponse(['message' => 'GitHub repository not found.'], JsonResponse::HTTP_NOT_FOUND);
+        }
+
+        try {
+            $this->registryService->deleteRepository($user, $repository);
+
+            return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
         }
     }
 

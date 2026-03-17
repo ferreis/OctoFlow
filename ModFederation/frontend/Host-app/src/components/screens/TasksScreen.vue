@@ -85,11 +85,17 @@ const createModalOpen = ref(false)
 const editingIssueId = ref('')
 const selectedIssueId = ref('')
 const issueScope = ref('all')
-const stateFilter = ref('all')
+const stateFilter = ref('open')
 const searchTerm = ref('')
 const selectedLabel = ref('all')
 const selectedTicketType = ref('all')
 const selectedRepositoryKey = ref('all')
+const draftIssueScope = ref('all')
+const draftStateFilter = ref('open')
+const draftSearchTerm = ref('')
+const draftSelectedLabel = ref('all')
+const draftSelectedTicketType = ref('all')
+const draftSelectedRepositoryKey = ref('all')
 const currentPage = ref(1)
 const ITEMS_PER_PAGE = 10
 
@@ -304,6 +310,15 @@ watch(info, (message) => {
   info.value = ''
 })
 
+function syncDraftFilters() {
+  draftIssueScope.value = issueScope.value
+  draftStateFilter.value = stateFilter.value
+  draftSearchTerm.value = searchTerm.value
+  draftSelectedLabel.value = selectedLabel.value
+  draftSelectedTicketType.value = selectedTicketType.value
+  draftSelectedRepositoryKey.value = selectedRepositoryKey.value
+}
+
 async function loadCachedIssues(options = {}) {
   const resetSelection = Boolean(options.resetSelection)
   const syncStrategy = options.syncStrategy || 'auto'
@@ -429,22 +444,6 @@ function updateCacheInfo(data, syncStrategy) {
   info.value = `Listagem servida do banco local. Ultima sincronizacao: ${lastSyncedLabel.value}.`
 }
 
-function switchScope(scope) {
-  if (!['all', 'assigned', 'repository'].includes(scope)) {
-    return
-  }
-
-  issueScope.value = scope
-  success.value = ''
-  error.value = ''
-
-  if (scope === 'repository' && selectedRepositoryKey.value === 'all') {
-    selectedRepositoryKey.value = createRepositoryKey.value || 'all'
-  }
-
-  void loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
-}
-
 function openCreateModal() {
   createModalOpen.value = true
   success.value = ''
@@ -500,14 +499,33 @@ function mergeIssueIntoBoard(updatedIssue) {
 
 function resetFilters() {
   issueScope.value = 'all'
-  stateFilter.value = 'all'
+  stateFilter.value = 'open'
   searchTerm.value = ''
   selectedLabel.value = 'all'
   selectedTicketType.value = 'all'
   selectedRepositoryKey.value = 'all'
+  syncDraftFilters()
   success.value = ''
   error.value = ''
   void loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
+}
+
+async function applyFilters() {
+  const nextIssueScope = draftIssueScope.value
+  const scopeChanged = issueScope.value !== nextIssueScope
+
+  issueScope.value = nextIssueScope
+  stateFilter.value = draftStateFilter.value
+  searchTerm.value = draftSearchTerm.value
+  selectedLabel.value = draftSelectedLabel.value
+  selectedTicketType.value = draftSelectedTicketType.value
+  selectedRepositoryKey.value = draftSelectedRepositoryKey.value
+  success.value = ''
+  error.value = ''
+
+  if (scopeChanged) {
+    await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
+  }
 }
 
 function goToPage(page) {
@@ -688,40 +706,39 @@ function extractHttpMessage(error, fallback) {
         <div class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
           <p class="text-sm font-semibold text-slate-900">Escopo</p>
 
-          <div class="flex flex-wrap gap-2">
-            <button type="button"
-              class="inline-flex max-w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-              :class="issueScope === 'all' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              @click="switchScope('all')">
-              Todos os repositorios
-            </button>
+          <div class="flex flex-wrap gap-3">
+            <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+              <input
+                v-model="draftIssueScope"
+                type="radio"
+                class="h-4 w-4 accent-cyan-600"
+                value="all"
+              >
+              <span>Todas as issues</span>
+            </label>
 
-            <button type="button"
-              class="inline-flex max-w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-              :class="issueScope === 'assigned' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              @click="switchScope('assigned')">
-              Atribuidas a mim
-            </button>
-
-            <button type="button"
-              class="inline-flex max-w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
-              :class="issueScope === 'repository' ? 'border-cyan-300 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              @click="switchScope('repository')">
-              Repositorio especifico
-            </button>
+            <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+              <input
+                v-model="draftIssueScope"
+                type="radio"
+                class="h-4 w-4 accent-cyan-600"
+                value="assigned"
+              >
+              <span>Atribuidas a mim</span>
+            </label>
           </div>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label class="grid min-w-0 gap-2 xl:col-span-2">
             <span class="text-sm font-semibold text-slate-900">Buscar</span>
-            <input v-model="searchTerm" type="text" placeholder="Titulo, label, autor, repositorio..."
+            <input v-model="draftSearchTerm" type="text" placeholder="Titulo, label, autor, repositorio..."
               class="h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
           </label>
 
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Estado</span>
-            <select v-model="stateFilter"
+            <select v-model="draftStateFilter"
               class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
               <option value="all">Todos</option>
               <option value="open">Abertas</option>
@@ -731,7 +748,7 @@ function extractHttpMessage(error, fallback) {
 
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Repositorio</span>
-            <select v-model="selectedRepositoryKey"
+            <select v-model="draftSelectedRepositoryKey"
               class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
               <option value="all">Todos os repositorios</option>
               <option v-for="repository in repositories" :key="repository.nameWithOwner"
@@ -743,7 +760,7 @@ function extractHttpMessage(error, fallback) {
 
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Label</span>
-            <select v-model="selectedLabel"
+            <select v-model="draftSelectedLabel"
               class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
               <option value="all">Todas as labels</option>
               <option v-for="label in availableLabels" :key="label.id" :value="label.name">
@@ -754,7 +771,7 @@ function extractHttpMessage(error, fallback) {
 
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Tipo de chamado</span>
-            <select v-model="selectedTicketType"
+            <select v-model="draftSelectedTicketType"
               class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
               <option value="all">Todos os tipos</option>
               <option v-for="type in availableTicketTypes" :key="type.key" :value="type.key">
@@ -765,12 +782,14 @@ function extractHttpMessage(error, fallback) {
         </div>
 
         <div class="flex flex-wrap gap-2">
-          <button type="button"
+          <button
+            type="button"
             class="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-600 via-cyan-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/15 transition hover:brightness-105"
-            :disabled="syncing" @click="syncIssues({ announceRefresh: true })">
-            {{ syncing ? 'Sincronizando...' : 'Atualizar agora no GitHub' }}
+            :disabled="loadingCache"
+            @click="applyFilters"
+          >
+            Filtrar
           </button>
-
           <button type="button"
             class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             :disabled="loadingCache" @click="resetFilters">

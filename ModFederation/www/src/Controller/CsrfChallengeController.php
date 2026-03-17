@@ -60,15 +60,15 @@ final class CsrfChallengeController
             return false;
         }
 
-        if (preg_match('#^/tasks(?:/|$)#', $path) === 1) {
-            return true;
-        }
-
         if (preg_match('#^/api(?:/|$)#', $path) === 1) {
             return true;
         }
 
         if (preg_match('#^/github(?:/|$)#', $path) === 1) {
+            return true;
+        }
+
+        if (preg_match('#^/ui(?:/|$)#', $path) === 1) {
             return true;
         }
 

@@ -56,14 +56,18 @@ function notifyUser(message, type = 'info') {
 
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
 const repositoryLabel = computed(() => {
+  const repositories = Array.isArray(profile.value?.repositories) ? profile.value.repositories : []
   const owner = String(profile.value?.repositoryOwner || '').trim()
-  const name = String(profile.value?.repositoryName || '').trim()
 
-  if (owner !== '' && name !== '') {
-    return `${owner}/${name}`
+  if (repositories.length > 0) {
+    return `${repositories.length} repositorios cadastrados`
   }
 
-  return 'Repositorio nao configurado'
+  if (owner !== '') {
+    return `Owner padrao: ${owner}`
+  }
+
+  return 'Nenhum repositorio cadastrado'
 })
 const issues = computed(() => Array.isArray(issueBoard.value?.items) ? issueBoard.value.items : [])
 const repositories = computed(() => Array.isArray(issueBoard.value?.repositories) ? issueBoard.value.repositories : [])
@@ -607,17 +611,17 @@ function extractHttpMessage(error, fallback) {
         v-else-if="!workspaceReady"
         class="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
       >
-        <div>
-          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Perfil necessario</p>
-          <h3 class="mt-1 text-2xl font-semibold text-slate-950">Configure o GitHub antes de liberar as analises</h3>
-          <p class="mt-3 text-sm leading-7 text-slate-600">
-            Assim que owner, repositorio e token estiverem prontos, o dashboard passa a montar os graficos automaticamente.
-          </p>
-        </div>
+          <div>
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Perfil necessario</p>
+            <h3 class="mt-1 text-2xl font-semibold text-slate-950">Configure o GitHub antes de liberar as analises</h3>
+            <p class="mt-3 text-sm leading-7 text-slate-600">
+            Salve o token do GitHub e cadastre ao menos um repositorio para liberar as analises do dashboard.
+            </p>
+          </div>
 
         <div class="grid gap-3 sm:grid-cols-3">
           <div class="rounded-2xl border border-slate-200 bg-white p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Repositorio</span>
+            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Repositorios</span>
             <strong class="mt-2 block break-all text-sm font-semibold text-slate-950">{{ repositoryLabel }}</strong>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-4">

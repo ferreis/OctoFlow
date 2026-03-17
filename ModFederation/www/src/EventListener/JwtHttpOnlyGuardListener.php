@@ -73,7 +73,7 @@ final class JwtHttpOnlyGuardListener
             return false;
         }
 
-        return preg_match('#^/(auth|api|tasks|csrf)(?:/|$)#', $path) === 1;
+        return preg_match('#^/(auth|api|csrf|ui)(?:/|$)#', $path) === 1;
     }
 
     private function isPublicPath(string $path): bool

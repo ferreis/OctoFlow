@@ -13,9 +13,11 @@ import {
   DEFAULT_APP_THEME_KEY,
   applyThemeToDocument,
   getThemeDefinition,
+  hasUiSettingsLoadedInSession,
+  markUiSettingsLoadedInSession,
   normalizeThemeKey,
-  readStoredThemeKey,
-  writeStoredThemeKey,
+  readStoredUiSettings,
+  writeStoredUiSettings,
 } from './theme'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/OctoFlow/api').replace(/\/$/, '')
@@ -60,7 +62,7 @@ const RemoteGithubIssueComposerPanel = defineRemote(() => import('remoteApp/Gith
 const RemoteGithubProjectsCard = defineRemote(() => import('remoteApp/GithubProjectsCard'), 'GithubProjectsCard')
 
 const loginForm = reactive({
-  email: 'admin@example.com',
+  email: '',
   password: '',
 })
 const registerForm = reactive({
@@ -111,6 +113,9 @@ const loginLoading = ref(false)
 const actionLoading = ref(false)
 const notification = ref(null)
 const activeThemeKey = ref(DEFAULT_APP_THEME_KEY)
+const uiSettings = ref({
+  themeKey: DEFAULT_APP_THEME_KEY,
+})
 const availableThemes = APP_THEME_OPTIONS
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
@@ -121,6 +126,8 @@ const effectiveSidebarExpanded = computed(() => isCompactViewport.value || sideb
 let viewportMediaQuery = null
 let removeViewportListener = null
 let notificationSeed = 0
+let uiSettingsSyncKey = ''
+let uiSettingsSyncPromise = null
 
 onMounted(async () => {
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
@@ -166,7 +173,7 @@ watch(
     currentUser.value?.email ?? '',
   ].join('|'),
   () => {
-    syncThemeFromStorage(currentUser.value)
+    void syncUiSettingsForSession(currentUser.value)
   },
   {
     immediate: true,
@@ -339,6 +346,7 @@ async function logout() {
       csrfActionId: 'auth.logout',
     })
   } finally {
+    clearBrowserState()
     clearAuth()
     showNotification('Sessao encerrada com sucesso.', 'success')
     actionLoading.value = false
@@ -561,26 +569,207 @@ function setAccessToken(token) {
 function clearAuth() {
   setAccessToken('')
   currentUser.value = null
+  authMode.value = 'login'
+  loginForm.password = ''
+  registerForm.email = ''
+  registerForm.password = ''
+  registerForm.confirmPassword = ''
+  uiSettingsSyncKey = ''
+  uiSettingsSyncPromise = null
+  applyUiSettingsLocally({
+    themeKey: DEFAULT_APP_THEME_KEY,
+  })
 }
 
-function syncThemeFromStorage(user = currentUser.value) {
-  const nextThemeKey = readStoredThemeKey(user)
-  activeThemeKey.value = nextThemeKey
-  applyThemeToDocument(nextThemeKey)
+function normalizeUiSettings(settings = {}, baseSettings = uiSettings.value) {
+  const nextSettings = settings && typeof settings === 'object' ? settings : {}
+  const fallbackSettings = baseSettings && typeof baseSettings === 'object'
+    ? baseSettings
+    : {
+        themeKey: DEFAULT_APP_THEME_KEY,
+      }
+
+  return {
+    themeKey: normalizeThemeKey(nextSettings?.themeKey ?? fallbackSettings?.themeKey ?? DEFAULT_APP_THEME_KEY),
+  }
+}
+
+function applyUiSettingsLocally(settings = {}, baseSettings = uiSettings.value) {
+  const nextSettings = normalizeUiSettings(settings, baseSettings)
+  uiSettings.value = nextSettings
+  activeThemeKey.value = nextSettings.themeKey
+  applyThemeToDocument(nextSettings.themeKey)
+
+  return nextSettings
+}
+
+function applyCachedUiSettings(user = currentUser.value) {
+  const cachedSettings = readStoredUiSettings(user)
+
+  return applyUiSettingsLocally(
+    cachedSettings || {
+      themeKey: DEFAULT_APP_THEME_KEY,
+    },
+    {
+      themeKey: DEFAULT_APP_THEME_KEY,
+    },
+  )
+}
+
+async function syncUiSettingsForSession(user = currentUser.value, options = {}) {
+  if (!user) {
+    applyUiSettingsLocally({
+      themeKey: DEFAULT_APP_THEME_KEY,
+    })
+    return null
+  }
+
+  const cachedSettings = applyCachedUiSettings(user)
+  if (!options.forceServer && hasUiSettingsLoadedInSession(user)) {
+    return cachedSettings
+  }
+
+  const requestKey = String(user.id || user.email || '')
+  if (uiSettingsSyncPromise && uiSettingsSyncKey === requestKey) {
+    return uiSettingsSyncPromise
+  }
+
+  uiSettingsSyncKey = requestKey
+  uiSettingsSyncPromise = (async () => {
+    try {
+      const { data } = await authRequest({
+        url: '/ui/settings',
+        method: 'GET',
+      })
+
+      const nextSettings = normalizeUiSettings({
+        themeKey: normalizeThemeKey(data?.settings?.themeKey),
+      })
+
+      writeStoredUiSettings(user, nextSettings)
+      markUiSettingsLoadedInSession(user)
+      applyUiSettingsLocally(nextSettings)
+
+      return nextSettings
+    } catch {
+      return cachedSettings
+    } finally {
+      uiSettingsSyncKey = ''
+      uiSettingsSyncPromise = null
+    }
+  })()
+
+  return uiSettingsSyncPromise
+}
+
+async function updateUiSettings(partialSettings = {}, options = {}) {
+  const previousSettings = normalizeUiSettings(uiSettings.value, {
+    themeKey: DEFAULT_APP_THEME_KEY,
+  })
+  const nextSettings = applyUiSettingsLocally(partialSettings, previousSettings)
+  const currentSettingsUser = currentUser.value
+  const payload = {}
+
+  if (Object.prototype.hasOwnProperty.call(partialSettings, 'themeKey')) {
+    payload.themeKey = nextSettings.themeKey
+  }
+
+  writeStoredUiSettings(currentSettingsUser, nextSettings)
+  if (currentSettingsUser) {
+    markUiSettingsLoadedInSession(currentSettingsUser)
+  }
+
+  if (currentSettingsUser) {
+    try {
+      const { data } = await authRequest({
+        url: '/ui/settings',
+        method: 'PATCH',
+        csrfActionId: 'ui.settings.update',
+        data: payload,
+      })
+
+      const persistedSettings = normalizeUiSettings({
+        themeKey: data?.settings?.themeKey ?? nextSettings.themeKey,
+      })
+
+      writeStoredUiSettings(currentSettingsUser, persistedSettings)
+      applyUiSettingsLocally(persistedSettings)
+
+      if (options.notify !== false) {
+        if (typeof options.successMessage === 'string' && options.successMessage.trim() !== '') {
+          showNotification(options.successMessage.trim(), 'success')
+        } else if (Object.prototype.hasOwnProperty.call(payload, 'themeKey')) {
+          showNotification(`Tema ${getThemeDefinition(persistedSettings.themeKey).label} aplicado.`, 'success')
+        }
+      }
+
+      return persistedSettings
+    } catch (error) {
+      writeStoredUiSettings(currentSettingsUser, previousSettings)
+      applyUiSettingsLocally(previousSettings)
+      showNotification(extractHttpMessage(error, 'Nao foi possivel salvar as preferencias de interface.'), 'error')
+
+      throw error
+    }
+  }
+
+  if (options.notify !== false) {
+    if (typeof options.successMessage === 'string' && options.successMessage.trim() !== '') {
+      showNotification(options.successMessage.trim(), 'success')
+    } else if (Object.prototype.hasOwnProperty.call(payload, 'themeKey')) {
+      showNotification(`Tema ${getThemeDefinition(nextSettings.themeKey).label} aplicado.`, 'success')
+    }
+  }
+
+  return nextSettings
 }
 
 function setAppTheme(themeKey, options = {}) {
-  const normalizedThemeKey = normalizeThemeKey(themeKey)
+  return updateUiSettings({ themeKey }, options)
+}
 
-  activeThemeKey.value = normalizedThemeKey
-  applyThemeToDocument(normalizedThemeKey)
-  writeStoredThemeKey(currentUser.value, normalizedThemeKey)
+function clearBrowserState() {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.clear()
+    } catch {
+      // noop
+    }
 
-  if (options.notify === false) {
+    try {
+      window.sessionStorage.clear()
+    } catch {
+      // noop
+    }
+  }
+
+  if (typeof document === 'undefined') {
     return
   }
 
-  showNotification(`Tema ${getThemeDefinition(normalizedThemeKey).label} aplicado.`, 'success')
+  const cookieEntries = document.cookie.split(';')
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+  const domainVariants = hostname
+    ? hostname
+        .split('.')
+        .map((_, index, parts) => `.${parts.slice(index).join('.')}`)
+    : []
+
+  for (const entry of cookieEntries) {
+    const [rawName] = entry.split('=')
+    const name = rawName?.trim()
+
+    if (!name) {
+      continue
+    }
+
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+
+    for (const domain of domainVariants) {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${domain}`
+    }
+  }
 }
 
 function showNotification(payload, type = 'info') {
@@ -630,27 +819,6 @@ function clearNotification() {
     />
 
     <div class="app-main">
-      <header v-if="!isAuthenticated || (activeView !== 'tasks' && activeView !== 'dashboard')" class="page-header surface-card">
-        <div>
-          <p class="section-kicker">{{ activeViewConfig.eyebrow }}</p>
-          <h1>{{ isAuthenticated ? activeViewConfig.title : 'Autenticacao e acesso' }}</h1>
-          <p class="muted-copy">
-            {{ isAuthenticated ? activeViewConfig.descriptionLong : 'Entre com email/senha ou Google para liberar Dashboard, Tarefas e Perfil.' }}
-          </p>
-        </div>
-
-        <div class="header-spotlight">
-          <div class="stat-chip">
-            <span>Usuario</span>
-            <strong>{{ currentDisplayEmail }}</strong>
-          </div>
-          <div class="stat-chip">
-            <span>CSRF header</span>
-            <strong>{{ csrfHeaderName }}</strong>
-          </div>
-        </div>
-      </header>
-
       <main class="page-stage">
         <section v-if="!isAuthenticated" class="auth-stage">
           <article class="surface-card auth-copy-card">

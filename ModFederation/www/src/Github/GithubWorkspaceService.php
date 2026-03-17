@@ -150,7 +150,7 @@ GRAPHQL;
      */
     public function fetchProjectsForRepositoryOwner(User $user, ?string $ownerLogin = null): array
     {
-        $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user);
+        $token = $this->profileService->requireToken($user);
 
         $login = trim((string) $ownerLogin);
         if ($login === '') {
@@ -162,7 +162,7 @@ GRAPHQL;
             throw new GithubGraphQLException('GitHub returned an invalid repository owner login for projects.');
         }
 
-        $data = $this->graphqlClient->query($runtimeConfiguration->token, self::PROJECTS_QUERY, [
+        $data = $this->graphqlClient->query($token, self::PROJECTS_QUERY, [
             'login' => $login,
         ]);
 

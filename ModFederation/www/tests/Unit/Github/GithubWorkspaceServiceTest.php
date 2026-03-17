@@ -7,6 +7,7 @@ use App\Github\Exception\GithubGraphQLException;
 use App\Github\GithubGraphQLClientInterface;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubProfileService;
+use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
 use App\Github\GithubWorkspaceService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -18,14 +19,24 @@ final class GithubWorkspaceServiceTest extends TestCase
     private GithubGraphQLClientInterface&MockObject $graphqlClient;
     private GithubIssueTemplateCatalog $templateCatalog;
     private GithubProfileService $profileService;
+    private GithubRegistryService&MockObject $registryService;
 
     protected function setUp(): void
     {
         $this->graphqlClient = $this->createMock(GithubGraphQLClientInterface::class);
         $this->templateCatalog = new GithubIssueTemplateCatalog();
+        $this->registryService = $this->createMock(GithubRegistryService::class);
+        $this->registryService
+            ->method('buildCatalog')
+            ->willReturn([$this->buildRegisteredRepository()]);
+        $this->registryService
+            ->method('resolveDefaultRepository')
+            ->willReturn($this->buildRegisteredRepository());
+
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
-            new GithubTokenCipher('test-app-secret')
+            new GithubTokenCipher('test-app-secret'),
+            $this->registryService
         );
     }
 
@@ -116,7 +127,7 @@ final class GithubWorkspaceServiceTest extends TestCase
             $this->templateCatalog
         );
 
-        $workspace = $service->fetchWorkspace($this->buildConfiguredUser());
+        $workspace = $service->fetchWorkspace($this->buildConfiguredUser(), 'acme', 'delivery-desk');
 
         $this->assertSame('acme/delivery-desk', $workspace['repository']['nameWithOwner']);
         $this->assertCount(6, $workspace['templates']);
@@ -164,7 +175,7 @@ final class GithubWorkspaceServiceTest extends TestCase
             $this->templateCatalog
         );
 
-        $workspace = $service->fetchWorkspace($this->buildConfiguredUser());
+        $workspace = $service->fetchWorkspace($this->buildConfiguredUser(), 'acme', 'delivery-desk');
 
         $this->assertSame([], $workspace['projects']);
         $this->assertFalse($workspace['projectsMeta']['available']);
@@ -179,7 +190,21 @@ final class GithubWorkspaceServiceTest extends TestCase
             ->setEmail('owner@example.com')
             ->setPassword('not-used')
             ->setGithubRepositoryOwner('acme')
-            ->setGithubRepositoryName('delivery-desk')
             ->setGithubTokenEncrypted($cipher->encrypt('ghp_test_token'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildRegisteredRepository(): array
+    {
+        return [
+            'id' => 10,
+            'ownerLogin' => 'acme',
+            'name' => 'delivery-desk',
+            'nameWithOwner' => 'acme/delivery-desk',
+            'url' => 'https://github.com/acme/delivery-desk',
+            'isIgnored' => false,
+        ];
     }
 }

@@ -11,33 +11,10 @@ final class GithubAssignedIssueService
     private const ISSUE_SCOPE_ASSIGNED = 'assigned';
     private const ISSUE_SCOPE_REPOSITORY = 'repository';
 
-    private const VIEWER_REPOSITORIES_QUERY = <<<'GRAPHQL'
-query GithubViewerRepositories($after: String) {
+    private const VIEWER_LOGIN_QUERY = <<<'GRAPHQL'
+query GithubViewerLogin {
   viewer {
     login
-    repositories(
-      first: 50
-      after: $after
-      affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
-      orderBy: {field: UPDATED_AT, direction: DESC}
-      ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
-    ) {
-      nodes {
-        id
-        name
-        nameWithOwner
-        description
-        url
-        isPrivate
-        owner {
-          login
-        }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
   }
 }
 GRAPHQL;
@@ -258,6 +235,7 @@ GRAPHQL;
         private readonly GithubProfileService $profileService,
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueCacheService $cacheService,
+        private readonly GithubRegistryService $registryService,
     ) {
     }
 
@@ -273,19 +251,17 @@ GRAPHQL;
     {
         $normalizedScope = $this->normalizeScope($scope);
         $token = $this->profileService->requireToken($user);
-        $viewerCatalog = $this->fetchViewerRepositoryCatalog($token);
-        $viewerLogin = $viewerCatalog['login'];
-        $repositories = $viewerCatalog['repositories'];
+        $viewerLogin = $this->fetchViewerLogin($token);
+        $activeRepositories = $this->registryService->buildCatalog($user, false);
         $normalizedRepository = null;
 
         if ($normalizedScope === self::ISSUE_SCOPE_REPOSITORY) {
             $runtimeConfiguration = $this->profileService->buildRuntimeConfiguration($user, $repositoryOwner, $repositoryName);
             $issuesPayload = $this->fetchRepositoryIssues($runtimeConfiguration, $viewerLogin, $normalizedScope);
             $normalizedRepository = $issuesPayload['repository'];
-            $repositories = $this->mergeSelectedRepository($normalizedRepository, $repositories);
             $items = $issuesPayload['items'];
         } else {
-            $items = $this->fetchCatalogIssues($token, $repositories, $viewerLogin, $normalizedScope);
+            $items = $this->fetchCatalogIssues($token, $activeRepositories, $viewerLogin, $normalizedScope);
         }
 
         $this->cacheService->syncIssues(
@@ -293,7 +269,6 @@ GRAPHQL;
             $normalizedScope,
             $items,
             $viewerLogin,
-            $repositories,
             $normalizedRepository['ownerLogin'] ?? $repositoryOwner,
             $normalizedRepository['name'] ?? $repositoryName,
         );
@@ -409,47 +384,20 @@ GRAPHQL;
         return $this->cacheService->normalizeScope($scope);
     }
 
-    /**
-     * @return array{login: string, repositories: list<array<string, mixed>>}
-     */
-    private function fetchViewerRepositoryCatalog(string $token): array
+    private function fetchViewerLogin(string $token): string
     {
-        $viewerLogin = '';
-        $repositories = [];
-        $after = null;
+        $data = $this->graphqlClient->query($token, self::VIEWER_LOGIN_QUERY, []);
+        $viewer = $data['viewer'] ?? null;
+        if (!is_array($viewer)) {
+            throw new GithubGraphQLException('GitHub did not return the authenticated viewer profile.');
+        }
 
-        do {
-            $data = $this->graphqlClient->query($token, self::VIEWER_REPOSITORIES_QUERY, [
-                'after' => $after,
-            ]);
+        $viewerLogin = trim((string) ($viewer['login'] ?? ''));
+        if ($viewerLogin === '') {
+            throw new GithubGraphQLException('GitHub returned an invalid viewer login.');
+        }
 
-            $viewer = $data['viewer'] ?? null;
-            if (!is_array($viewer)) {
-                throw new GithubGraphQLException('GitHub did not return the authenticated viewer profile.');
-            }
-
-            if ($viewerLogin === '') {
-                $viewerLogin = trim((string) ($viewer['login'] ?? ''));
-                if ($viewerLogin === '') {
-                    throw new GithubGraphQLException('GitHub returned an invalid viewer login.');
-                }
-            }
-
-            $repositories = [
-                ...$repositories,
-                ...$this->normalizeRepositoryCatalog($viewer['repositories']['nodes'] ?? []),
-            ];
-
-            $pageInfo = $viewer['repositories']['pageInfo'] ?? null;
-            $hasNextPage = is_array($pageInfo) ? (bool) ($pageInfo['hasNextPage'] ?? false) : false;
-            $endCursor = is_array($pageInfo) ? trim((string) ($pageInfo['endCursor'] ?? '')) : '';
-            $after = $hasNextPage && $endCursor !== '' ? $endCursor : null;
-        } while ($after !== null);
-
-        return [
-            'login' => $viewerLogin,
-            'repositories' => $this->uniqueRepositories($repositories),
-        ];
+        return $viewerLogin;
     }
 
     /**
@@ -533,80 +481,6 @@ GRAPHQL;
         }
 
         return $this->sortIssues($items);
-    }
-
-    /**
-     * @param mixed $rawRepositories
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function normalizeRepositoryCatalog(mixed $rawRepositories): array
-    {
-        if (!is_array($rawRepositories)) {
-            return [];
-        }
-
-        $repositories = [];
-
-        foreach ($rawRepositories as $rawRepository) {
-            if (!is_array($rawRepository)) {
-                continue;
-            }
-
-            $normalizedRepository = $this->normalizeRepository($rawRepository);
-            if (($normalizedRepository['nameWithOwner'] ?? '') === '') {
-                continue;
-            }
-
-            $repositories[] = $normalizedRepository;
-        }
-
-        return array_values($repositories);
-    }
-
-    /**
-     * @param list<array<string, mixed>> $repositories
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function uniqueRepositories(array $repositories): array
-    {
-        $catalog = [];
-
-        foreach ($repositories as $repository) {
-            $key = trim((string) ($repository['nameWithOwner'] ?? ''));
-            if ($key === '' || array_key_exists($key, $catalog)) {
-                continue;
-            }
-
-            $catalog[$key] = $repository;
-        }
-
-        return array_values($catalog);
-    }
-
-    /**
-     * @param array<string, mixed> $repository
-     * @param list<array<string, mixed>> $repositories
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function mergeSelectedRepository(array $repository, array $repositories): array
-    {
-        $selectedKey = trim((string) ($repository['nameWithOwner'] ?? ''));
-        if ($selectedKey === '') {
-            return $repositories;
-        }
-
-        foreach ($repositories as $availableRepository) {
-            if (($availableRepository['nameWithOwner'] ?? null) === $selectedKey) {
-                return $repositories;
-            }
-        }
-
-        array_unshift($repositories, $repository);
-
-        return $repositories;
     }
 
     /**

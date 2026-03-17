@@ -36,17 +36,34 @@ const props = defineProps({
 
 const emit = defineEmits(['session-updated'])
 
+const REPOSITORY_PAGE_SIZE = 10
+
 const profile = ref(null)
 const profileLoading = ref(false)
 const profileError = ref('')
 const profileSuccess = ref('')
 const savingProfile = ref(false)
-const editingProfile = ref(false)
+const savingRepository = ref(false)
+const savingRepositoryId = ref(0)
+const deletingRepositoryId = ref(0)
+const repositoryPage = ref(1)
+const collapsedSections = reactive({
+  summary: false,
+  github: true,
+  repositories: true,
+  theme: true,
+  emails: true,
+})
 const profileForm = reactive({
   repositoryOwner: '',
-  repositoryName: '',
   token: '',
   clearToken: false,
+})
+const repositoryForm = reactive({
+  ownerLogin: '',
+  name: '',
+  url: '',
+  isIgnored: false,
 })
 
 const displayEmail = computed(() => props.currentUser?.defaultEmail || props.currentUser?.email || 'Nao definido')
@@ -54,19 +71,28 @@ const linkedEmailCount = computed(() => Array.isArray(props.currentUser?.linkedE
 const tokenConfigured = computed(() => Boolean(profile.value?.tokenConfigured))
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
 const themeOptions = computed(() => Array.isArray(props.availableThemes) ? props.availableThemes : [])
-
-function notifyUser(message, type = 'info') {
-  const normalizedMessage = String(message || '').trim()
-
-  if (normalizedMessage === '' || typeof props.notify !== 'function') {
-    return
-  }
-
-  props.notify({
-    message: normalizedMessage,
-    type,
-  })
-}
+const repositories = computed(() => Array.isArray(profile.value?.repositories) ? profile.value.repositories : [])
+const ignoredRepositoryCount = computed(() => repositories.value.filter((repository) => repository?.isIgnored).length)
+const activeRepositoryCount = computed(() => repositories.value.filter((repository) => !repository?.isIgnored).length)
+const repositoryPageCount = computed(() => Math.max(1, Math.ceil(repositories.value.length / REPOSITORY_PAGE_SIZE)))
+const paginatedRepositories = computed(() => {
+  const startIndex = (repositoryPage.value - 1) * REPOSITORY_PAGE_SIZE
+  return repositories.value.slice(startIndex, startIndex + REPOSITORY_PAGE_SIZE)
+})
+const repositoryPageStart = computed(() => (
+  repositories.value.length === 0
+    ? 0
+    : (repositoryPage.value - 1) * REPOSITORY_PAGE_SIZE + 1
+))
+const repositoryPageEnd = computed(() => (
+  repositories.value.length === 0
+    ? 0
+    : Math.min(repositoryPage.value * REPOSITORY_PAGE_SIZE, repositories.value.length)
+))
+const defaultRepositoryLabel = computed(() => {
+  const repositoryKey = typeof profile.value?.defaultRepositoryKey === 'string' ? profile.value.defaultRepositoryKey.trim() : ''
+  return repositoryKey !== '' ? repositoryKey : 'nao definido'
+})
 
 onMounted(async () => {
   await loadProfile()
@@ -76,6 +102,9 @@ watch(
   () => props.currentUser?.id,
   async (userId) => {
     if (!userId) {
+      profile.value = null
+      resetProfileForm()
+      resetRepositoryForm()
       return
     }
 
@@ -101,6 +130,46 @@ watch(profileSuccess, (message) => {
   profileSuccess.value = ''
 })
 
+watch(
+  () => repositories.value.length,
+  () => {
+    if (repositoryPage.value > repositoryPageCount.value) {
+      repositoryPage.value = repositoryPageCount.value
+      return
+    }
+
+    if (repositoryPage.value < 1) {
+      repositoryPage.value = 1
+    }
+  },
+)
+
+watch(
+  () => repositoryForm.url,
+  (nextUrl) => {
+    const parsedRepository = parseGithubRepositoryUrl(nextUrl)
+    if (!parsedRepository) {
+      return
+    }
+
+    repositoryForm.ownerLogin = parsedRepository.ownerLogin
+    repositoryForm.name = parsedRepository.name
+  },
+)
+
+function notifyUser(message, type = 'info') {
+  const normalizedMessage = String(message || '').trim()
+
+  if (normalizedMessage === '' || typeof props.notify !== 'function') {
+    return
+  }
+
+  props.notify({
+    message: normalizedMessage,
+    type,
+  })
+}
+
 async function loadProfile() {
   profileLoading.value = true
   profileError.value = ''
@@ -112,8 +181,9 @@ async function loadProfile() {
     })
 
     profile.value = data?.profile || null
+    repositoryPage.value = 1
     syncProfileForm()
-    editingProfile.value = !workspaceReady.value
+    resetRepositoryForm()
   } catch (error) {
     profileError.value = extractHttpMessage(error, 'Nao foi possivel carregar a configuracao GitHub do perfil.')
   } finally {
@@ -121,11 +191,23 @@ async function loadProfile() {
   }
 }
 
-function syncProfileForm() {
-  profileForm.repositoryOwner = typeof profile.value?.repositoryOwner === 'string' ? profile.value.repositoryOwner : ''
-  profileForm.repositoryName = typeof profile.value?.repositoryName === 'string' ? profile.value.repositoryName : ''
+function resetProfileForm() {
+  profileForm.repositoryOwner = ''
   profileForm.token = ''
   profileForm.clearToken = false
+}
+
+function syncProfileForm() {
+  profileForm.repositoryOwner = typeof profile.value?.repositoryOwner === 'string' ? profile.value.repositoryOwner : ''
+  profileForm.token = ''
+  profileForm.clearToken = false
+}
+
+function resetRepositoryForm() {
+  repositoryForm.ownerLogin = profileForm.repositoryOwner.trim() || ''
+  repositoryForm.name = ''
+  repositoryForm.url = ''
+  repositoryForm.isIgnored = false
 }
 
 async function saveProfile() {
@@ -140,7 +222,6 @@ async function saveProfile() {
       csrfActionId: 'github.profile.update',
       data: {
         repositoryOwner: profileForm.repositoryOwner,
-        repositoryName: profileForm.repositoryName,
         token: profileForm.token,
         clearToken: profileForm.clearToken,
       },
@@ -148,12 +229,104 @@ async function saveProfile() {
 
     profile.value = data?.profile || null
     syncProfileForm()
-    editingProfile.value = !workspaceReady.value
     profileSuccess.value = 'Configuracao do GitHub salva com sucesso.'
   } catch (error) {
     profileError.value = extractHttpMessage(error, 'Nao foi possivel salvar a configuracao do GitHub.')
   } finally {
     savingProfile.value = false
+  }
+}
+
+async function createRepository() {
+  savingRepository.value = true
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  try {
+    const parsedRepository = parseGithubRepositoryUrl(repositoryForm.url)
+
+    await props.request({
+      url: '/github/repositories',
+      method: 'POST',
+      csrfActionId: 'github.repository.create',
+      data: {
+        ownerLogin: parsedRepository?.ownerLogin || repositoryForm.ownerLogin,
+        name: parsedRepository?.name || repositoryForm.name,
+        url: repositoryForm.url,
+        isIgnored: repositoryForm.isIgnored,
+      },
+    })
+
+    await loadProfile()
+    resetRepositoryForm()
+    profileSuccess.value = 'Repositorio cadastrado com sucesso.'
+  } catch (error) {
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel cadastrar o repositorio.')
+  } finally {
+    savingRepository.value = false
+  }
+}
+
+async function toggleRepositoryIgnored(repository) {
+  const repositoryId = Number(repository?.id || 0)
+  if (!repositoryId) {
+    return
+  }
+
+  savingRepositoryId.value = repositoryId
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  try {
+    await props.request({
+      url: `/github/repositories/${repositoryId}`,
+      method: 'PATCH',
+      csrfActionId: 'github.repository.update',
+      data: {
+        isIgnored: !repository?.isIgnored,
+      },
+    })
+
+    await loadProfile()
+    profileSuccess.value = repository?.isIgnored ? 'Repositorio reativado.' : 'Repositorio ignorado.'
+  } catch (error) {
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel atualizar o repositorio.')
+  } finally {
+    savingRepositoryId.value = 0
+  }
+}
+
+async function removeRepository(repository) {
+  const repositoryId = Number(repository?.id || 0)
+  if (!repositoryId) {
+    return
+  }
+
+  const repositoryName = String(repository?.nameWithOwner || '').trim()
+  if (typeof window !== 'undefined') {
+    const confirmed = window.confirm(`Remover o repositorio ${repositoryName || 'selecionado'} do sistema?`)
+    if (!confirmed) {
+      return
+    }
+  }
+
+  deletingRepositoryId.value = repositoryId
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  try {
+    await props.request({
+      url: `/github/repositories/${repositoryId}`,
+      method: 'DELETE',
+      csrfActionId: 'github.repository.delete',
+    })
+
+    await loadProfile()
+    profileSuccess.value = 'Repositorio removido do sistema.'
+  } catch (error) {
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel remover o repositorio.')
+  } finally {
+    deletingRepositoryId.value = 0
   }
 }
 
@@ -164,6 +337,54 @@ function forwardSessionUpdate(session) {
 function selectTheme(themeKey) {
   if (typeof props.setTheme === 'function') {
     props.setTheme(themeKey)
+  }
+}
+
+function toggleSection(sectionKey) {
+  if (!Object.prototype.hasOwnProperty.call(collapsedSections, sectionKey)) {
+    return
+  }
+
+  collapsedSections[sectionKey] = !collapsedSections[sectionKey]
+}
+
+function isSectionOpen(sectionKey) {
+  return !collapsedSections[sectionKey]
+}
+
+function setRepositoryPage(page) {
+  const normalizedPage = Number(page)
+  if (!Number.isFinite(normalizedPage)) {
+    return
+  }
+
+  repositoryPage.value = Math.min(
+    repositoryPageCount.value,
+    Math.max(1, Math.trunc(normalizedPage)),
+  )
+}
+
+function parseGithubRepositoryUrl(value) {
+  const normalizedValue = String(value || '').trim()
+  if (normalizedValue === '') {
+    return null
+  }
+
+  const match = normalizedValue.match(/github\.com[:/]+([^/\s]+)\/([^/\s?#]+)/i)
+  if (!match) {
+    return null
+  }
+
+  const ownerLogin = String(match[1] || '').trim()
+  const repositoryName = String(match[2] || '').replace(/\.git$/i, '').trim()
+
+  if (ownerLogin === '' || repositoryName === '') {
+    return null
+  }
+
+  return {
+    ownerLogin,
+    name: repositoryName,
   }
 }
 
@@ -188,128 +409,294 @@ function extractHttpMessage(error, fallback) {
 <template>
   <section class="profile-screen screen-grid">
     <article class="surface-card profile-summary-card">
-      <div>
-        <p class="section-kicker">Perfil</p>
-        <h2>Identidade da conta</h2>
-      </div>
-
-      <div class="profile-hero">
-        <div class="profile-avatar">{{ displayEmail.slice(0, 1).toUpperCase() }}</div>
+      <div class="panel-head-inline collapsible-head">
         <div>
-          <strong>{{ displayEmail }}</strong>
-          <p class="muted-copy">Email padrao atualmente usado pelo usuario autenticado.</p>
+          <p class="section-kicker">Perfil</p>
+          <h2>Identidade da conta</h2>
         </div>
+
+        <button
+          class="panel-toggle-button"
+          type="button"
+          :aria-expanded="isSectionOpen('summary')"
+          @click="toggleSection('summary')"
+        >
+          {{ isSectionOpen('summary') ? 'Recolher' : 'Abrir' }}
+        </button>
       </div>
 
-      <div class="profile-stats">
-        <div class="stat-chip">
-          <span>Emails vinculados</span>
-          <strong>{{ linkedEmailCount }}</strong>
+      <template v-if="isSectionOpen('summary')">
+        <div class="profile-hero">
+          <div class="profile-avatar">{{ displayEmail.slice(0, 1).toUpperCase() }}</div>
+          <div>
+            <strong>{{ displayEmail }}</strong>
+            <p class="muted-copy">Conta autenticada no momento.</p>
+          </div>
         </div>
-        <div class="stat-chip">
-          <span>Google</span>
-          <strong>{{ currentUser?.googleLinked ? 'Vinculado' : 'Pendente' }}</strong>
-        </div>
-        <div class="stat-chip">
-          <span>GitHub</span>
-          <strong>{{ currentUser?.githubLinked ? 'Sincronizado' : 'Pendente' }}</strong>
-        </div>
-      </div>
 
-      <div class="role-cluster">
-        <span v-for="role in currentUser?.roles || []" :key="role" class="role-pill">{{ role }}</span>
-      </div>
+        <div class="profile-stats">
+          <div class="stat-chip">
+            <span>Emails vinculados</span>
+            <strong>{{ linkedEmailCount }}</strong>
+          </div>
+          <div class="stat-chip">
+            <span>Google</span>
+            <strong>{{ currentUser?.googleLinked ? 'Vinculado' : 'Pendente' }}</strong>
+          </div>
+          <div class="stat-chip">
+            <span>GitHub</span>
+            <strong>{{ currentUser?.githubLinked ? 'Sincronizado' : 'Pendente' }}</strong>
+          </div>
+        </div>
+
+        <div class="role-cluster">
+          <span v-for="role in currentUser?.roles || []" :key="role" class="role-pill">{{ role }}</span>
+        </div>
+      </template>
     </article>
 
     <article class="surface-card github-settings-card">
-      <div class="panel-head-inline">
+      <div class="panel-head-inline collapsible-head">
         <div>
           <p class="section-kicker">GitHub</p>
           <h2>Configuracao do GitHub</h2>
         </div>
 
         <button
-          v-if="workspaceReady && !editingProfile"
-          class="button-secondary"
+          class="panel-toggle-button"
           type="button"
-          @click="editingProfile = true"
+          :aria-expanded="isSectionOpen('github')"
+          @click="toggleSection('github')"
         >
-          Editar
+          {{ isSectionOpen('github') ? 'Recolher' : 'Abrir' }}
         </button>
       </div>
 
-      <div v-if="profileLoading" class="inline-note">Carregando configuracao do GitHub...</div>
+      <template v-if="isSectionOpen('github')">
+        <div v-if="profileLoading" class="inline-note">Carregando configuracao do GitHub...</div>
 
-      <template v-else>
+        <template v-else>
+          <div class="profile-stats">
+            <div class="stat-chip">
+              <span>Owner padrao</span>
+              <strong>{{ profile?.repositoryOwner || 'nao definido' }}</strong>
+            </div>
+            <div class="stat-chip">
+              <span>Token</span>
+              <strong>{{ tokenConfigured ? 'Salvo' : 'Ausente' }}</strong>
+            </div>
+            <div class="stat-chip">
+              <span>Repositorios</span>
+              <strong>{{ repositories.length }}</strong>
+            </div>
+            <div class="stat-chip">
+              <span>Status</span>
+              <strong>{{ workspaceReady ? 'Pronto' : 'Incompleto' }}</strong>
+            </div>
+            <div class="stat-chip">
+              <span>Padrao atual</span>
+              <strong>{{ defaultRepositoryLabel }}</strong>
+            </div>
+          </div>
+
+          <form class="settings-form" @submit.prevent="saveProfile">
+            <label class="field">
+              <span>Owner padrao</span>
+              <input v-model="profileForm.repositoryOwner" type="text" placeholder="org-ou-usuario">
+            </label>
+
+            <label class="field">
+              <span>GitHub token</span>
+              <input
+                v-model="profileForm.token"
+                type="password"
+                :placeholder="tokenConfigured ? 'Deixe vazio para manter o token atual' : 'ghp_xxxxxxxxxxxxxxxxxxxx'"
+              >
+            </label>
+
+            <label class="checkbox-row">
+              <input v-model="profileForm.clearToken" type="checkbox">
+              <span>Remover token salvo</span>
+            </label>
+
+            <div class="form-actions">
+              <button class="button-primary" type="submit" :disabled="savingProfile">
+                {{ savingProfile ? 'Salvando...' : 'Salvar configuracao' }}
+              </button>
+            </div>
+          </form>
+        </template>
+      </template>
+    </article>
+
+    <article class="surface-card repositories-card">
+      <div class="panel-head-inline collapsible-head">
+        <div>
+          <p class="section-kicker">Repositorios</p>
+          <h2>Repositorios cadastrados</h2>
+        </div>
+
+        <button
+          class="panel-toggle-button"
+          type="button"
+          :aria-expanded="isSectionOpen('repositories')"
+          @click="toggleSection('repositories')"
+        >
+          {{ isSectionOpen('repositories') ? 'Recolher' : 'Abrir' }}
+        </button>
+      </div>
+
+      <template v-if="isSectionOpen('repositories')">
         <div class="profile-stats">
           <div class="stat-chip">
-            <span>Repositorio</span>
-            <strong>{{ profile?.repositoryOwner || 'nao configurado' }}/{{ profile?.repositoryName || 'nao configurado' }}</strong>
+            <span>Ativos</span>
+            <strong>{{ activeRepositoryCount }}</strong>
           </div>
           <div class="stat-chip">
-            <span>Token</span>
-            <strong>{{ tokenConfigured ? 'Salvo' : 'Ausente' }}</strong>
+            <span>Ignorados</span>
+            <strong>{{ ignoredRepositoryCount }}</strong>
           </div>
           <div class="stat-chip">
-            <span>Status</span>
-            <strong>{{ workspaceReady ? 'Pronto' : 'Incompleto' }}</strong>
+            <span>Padrao atual</span>
+            <strong>{{ defaultRepositoryLabel }}</strong>
           </div>
         </div>
 
-        <form class="settings-form" @submit.prevent="saveProfile">
-          <div class="field-grid">
+        <form class="settings-form repository-register-form" @submit.prevent="createRepository">
+          <div class="field-grid repository-form-grid">
             <label class="field">
-              <span>Repository owner</span>
-              <input v-model="profileForm.repositoryOwner" type="text" placeholder="sua-org-ou-usuario" required>
+              <span>Owner</span>
+              <input v-model="repositoryForm.ownerLogin" type="text" placeholder="sua-org">
             </label>
 
             <label class="field">
-              <span>Repository name</span>
-              <input v-model="profileForm.repositoryName" type="text" placeholder="nome-do-repositorio" required>
+              <span>Repositorio</span>
+              <input v-model="repositoryForm.name" type="text" placeholder="nome-do-repo">
+            </label>
+
+            <label class="field">
+              <span>URL</span>
+              <input v-model="repositoryForm.url" type="url" placeholder="https://github.com/sua-org/nome-do-repo">
             </label>
           </div>
 
-          <label class="field">
-            <span>GitHub token</span>
-            <input
-              v-model="profileForm.token"
-              type="password"
-              :placeholder="tokenConfigured ? 'Deixe vazio para manter o token atual' : 'ghp_xxxxxxxxxxxxxxxxxxxx'"
-            >
-            <small class="field-help">O token salvo fica criptografado no backend.</small>
-          </label>
+          <div class="form-actions form-actions-between">
+            <label class="checkbox-row">
+              <input v-model="repositoryForm.isIgnored" type="checkbox">
+              <span>Cadastrar ja como ignorado</span>
+            </label>
 
-          <label class="checkbox-row">
-            <input v-model="profileForm.clearToken" type="checkbox">
-            <span>Remover o token salvo ao atualizar o perfil</span>
-          </label>
-
-          <div class="form-actions">
-            <button class="button-primary" type="submit" :disabled="savingProfile">
-              {{ savingProfile ? 'Salvando...' : 'Salvar configuracao' }}
-            </button>
-            <button
-              v-if="workspaceReady && editingProfile"
-              class="button-secondary"
-              type="button"
-              :disabled="savingProfile"
-              @click="editingProfile = false; syncProfileForm()"
-            >
-              Cancelar
-            </button>
+            <div class="form-actions-inline">
+              <button class="button-secondary" type="button" :disabled="savingRepository" @click="resetRepositoryForm">
+                Limpar
+              </button>
+              <button class="button-primary" type="submit" :disabled="savingRepository">
+                {{ savingRepository ? 'Cadastrando...' : 'Cadastrar repositorio' }}
+              </button>
+            </div>
           </div>
         </form>
+
+        <div v-if="repositories.length === 0" class="inline-note">
+          Nenhum repositorio cadastrado.
+        </div>
+
+        <div v-else class="repository-list">
+          <div
+            v-for="repository in paginatedRepositories"
+            :key="repository.id || repository.nameWithOwner"
+            class="repository-row"
+          >
+            <div class="repository-copy">
+              <strong>{{ repository.nameWithOwner }}</strong>
+              <span>{{ repository.url || 'URL nao informada' }}</span>
+            </div>
+
+            <div class="repository-meta">
+              <span>Owner: {{ repository.ownerLogin }}</span>
+              <span>Nome: {{ repository.name }}</span>
+            </div>
+
+            <span class="repository-state" :class="{ ignored: repository.isIgnored }">
+              {{ repository.isIgnored ? 'Ignorado' : 'Ativo' }}
+            </span>
+
+            <div class="repository-actions">
+              <button
+                class="button-secondary repository-action"
+                type="button"
+                :disabled="savingRepositoryId === repository.id || deletingRepositoryId === repository.id"
+                @click="toggleRepositoryIgnored(repository)"
+              >
+                {{ savingRepositoryId === repository.id
+                  ? 'Salvando...'
+                  : repository.isIgnored
+                    ? 'Reativar'
+                    : 'Ignorar' }}
+              </button>
+
+              <button
+                class="button-danger repository-action"
+                type="button"
+                :disabled="deletingRepositoryId === repository.id || savingRepositoryId === repository.id"
+                @click="removeRepository(repository)"
+              >
+                {{ deletingRepositoryId === repository.id ? 'Removendo...' : 'Remover' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="repository-pagination">
+            <span class="repository-pagination-summary">
+              {{ repositoryPageStart }}-{{ repositoryPageEnd }} de {{ repositories.length }} repositorios
+            </span>
+
+            <div v-if="repositoryPageCount > 1" class="repository-pagination-actions">
+              <button
+                class="button-secondary pagination-button"
+                type="button"
+                :disabled="repositoryPage <= 1"
+                @click="setRepositoryPage(repositoryPage - 1)"
+              >
+                Anterior
+              </button>
+
+              <span class="repository-pagination-page">
+                Pagina {{ repositoryPage }} de {{ repositoryPageCount }}
+              </span>
+
+              <button
+                class="button-secondary pagination-button"
+                type="button"
+                :disabled="repositoryPage >= repositoryPageCount"
+                @click="setRepositoryPage(repositoryPage + 1)"
+              >
+                Proxima
+              </button>
+            </div>
+          </div>
+        </div>
       </template>
     </article>
 
     <article class="surface-card profile-theme-card">
-      <div>
-        <p class="section-kicker">Tema</p>
-        <h2>Aparencia do sistema</h2>
-        <p class="muted-copy">Escolha um dos 5 padroes visuais. A preferencia fica salva no navegador para este usuario.</p>
+      <div class="panel-head-inline collapsible-head">
+        <div>
+          <p class="section-kicker">Tema</p>
+          <h2>Aparencia do sistema</h2>
+        </div>
+
+        <button
+          class="panel-toggle-button"
+          type="button"
+          :aria-expanded="isSectionOpen('theme')"
+          @click="toggleSection('theme')"
+        >
+          {{ isSectionOpen('theme') ? 'Recolher' : 'Abrir' }}
+        </button>
       </div>
 
-      <div class="theme-grid">
+      <div v-if="isSectionOpen('theme')" class="theme-grid">
         <button
           v-for="theme in themeOptions"
           :key="theme.key"
@@ -339,7 +726,24 @@ function extractHttpMessage(error, fallback) {
     </article>
 
     <article class="surface-card profile-emails-card">
+      <div class="panel-head-inline collapsible-head">
+        <div>
+          <p class="section-kicker">Conta</p>
+          <h2>Emails vinculados</h2>
+        </div>
+
+        <button
+          class="panel-toggle-button"
+          type="button"
+          :aria-expanded="isSectionOpen('emails')"
+          @click="toggleSection('emails')"
+        >
+          {{ isSectionOpen('emails') ? 'Recolher' : 'Abrir' }}
+        </button>
+      </div>
+
       <AccountEmailsPanel
+        v-if="isSectionOpen('emails')"
         :request="request"
         :api-client="apiClient"
         :current-user="currentUser"
@@ -357,6 +761,7 @@ function extractHttpMessage(error, fallback) {
 
 .profile-summary-card,
 .github-settings-card,
+.repositories-card,
 .profile-theme-card,
 .profile-emails-card {
   display: grid;
@@ -390,7 +795,7 @@ function extractHttpMessage(error, fallback) {
 .profile-stats {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .stat-chip {
@@ -502,6 +907,32 @@ function extractHttpMessage(error, fallback) {
   justify-content: space-between;
 }
 
+.collapsible-head {
+  align-items: center;
+}
+
+.panel-toggle-button {
+  align-items: center;
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.84rem;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 14px;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.panel-toggle-button:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--line));
+  transform: translateY(-1px);
+}
+
 .settings-form {
   display: grid;
   gap: 16px;
@@ -513,9 +944,8 @@ function extractHttpMessage(error, fallback) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.field-help {
-  color: var(--muted);
-  font-size: 0.86rem;
+.repository-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .checkbox-row {
@@ -524,18 +954,145 @@ function extractHttpMessage(error, fallback) {
   gap: 10px;
 }
 
-@media (max-width: 980px) {
-  .profile-stats,
-  .field-grid,
+.form-actions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-actions-between {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.repository-list {
+  display: grid;
+  gap: 12px;
+}
+
+.repository-row {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  padding: 16px;
+}
+
+.repository-copy,
+.repository-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.repository-copy strong,
+.repository-copy span,
+.repository-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-copy span,
+.repository-meta span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.repository-state {
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.repository-state.ignored {
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #b45309;
+}
+
+.repository-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.repository-action {
+  min-width: 108px;
+}
+
+.button-danger {
+  background: color-mix(in srgb, #ef4444 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, #ef4444 24%, var(--line));
+  color: #b91c1c;
+}
+
+.button-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #ef4444 14%, var(--surface));
+}
+
+.repository-pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.repository-pagination-summary,
+.repository-pagination-page {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.repository-pagination-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pagination-button {
+  min-width: 96px;
+}
+
+@media (max-width: 1100px) {
+  .repository-form-grid,
   .theme-grid {
     grid-template-columns: 1fr;
+  }
+
+  .repository-row {
+    grid-template-columns: 1fr;
+  }
+
+  .repository-actions {
+    justify-content: flex-start;
   }
 }
 
 @media (max-width: 720px) {
-  .profile-hero {
+  .profile-hero,
+  .form-actions-between {
     align-items: start;
     flex-direction: column;
+  }
+
+  .profile-stats,
+  .field-grid,
+  .theme-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

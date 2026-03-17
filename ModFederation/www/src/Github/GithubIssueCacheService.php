@@ -20,6 +20,7 @@ class GithubIssueCacheService
         private readonly EntityManagerInterface $entityManager,
         private readonly GithubCachedIssueRepository $cachedIssueRepository,
         private readonly GithubIssueSyncStateRepository $syncStateRepository,
+        private readonly GithubRegistryService $registryService,
     ) {
     }
 
@@ -44,34 +45,21 @@ class GithubIssueCacheService
             default => $this->cachedIssueRepository->findActiveByOwner($user),
         };
 
+        $registeredRepositories = $this->normalizeRegisteredRepositories($this->registryService->buildCatalog($user, false));
         $items = array_map(fn (GithubCachedIssue $issue): array => $this->normalizeCachedIssue($issue), $issues);
-        $repositoryCatalog = $this->normalizeRepositoryCatalog($syncState?->getRepositoryCatalog() ?? []);
+        $items = $this->filterIssuesByRegisteredRepositories($items, $registeredRepositories);
 
-        if ($repositoryCatalog === []) {
-            $repositoryCatalog = $this->deriveRepositoryCatalog($items);
-        }
-
-        if (
-            $normalizedScope === self::ISSUE_SCOPE_REPOSITORY
-            && $repositorySelection['repositoryKey'] !== ''
-            && !$this->hasRepositoryInCatalog($repositoryCatalog, $repositorySelection['repositoryKey'])
-        ) {
-            array_unshift($repositoryCatalog, $this->buildRepositorySummary(
-                $repositorySelection['repositoryOwner'],
-                $repositorySelection['repositoryName'],
-                $repositorySelection['repositoryKey']
-            ));
-        }
+        $selectedRepository = $normalizedScope === self::ISSUE_SCOPE_REPOSITORY
+            ? $this->findRepositoryInList($registeredRepositories, $repositorySelection['repositoryKey'])
+            : null;
 
         return [
             'scope' => $normalizedScope,
             'viewer' => [
                 'login' => $syncState?->getViewerLogin(),
             ],
-            'repository' => $normalizedScope === self::ISSUE_SCOPE_REPOSITORY
-                ? $this->findRepositoryInCatalog($repositoryCatalog, $repositorySelection['repositoryKey'])
-                : null,
-            'repositories' => $repositoryCatalog,
+            'repository' => $selectedRepository,
+            'repositories' => $registeredRepositories,
             'items' => $items,
             'cache' => [
                 'source' => 'database',
@@ -85,14 +73,12 @@ class GithubIssueCacheService
 
     /**
      * @param list<array<string, mixed>> $issues
-     * @param list<array<string, mixed>> $repositoryCatalog
      */
     public function syncIssues(
         User $user,
         string $scope,
         array $issues,
         string $viewerLogin,
-        array $repositoryCatalog,
         ?string $repositoryOwner = null,
         ?string $repositoryName = null,
     ): void {
@@ -123,7 +109,6 @@ class GithubIssueCacheService
 
         $syncState
             ->setViewerLogin($viewerLogin)
-            ->setRepositoryCatalog($this->normalizeRepositoryCatalog($repositoryCatalog))
             ->setSyncedAt(new \DateTimeImmutable());
 
         $this->entityManager->flush();
@@ -187,8 +172,9 @@ class GithubIssueCacheService
         $resolvedRepositoryName = trim($repositoryName ?? '');
 
         if ($scope === self::ISSUE_SCOPE_REPOSITORY && ($resolvedRepositoryOwner === '' || $resolvedRepositoryName === '')) {
-            $resolvedRepositoryOwner = trim((string) $user->getGithubRepositoryOwner());
-            $resolvedRepositoryName = trim((string) $user->getGithubRepositoryName());
+            $defaultRepository = $this->resolveDefaultRepositoryFromCatalog($user);
+            $resolvedRepositoryOwner = trim((string) ($defaultRepository['ownerLogin'] ?? ''));
+            $resolvedRepositoryName = trim((string) ($defaultRepository['name'] ?? ''));
         }
 
         $repositoryKey = ($resolvedRepositoryOwner !== '' && $resolvedRepositoryName !== '')
@@ -201,6 +187,14 @@ class GithubIssueCacheService
             'repositoryKey' => $repositoryKey,
             'stateKey' => $scope === self::ISSUE_SCOPE_REPOSITORY ? $repositoryKey : '',
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resolveDefaultRepositoryFromCatalog(User $user): ?array
+    {
+        return $this->registryService->resolveDefaultRepository($user);
     }
 
     private function storeIssue(User $user, array $issue, ?string $viewerLogin = null): GithubCachedIssue
@@ -288,19 +282,19 @@ class GithubIssueCacheService
     }
 
     /**
-     * @param mixed $rawCatalog
+     * @param mixed $rawRepositories
      *
      * @return list<array<string, mixed>>
      */
-    private function normalizeRepositoryCatalog(mixed $rawCatalog): array
+    private function normalizeRegisteredRepositories(mixed $rawRepositories): array
     {
-        if (!is_array($rawCatalog)) {
+        if (!is_array($rawRepositories)) {
             return [];
         }
 
-        $catalog = [];
+        $repositories = [];
 
-        foreach ($rawCatalog as $rawRepository) {
+        foreach ($rawRepositories as $rawRepository) {
             if (!is_array($rawRepository)) {
                 continue;
             }
@@ -315,11 +309,11 @@ class GithubIssueCacheService
                 continue;
             }
 
-            if (array_key_exists($repositoryKey, $catalog)) {
+            if (array_key_exists($repositoryKey, $repositories)) {
                 continue;
             }
 
-            $catalog[$repositoryKey] = [
+            $repositories[$repositoryKey] = [
                 'ownerLogin' => $parts['owner'],
                 'name' => $parts['name'],
                 'nameWithOwner' => $repositoryKey,
@@ -327,75 +321,23 @@ class GithubIssueCacheService
             ];
         }
 
-        return array_values($catalog);
+        return array_values($repositories);
     }
 
     /**
-     * @param list<array<string, mixed>> $items
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function deriveRepositoryCatalog(array $items): array
-    {
-        $catalog = [];
-
-        foreach ($items as $item) {
-            $repository = $item['repository'] ?? null;
-            if (!is_array($repository)) {
-                continue;
-            }
-
-            $repositoryKey = trim((string) ($repository['nameWithOwner'] ?? ''));
-            if ($repositoryKey === '' || array_key_exists($repositoryKey, $catalog)) {
-                continue;
-            }
-
-            $catalog[$repositoryKey] = [
-                'ownerLogin' => trim((string) ($repository['ownerLogin'] ?? '')),
-                'name' => trim((string) ($repository['name'] ?? '')),
-                'nameWithOwner' => $repositoryKey,
-                'url' => trim((string) ($repository['url'] ?? '')),
-            ];
-        }
-
-        return array_values($catalog);
-    }
-
-    /**
-     * @param list<array<string, mixed>> $catalog
+     * @param list<array<string, mixed>> $repositories
      *
      * @return array<string, mixed>|null
      */
-    private function findRepositoryInCatalog(array $catalog, string $repositoryKey): ?array
+    private function findRepositoryInList(array $repositories, string $repositoryKey): ?array
     {
-        foreach ($catalog as $repository) {
+        foreach ($repositories as $repository) {
             if (($repository['nameWithOwner'] ?? null) === $repositoryKey) {
                 return $repository;
             }
         }
 
         return null;
-    }
-
-    /**
-     * @param list<array<string, mixed>> $catalog
-     */
-    private function hasRepositoryInCatalog(array $catalog, string $repositoryKey): bool
-    {
-        return $this->findRepositoryInCatalog($catalog, $repositoryKey) !== null;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildRepositorySummary(string $repositoryOwner, string $repositoryName, string $repositoryKey): array
-    {
-        return [
-            'ownerLogin' => $repositoryOwner,
-            'name' => $repositoryName,
-            'nameWithOwner' => $repositoryKey,
-            'url' => '',
-        ];
     }
 
     /**
@@ -436,6 +378,29 @@ class GithubIssueCacheService
         }
 
         return array_values($collection);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     * @param list<array<string, mixed>> $registeredRepositories
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function filterIssuesByRegisteredRepositories(array $items, array $registeredRepositories): array
+    {
+        $allowedRepositoryKeys = array_values(array_filter(array_map(
+            static fn (array $repository): string => trim((string) ($repository['nameWithOwner'] ?? '')),
+            $registeredRepositories
+        )));
+
+        if ($allowedRepositoryKeys === []) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $items,
+            static fn (array $item): bool => in_array(trim((string) ($item['repository']['nameWithOwner'] ?? '')), $allowedRepositoryKeys, true)
+        ));
     }
 
     /**

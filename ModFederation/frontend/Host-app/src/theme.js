@@ -69,6 +69,8 @@ export const APP_THEME_OPTIONS = [
 ]
 
 const themeMap = new Map(APP_THEME_OPTIONS.map((theme) => [theme.key, theme]))
+const UI_SETTINGS_STORAGE_PREFIX = 'octoflow.ui-settings.user.'
+const UI_SETTINGS_SESSION_PREFIX = 'octoflow.ui-settings.session.user.'
 
 export function normalizeThemeKey(value) {
   const normalizedValue = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -79,13 +81,13 @@ export function getThemeDefinition(themeKey) {
   return themeMap.get(normalizeThemeKey(themeKey)) || APP_THEME_OPTIONS[0]
 }
 
-export function resolveThemeStorageKey(user) {
+function resolveUserScopeKey(user) {
   const userId = typeof user?.id === 'string' || typeof user?.id === 'number'
     ? String(user.id).trim()
     : ''
 
   if (userId !== '') {
-    return `octoflow.theme.user.${userId}`
+    return userId
   }
 
   const email = typeof user?.defaultEmail === 'string' && user.defaultEmail.trim() !== ''
@@ -94,23 +96,73 @@ export function resolveThemeStorageKey(user) {
       ? user.email.trim().toLowerCase()
       : ''
 
-  return email !== '' ? `octoflow.theme.user.${email}` : 'octoflow.theme.user.guest'
+  return email !== '' ? email : 'guest'
 }
 
-export function readStoredThemeKey(user) {
+export function resolveThemeStorageKey(user) {
+  return `${UI_SETTINGS_STORAGE_PREFIX}${resolveUserScopeKey(user)}`
+}
+
+export function resolveUiSettingsSessionKey(user) {
+  return `${UI_SETTINGS_SESSION_PREFIX}${resolveUserScopeKey(user)}`
+}
+
+export function readStoredUiSettings(user) {
   if (typeof window === 'undefined') {
-    return DEFAULT_APP_THEME_KEY
+    return null
   }
 
-  return normalizeThemeKey(window.localStorage.getItem(resolveThemeStorageKey(user)))
+  const rawValue = window.localStorage.getItem(resolveThemeStorageKey(user))
+  if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue)
+    return {
+      themeKey: normalizeThemeKey(parsed?.themeKey),
+    }
+  } catch {
+    return {
+      themeKey: normalizeThemeKey(rawValue),
+    }
+  }
 }
 
-export function writeStoredThemeKey(user, themeKey) {
+export function writeStoredUiSettings(user, settings = {}) {
   if (typeof window === 'undefined') {
     return
   }
 
-  window.localStorage.setItem(resolveThemeStorageKey(user), normalizeThemeKey(themeKey))
+  const payload = {
+    themeKey: normalizeThemeKey(settings?.themeKey),
+  }
+
+  window.localStorage.setItem(resolveThemeStorageKey(user), JSON.stringify(payload))
+}
+
+export function hasUiSettingsLoadedInSession(user) {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return window.sessionStorage.getItem(resolveUiSettingsSessionKey(user)) === '1'
+}
+
+export function markUiSettingsLoadedInSession(user) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.sessionStorage.setItem(resolveUiSettingsSessionKey(user), '1')
+}
+
+export function readStoredThemeKey(user) {
+  return readStoredUiSettings(user)?.themeKey || DEFAULT_APP_THEME_KEY
+}
+
+export function writeStoredThemeKey(user, themeKey) {
+  writeStoredUiSettings(user, { themeKey })
 }
 
 export function applyThemeToDocument(themeKey) {

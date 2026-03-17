@@ -28,12 +28,6 @@ class GithubIssueSyncState
     #[ORM\Column(length: 191, nullable: true)]
     private ?string $viewerLogin = null;
 
-    /**
-     * @var array<int, array<string, mixed>>
-     */
-    #[ORM\Column(type: 'json')]
-    private array $repositoryCatalog = [];
-
     #[ORM\Column]
     private \DateTimeImmutable $syncedAt;
 
@@ -92,24 +86,6 @@ class GithubIssueSyncState
     {
         $normalized = $viewerLogin === null ? null : trim($viewerLogin);
         $this->viewerLogin = $normalized === '' ? null : $normalized;
-
-        return $this;
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    public function getRepositoryCatalog(): array
-    {
-        return $this->repositoryCatalog;
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $repositoryCatalog
-     */
-    public function setRepositoryCatalog(array $repositoryCatalog): self
-    {
-        $this->repositoryCatalog = $repositoryCatalog;
 
         return $this;
     }
