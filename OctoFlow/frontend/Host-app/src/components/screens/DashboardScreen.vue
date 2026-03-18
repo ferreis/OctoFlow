@@ -1,6 +1,14 @@
 <script setup>
-import axios from 'axios'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, toRef, watch } from 'vue'
+import { useNotification } from '../../composables/useNotification'
+import { usePermissions } from '../../composables/usePermissions'
+import {
+  RemoteGithubProjectsCard,
+  RemoteGithubWorkspaceSummaryCard,
+} from '../../federation/remoteComponents'
+import { fetchGithubProfile, fetchGithubWorkspace } from '../../services/githubWorkspace'
+import { fetchGithubIssuesCache, syncGithubIssues } from '../../services/tasks'
+import { extractHttpMessage } from '../../utils/httpErrors'
 
 const props = defineProps({
   request: {
@@ -18,27 +26,18 @@ const props = defineProps({
 })
 
 const profile = ref(null)
+const workspace = ref(null)
 const issueBoard = ref(null)
 const loading = ref(false)
 const syncing = ref(false)
 const error = ref('')
 const status = ref('')
 const activeTab = ref('tasks')
-
-function notifyUser(message, type = 'info') {
-  const normalizedMessage = String(message || '').trim()
-
-  if (normalizedMessage === '' || typeof props.notify !== 'function') {
-    return
-  }
-
-  props.notify({
-    message: normalizedMessage,
-    type,
-  })
-}
+const { notifyUser } = useNotification(props.notify)
+const { canLoadRemoteGithubPanels } = usePermissions(toRef(props, 'currentUser'), { profile, workspace })
 
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
+const shouldRenderRemotePanels = computed(() => canLoadRemoteGithubPanels.value)
 const repositoryLabel = computed(() => {
   const repositories = Array.isArray(profile.value?.repositories) ? profile.value.repositories : []
   const owner = String(profile.value?.repositoryOwner || '').trim()
@@ -225,6 +224,7 @@ watch(
   async (userId, previousUserId) => {
     if (!userId) {
       profile.value = null
+      workspace.value = null
       issueBoard.value = null
       error.value = ''
       status.value = ''
@@ -268,14 +268,11 @@ async function loadDashboardContext(showStatus = false) {
   }
 
   try {
-    const profileResponse = await props.request({
-      url: '/github/profile',
-      method: 'GET',
-    })
-
+    const profileResponse = await fetchGithubProfile(props.request)
     profile.value = profileResponse.data?.profile || null
 
     if (!workspaceReady.value) {
+      workspace.value = null
       issueBoard.value = null
 
       if (showStatus) {
@@ -285,8 +282,10 @@ async function loadDashboardContext(showStatus = false) {
       return
     }
 
+    await loadWorkspaceContext()
     await loadIssueAnalytics(showStatus)
   } catch (requestError) {
+    workspace.value = null
     issueBoard.value = null
     error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar o dashboard analitico.')
   } finally {
@@ -294,14 +293,13 @@ async function loadDashboardContext(showStatus = false) {
   }
 }
 
+async function loadWorkspaceContext() {
+  const { data } = await fetchGithubWorkspace(props.request)
+  workspace.value = data || null
+}
+
 async function loadIssueAnalytics(showStatus = false) {
-  const cacheResponse = await props.request({
-    url: '/github/issues/cache',
-    method: 'GET',
-    params: {
-      scope: 'all',
-    },
-  })
+  const cacheResponse = await fetchGithubIssuesCache(props.request, { scope: 'all' })
 
   issueBoard.value = cacheResponse.data || null
 
@@ -327,13 +325,7 @@ async function syncIssueAnalytics(showStatus = false) {
   error.value = ''
 
   try {
-    const response = await props.request({
-      url: '/github/issues/assigned',
-      method: 'GET',
-      params: {
-        scope: 'all',
-      },
-    })
+    const response = await syncGithubIssues(props.request, { scope: 'all' })
 
     issueBoard.value = response.data || null
 
@@ -509,33 +501,6 @@ function formatDuration(hours) {
   return `${months.toFixed(1)} mes`
 }
 
-function formatDate(value) {
-  if (typeof value !== 'string' || value.trim() === '') {
-    return 'sem data'
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function extractHttpMessage(error, fallback) {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
-
-    return error.message || fallback
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return fallback
-}
 </script>
 
 <template>
@@ -628,6 +593,18 @@ function extractHttpMessage(error, fallback) {
         </article>
 
         <template v-else>
+        <div v-if="shouldRenderRemotePanels" class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(0,0.95fr)]">
+          <RemoteGithubWorkspaceSummaryCard
+            v-if="workspace"
+            :workspace="workspace"
+            :current-user="currentUser"
+          />
+          <RemoteGithubProjectsCard
+            v-if="workspace"
+            :workspace="workspace"
+          />
+        </div>
+
         <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
           <article
             v-for="card in taskOverviewCards"

@@ -1,6 +1,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import axios from 'axios'
+import { useNotification } from '../../composables/useNotification'
+import { fetchGithubProfile } from '../../services/githubWorkspace'
+import { parseGithubRepositoryUrl } from '../../utils/githubRepository'
+import { extractHttpMessage } from '../../utils/httpErrors'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
 import {
   COLOR_VISION_MODE_OPTIONS,
@@ -95,6 +98,7 @@ const accessibilityForm = reactive({
   highContrastEnabled: false,
   fontScale: DEFAULT_FONT_SCALE,
 })
+const { notifyUser } = useNotification(props.notify)
 
 const displayEmail = computed(() => props.currentUser?.defaultEmail || props.currentUser?.email || 'Nao definido')
 const linkedEmailCount = computed(() => Array.isArray(props.currentUser?.linkedEmails) ? props.currentUser.linkedEmails.length : 0)
@@ -224,29 +228,12 @@ watch(
   },
 )
 
-function notifyUser(message, type = 'info') {
-  const normalizedMessage = String(message || '').trim()
-
-  if (normalizedMessage === '' || typeof props.notify !== 'function') {
-    return
-  }
-
-  props.notify({
-    message: normalizedMessage,
-    type,
-  })
-}
-
 async function loadProfile() {
   profileLoading.value = true
   profileError.value = ''
 
   try {
-    const { data } = await props.request({
-      url: '/github/profile',
-      method: 'GET',
-    })
-
+    const { data } = await fetchGithubProfile(props.request)
     profile.value = data?.profile || null
     repositoryPage.value = 1
     syncProfileForm()
@@ -486,46 +473,6 @@ function setRepositoryPage(page) {
   )
 }
 
-function parseGithubRepositoryUrl(value) {
-  const normalizedValue = String(value || '').trim()
-  if (normalizedValue === '') {
-    return null
-  }
-
-  const match = normalizedValue.match(/github\.com[:/]+([^/\s]+)\/([^/\s?#]+)/i)
-  if (!match) {
-    return null
-  }
-
-  const ownerLogin = String(match[1] || '').trim()
-  const repositoryName = String(match[2] || '').replace(/\.git$/i, '').trim()
-
-  if (ownerLogin === '' || repositoryName === '') {
-    return null
-  }
-
-  return {
-    ownerLogin,
-    name: repositoryName,
-  }
-}
-
-function extractHttpMessage(error, fallback) {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
-
-    return error.message || fallback
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return fallback
-}
 </script>
 
 <template>

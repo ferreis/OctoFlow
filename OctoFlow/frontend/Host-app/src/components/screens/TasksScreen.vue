@@ -1,6 +1,10 @@
 <script setup>
-import axios from 'axios'
 import { computed, onMounted, ref, watch } from 'vue'
+import { useNotification } from '../../composables/useNotification'
+import { updateTemplates } from '../../constants/updateTemplates'
+import { formatDateTime } from '../../utils/date'
+import { splitRepositoryKey } from '../../utils/githubRepository'
+import { extractHttpMessage } from '../../utils/httpErrors'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
 import IssueEditModal from '../tasks/IssueEditModal.vue'
 
@@ -19,206 +23,7 @@ const props = defineProps({
   },
 })
 
-const updateTemplates = [
-  {
-    key: 'status-update',
-    label: 'Atualização de status',
-    description: 'Resumo rapido do andamento atual do chamado.',
-    markdownTitle: 'Atualização de status',
-    fields: [
-      {
-        key: 'date',
-        label: 'Data',
-        type: 'text',
-        renderAs: 'bullet',
-        defaultValue: () => new Date().toLocaleString('pt-BR'),
-      },
-      {
-        key: 'owner',
-        label: 'Responsavel',
-        type: 'text',
-        renderAs: 'bullet',
-        placeholder: 'Quem esta conduzindo o atendimento',
-      },
-      {
-        key: 'commitRef',
-        label: 'Commit relacionado',
-        type: 'text',
-        renderAs: 'commit',
-        placeholder: 'Hash, SHA curto ou URL do commit',
-      },
-      {
-        key: 'currentStatus',
-        label: 'Situação atual',
-        type: 'textarea',
-        placeholder: 'Descreva o estado atual do chamado.',
-      },
-      {
-        key: 'nextStep',
-        label: 'Proximo passo',
-        type: 'textarea',
-        placeholder: 'Informe a proxima ação prevista.',
-      },
-      {
-        key: 'notes',
-        label: 'Observacoes',
-        type: 'textarea',
-        placeholder: 'Riscos, alinhamentos ou contexto adicional.',
-      },
-    ],
-  },
-  {
-    key: 'blocker-update',
-    label: 'Bloqueio',
-    description: 'Padrao para registrar impedimento e ação necessaria.',
-    markdownTitle: 'Bloqueio',
-    fields: [
-      {
-        key: 'date',
-        label: 'Data',
-        type: 'text',
-        renderAs: 'bullet',
-        defaultValue: () => new Date().toLocaleString('pt-BR'),
-      },
-      {
-        key: 'owner',
-        label: 'Responsavel',
-        type: 'text',
-        renderAs: 'bullet',
-        placeholder: 'Quem esta sinalizando o bloqueio',
-      },
-      {
-        key: 'commitRef',
-        label: 'Commit relacionado',
-        type: 'text',
-        renderAs: 'commit',
-        placeholder: 'Hash, SHA curto ou URL do commit',
-      },
-      {
-        key: 'blocker',
-        label: 'Bloqueio identificado',
-        type: 'textarea',
-        placeholder: 'Explique claramente o impedimento.',
-      },
-      {
-        key: 'impact',
-        label: 'Impacto',
-        type: 'textarea',
-        placeholder: 'O que esta sendo afetado por este bloqueio.',
-      },
-      {
-        key: 'requiredAction',
-        label: 'Ação necessaria',
-        type: 'textarea',
-        placeholder: 'O que precisa acontecer para liberar o fluxo.',
-      },
-    ],
-  },
-  {
-    key: 'handoff-update',
-    label: 'Repasse',
-    description: 'Contexto pronto para troca de responsavel.',
-    markdownTitle: 'Repasse de atendimento',
-    fields: [
-      {
-        key: 'date',
-        label: 'Data',
-        type: 'text',
-        renderAs: 'bullet',
-        defaultValue: () => new Date().toLocaleString('pt-BR'),
-      },
-      {
-        key: 'nextOwner',
-        label: 'Proximo responsavel',
-        type: 'text',
-        renderAs: 'bullet',
-        placeholder: 'Pessoa ou time que assume a issue',
-      },
-      {
-        key: 'commitRef',
-        label: 'Commit relacionado',
-        type: 'text',
-        renderAs: 'commit',
-        placeholder: 'Hash, SHA curto ou URL do commit',
-      },
-      {
-        key: 'currentContext',
-        label: 'Contexto atual',
-        type: 'textarea',
-        placeholder: 'Resumo do que ja foi feito e da situação atual.',
-      },
-      {
-        key: 'doneItems',
-        label: 'Itens concluidos',
-        type: 'list',
-        listStyle: 'bullet',
-        placeholder: 'Um item por linha.',
-      },
-      {
-        key: 'pendingItems',
-        label: 'Pendencias',
-        type: 'list',
-        listStyle: 'checklist',
-        placeholder: 'Uma pendencia por linha.',
-      },
-    ],
-  },
-  {
-    key: 'resolution-update',
-    label: 'Resolução',
-    description: 'Fechamento estruturado do chamado.',
-    markdownTitle: 'Resolução do chamado',
-    fields: [
-      {
-        key: 'date',
-        label: 'Data',
-        type: 'text',
-        renderAs: 'bullet',
-        defaultValue: () => new Date().toLocaleString('pt-BR'),
-      },
-      {
-        key: 'owner',
-        label: 'Responsavel',
-        type: 'text',
-        renderAs: 'bullet',
-        placeholder: 'Quem aplicou a correção',
-      },
-      {
-        key: 'commitRef',
-        label: 'Commit relacionado',
-        type: 'text',
-        renderAs: 'commit',
-        placeholder: 'Hash, SHA curto ou URL do commit',
-      },
-      {
-        key: 'rootCause',
-        label: 'Causa raiz',
-        type: 'textarea',
-        placeholder: 'Descreva a origem do problema.',
-      },
-      {
-        key: 'appliedFix',
-        label: 'Ajuste aplicado',
-        type: 'textarea',
-        placeholder: 'Explique a mudanca realizada.',
-      },
-      {
-        key: 'validation',
-        label: 'Validação realizada',
-        type: 'list',
-        listStyle: 'checklist',
-        placeholder: 'Um teste ou validação por linha.',
-      },
-      {
-        key: 'followUp',
-        label: 'Acompanhamentos',
-        type: 'list',
-        listStyle: 'bullet',
-        placeholder: 'Itens adicionais ou monitoramentos futuros.',
-      },
-    ],
-  },
-]
+const { notifyUser } = useNotification(props.notify)
 
 const issueBoard = ref(null)
 const loadingCache = ref(false)
@@ -395,22 +200,9 @@ const createRepositoryKey = computed(() => {
 const lastSyncedLabel = computed(() => {
   const lastSyncedAt = cacheMeta.value?.lastSyncedAt
   return typeof lastSyncedAt === 'string' && lastSyncedAt.trim() !== ''
-    ? formatDate(lastSyncedAt)
+    ? formatDateTime(lastSyncedAt)
     : 'sem sincronização anterior'
 })
-
-function notifyUser(message, type = 'info') {
-  const normalizedMessage = String(message || '').trim()
-
-  if (normalizedMessage === '' || typeof props.notify !== 'function') {
-    return
-  }
-
-  props.notify({
-    message: normalizedMessage,
-    type,
-  })
-}
 
 onMounted(async () => {
   await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
@@ -742,47 +534,6 @@ function detectTicketType(issue) {
   return { key: rawKey, label: catalog[rawKey] }
 }
 
-function formatDate(value) {
-  if (typeof value !== 'string' || value.trim() === '') {
-    return 'sem data'
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function splitRepositoryKey(value) {
-  const normalizedValue = String(value || '').trim()
-  const separatorIndex = normalizedValue.indexOf('/')
-
-  if (separatorIndex <= 0) {
-    return { owner: '', name: '' }
-  }
-
-  return {
-    owner: normalizedValue.slice(0, separatorIndex),
-    name: normalizedValue.slice(separatorIndex + 1),
-  }
-}
-
-function extractHttpMessage(error, fallback) {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
-
-    return error.message || fallback
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return fallback
-}
 </script>
 
 <template>
@@ -1005,7 +756,7 @@ function extractHttpMessage(error, fallback) {
                   Data de abertura
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ formatDate(issue.createdAt) }}
+                  {{ formatDateTime(issue.createdAt) }}
                 </strong>
               </div>
 
@@ -1014,7 +765,7 @@ function extractHttpMessage(error, fallback) {
                   Data de atualização
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ formatDate(issue.updatedAt) }}
+                  {{ formatDateTime(issue.updatedAt) }}
                 </strong>
               </div>
 

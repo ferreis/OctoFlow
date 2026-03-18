@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  background: var(--color-bg, #f8fafc);
+  color: var(--color-text, #0f172a);
+  font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
   font-synthesis: none;
   line-height: 1.5;
   text-rendering: optimizeLegibility;
@@ -25,5 +25,7 @@ body,
 }
 
 body {
+  background: transparent;
+  color: inherit;
   min-width: 320px;
 }

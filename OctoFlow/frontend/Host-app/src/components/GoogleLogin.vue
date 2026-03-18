@@ -40,11 +40,11 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['credential', 'error', 'config-loaded'])
+const emit = defineEmits(['credential', 'error'])
 
 const googleButtonContainer = ref(null)
 const error = ref('')
-const isLoading = ref(false)
+const localLoading = ref(false)
 const googleClientId = ref('')
 const useSystemVariant = computed(() => props.variant === 'system')
 let googleIdentityScriptPromise
@@ -60,7 +60,6 @@ async function loadAuthConfig() {
       return false
     }
 
-    emit('config-loaded', { googleClientId: googleClientId.value })
     return true
   } catch (err) {
     error.value = `Erro ao carregar configurações: ${err.message}`
@@ -170,13 +169,13 @@ async function handleGoogleCredentialResponse(response) {
     return
   }
 
-  isLoading.value = true
+  localLoading.value = true
   error.value = ''
 
   try {
     emit('credential', credential)
   } finally {
-    isLoading.value = false
+    localLoading.value = false
   }
 }
 
@@ -209,7 +208,7 @@ defineExpose({
       <div
         v-if="useSystemVariant"
         class="google-button-shell"
-        :class="{ 'is-loading': props.isLoading || isLoading }"
+        :class="{ 'is-loading': props.isLoading || localLoading }"
       >
         <div class="google-button-shell-copy">
           <span class="google-button-shell-badge" aria-hidden="true">G</span>
@@ -218,7 +217,7 @@ defineExpose({
         <div
           ref="googleButtonContainer"
           class="google-button google-button-overlay"
-          :class="{ 'is-loading': props.isLoading || isLoading }"
+          :class="{ 'is-loading': props.isLoading || localLoading }"
         ></div>
       </div>
 
@@ -226,10 +225,10 @@ defineExpose({
         v-else
         ref="googleButtonContainer"
         class="google-button"
-        :class="{ 'is-loading': props.isLoading || isLoading }"
+        :class="{ 'is-loading': props.isLoading || localLoading }"
       ></div>
 
-      <p v-if="props.isLoading || isLoading" class="hint">{{ loadingHint }}</p>
+      <p v-if="props.isLoading || localLoading" class="hint">{{ loadingHint }}</p>
       <p v-if="error" class="feedback error">{{ error }}</p>
     </div>
 

@@ -8,6 +8,8 @@ import DashboardScreen from './components/screens/DashboardScreen.vue'
 import ProfileScreen from './components/screens/ProfileScreen.vue'
 import TasksScreen from './components/screens/TasksScreen.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
+import { navigationItems } from './constants/navigation'
+import { extractHttpMessage } from './utils/httpErrors'
 import {
   APP_THEME_OPTIONS,
   applyAccessibilityToDocument,
@@ -50,36 +52,6 @@ const registerForm = reactive({
   password: '',
   confirmPassword: '',
 })
-
-const navigationItems = [
-  {
-    key: 'dashboard',
-    short: 'DB',
-    label: 'Dashboard',
-    description: 'Graficos e analises operacionais',
-    eyebrow: '',
-    title: 'Dashboard',
-    descriptionLong: '',
-  },
-  {
-    key: 'tasks',
-    short: 'TK',
-    label: 'Tarefas',
-    description: 'Issues atribuidas ou backlog completo do repositorio',
-    eyebrow: 'Issues do GitHub',
-    title: 'Inbox operacional do OctoFlow',
-    descriptionLong: 'Alterne entre suas issues atribuidas e todas as issues do repositorio, com troca rapida entre repositorios acessiveis.',
-  },
-  {
-    key: 'profile',
-    short: 'PR',
-    label: 'Perfil',
-    description: 'Emails vinculados e configuração do GitHub',
-    eyebrow: 'Perfil',
-    title: 'Identidade e configuracoes',
-    descriptionLong: 'Centralize emails vinculados, email padrao e configuração do GitHub em um unico lugar.',
-  },
-]
 
 const activeView = ref('dashboard')
 const authMode = ref('login')
@@ -515,23 +487,6 @@ async function authRequest(config, canRetry = true) {
   }
 
   return authorizedRequestWithoutCsrf(config, canRetry)
-}
-
-function extractHttpMessage(error, fallback) {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
-
-    return error.message || fallback
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return fallback
 }
 
 function setAccessToken(token) {

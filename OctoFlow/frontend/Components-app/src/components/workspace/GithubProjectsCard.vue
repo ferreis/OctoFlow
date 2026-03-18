@@ -1,5 +1,9 @@
 <script setup>
 import { computed } from 'vue'
+import BaseAlert from '../base/BaseAlert.vue'
+import BaseCard from '../base/BaseCard.vue'
+import EmptyState from '../base/EmptyState.vue'
+import SectionHeader from '../base/SectionHeader.vue'
 
 const props = defineProps({
   workspace: {
@@ -35,32 +39,30 @@ function projectStatusStyle(option) {
 </script>
 
 <template>
-  <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-    <div>
-      <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Projects</p>
-      <h3 class="mt-1 text-2xl font-semibold text-slate-950">Painel do owner</h3>
-      <p class="mt-3 text-sm leading-7 text-slate-600">
-        O host monta este bloco apenas quando o workspace do usuario estiver pronto, sem puxar a tela remota inteira.
-      </p>
-    </div>
+  <BaseCard class="projects-card">
+    <SectionHeader
+      kicker="Projects"
+      title="Painel do owner"
+      description="O host monta este bloco apenas quando o workspace do usuario estiver pronto, sem puxar a tela remota inteira."
+    />
 
-    <p
+    <BaseAlert
       v-if="!projectsMeta.available && projectsMeta.message"
-      class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800"
+      type="warning"
     >
       {{ projectsMeta.message }}
-    </p>
+    </BaseAlert>
 
-    <div v-if="projects.length" class="grid gap-3">
+    <div v-if="projects.length" class="projects-grid">
       <article
         v-for="project in projects"
         :key="project.id"
-        class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4"
+        class="project-item"
       >
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <strong class="block break-words text-base font-semibold text-slate-950">{{ project.title }}</strong>
-            <p class="mt-2 text-sm text-slate-600">{{ project.shortDescription || 'Sem Descriçao curta.' }}</p>
+        <div class="project-top">
+          <div class="project-copy">
+            <strong>{{ project.title }}</strong>
+            <p>{{ project.shortDescription || 'Sem Descricao curta.' }}</p>
           </div>
 
           <a
@@ -68,17 +70,17 @@ function projectStatusStyle(option) {
             :href="project.url"
             target="_blank"
             rel="noreferrer noopener"
-            class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="project-link"
           >
             Abrir
           </a>
         </div>
 
-        <div v-if="project.statusField?.options?.length" class="flex flex-wrap gap-2">
+        <div v-if="project.statusField?.options?.length" class="status-grid">
           <span
             v-for="statusOption in project.statusField.options"
             :key="statusOption.id"
-            class="inline-flex max-w-full items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold"
+            class="status-pill"
             :style="projectStatusStyle(statusOption)"
           >
             {{ statusOption.name }}
@@ -87,11 +89,78 @@ function projectStatusStyle(option) {
       </article>
     </div>
 
-    <p
-      v-else
-      class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
-    >
+    <EmptyState v-else>
       Nenhum project disponivel para este owner ou o token nao possui o escopo necessario.
-    </p>
-  </article>
+    </EmptyState>
+  </BaseCard>
 </template>
+
+<style scoped>
+.projects-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.projects-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.project-item {
+  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  border-radius: 18px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.project-top {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.project-copy strong {
+  color: var(--ink, #0f172a);
+  display: block;
+  font-size: 1rem;
+}
+
+.project-copy p {
+  color: var(--muted, #475569);
+  margin: 0.45rem 0 0;
+}
+
+.project-link {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  border-radius: 14px;
+  color: var(--ink, #0f172a);
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  justify-content: center;
+  padding: 0.65rem 0.9rem;
+  text-decoration: none;
+}
+
+.status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-pill {
+  border: 1px solid;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  max-width: 100%;
+  padding: 0.35rem 0.75rem;
+}
+</style>

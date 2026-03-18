@@ -1,7 +1,20 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import MarkdownPreview from '../shared/MarkdownPreview.vue'
-import MultiSelect from '../shared/MultiSelect.vue'
+import {
+  RemoteIssueTemplateForm,
+  RemoteIssueTemplatePreview,
+} from '../../federation/remoteComponents'
+import { fetchGithubWorkspace } from '../../services/githubWorkspace'
+import { createGithubIssue } from '../../services/tasks'
+import { splitRepositoryKey } from '../../utils/githubRepository'
+import { extractHttpMessage } from '../../utils/httpErrors'
+import {
+  buildInitialFieldState,
+  buildSubmissionFields,
+  formatTemplateTitle,
+  resolveSelectLabel,
+  snapshotFieldValues,
+} from '../../utils/issueTemplate'
 
 const props = defineProps({
   request: {
@@ -82,25 +95,9 @@ const requesterEmail = computed(() => {
 })
 const selectedTemplate = computed(() => templates.value.find((template) => template.key === selectedTemplateKey.value) || null)
 const repositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value || repository.value?.nameWithOwner || ''))
-const previewTitle = computed(() => formatTitle(selectedTemplate.value, title.value))
-const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value), requesterEmail.value))
+const previewTitle = computed(() => formatTemplateTitle(selectedTemplate.value, title.value))
+const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value, fieldValues), requesterEmail.value))
 const isFeatureRequestTemplate = computed(() => selectedTemplate.value?.key === 'feature-request')
-const featureRequestFields = computed(() => {
-  const catalog = new Map()
-
-  for (const field of selectedTemplate.value?.fields || []) {
-    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
-    if (fieldKey !== '') {
-      catalog.set(fieldKey, field)
-    }
-  }
-
-  return {
-    description: catalog.get('description') || null,
-    businessRule: catalog.get('businessRule') || null,
-    acceptanceCriteria: catalog.get('acceptanceCriteria') || null,
-  }
-})
 const assignablePlaceholderLabel = computed(() => {
   if (loadingWorkspace.value && assignableUsers.value.length === 0) {
     return 'Carregando colaboradores...'
@@ -166,11 +163,7 @@ async function loadWorkspace() {
       params.repositoryName = selectedRepository.name
     }
 
-    const { data } = await props.request({
-      url: '/github/workspace',
-      method: 'GET',
-      params,
-    })
+    const { data } = await fetchGithubWorkspace(props.request, params)
 
     workspace.value = data || null
 
@@ -219,7 +212,7 @@ function persistTemplateDraft(templateKey = selectedTemplateKey.value) {
   templateDrafts[templateKey] = {
     title: title.value,
     labels: selectedLabels.value.map((label) => cloneSelectedLabel(label)),
-    fields: snapshotFieldValues(template),
+    fields: snapshotFieldValues(template, fieldValues),
   }
 }
 
@@ -255,34 +248,6 @@ function restoreTemplateDraft(templateKey) {
   Object.assign(fieldValues, restoredFields)
 }
 
-function buildInitialFieldState(template) {
-  const state = {}
-
-  for (const field of template?.fields || []) {
-    if (typeof field?.key !== 'string' || field.key.trim() === '') {
-      continue
-    }
-
-    state[field.key] = typeof field.defaultValue === 'string' ? field.defaultValue : ''
-  }
-
-  return state
-}
-
-function snapshotFieldValues(template) {
-  const snapshot = {}
-
-  for (const field of template?.fields || []) {
-    if (typeof field?.key !== 'string' || field.key.trim() === '') {
-      continue
-    }
-
-    snapshot[field.key] = typeof fieldValues[field.key] === 'string' ? fieldValues[field.key] : ''
-  }
-
-  return snapshot
-}
-
 function resolveDefaultLabels(template) {
   const defaultLabels = Array.isArray(template?.defaultLabels) ? template.defaultLabels : []
   const defaultLabelSet = new Set(defaultLabels.map((labelName) => buildLabelNameKey(labelName)).filter(Boolean))
@@ -290,33 +255,6 @@ function resolveDefaultLabels(template) {
   return labelOptions.value
     .filter((label) => defaultLabelSet.has(buildLabelNameKey(label.name)))
     .map((label) => cloneSelectedLabel(label))
-}
-
-function splitMultilineItems(rawValue) {
-  return String(rawValue || '')
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function buildSubmissionFields(template) {
-  const submission = {}
-
-  for (const field of template?.fields || []) {
-    if (typeof field?.key !== 'string' || field.key.trim() === '') {
-      continue
-    }
-
-    const rawValue = typeof fieldValues[field.key] === 'string' ? fieldValues[field.key] : ''
-    if (field.type === 'list') {
-      submission[field.key] = splitMultilineItems(rawValue)
-      continue
-    }
-
-    submission[field.key] = rawValue.trim()
-  }
-
-  return submission
 }
 
 function renderPreview(template, submissionFields, email) {
@@ -361,38 +299,6 @@ function renderPreview(template, submissionFields, email) {
   return lines.join('\n').trim() || 'Preencha os campos para gerar o preview.'
 }
 
-function resolveSelectLabel(field, value) {
-  const normalizedValue = String(value || '').trim()
-  const option = Array.isArray(field?.options)
-    ? field.options.find((candidate) => candidate.value === normalizedValue)
-    : null
-
-  return option?.label || normalizedValue
-}
-
-function formatTitle(template, rawTitle) {
-  const normalizedTitle = String(rawTitle || '').trim()
-  if (normalizedTitle === '') {
-    return 'Titulo da issue'
-  }
-
-  const prefix = typeof template?.titlePrefix === 'string' ? template.titlePrefix.trim() : ''
-  if (!prefix) {
-    return normalizedTitle
-  }
-
-  const prefixPattern = new RegExp(`^\\[${escapeRegExp(prefix)}\\]\\s+`, 'i')
-  if (prefixPattern.test(normalizedTitle)) {
-    return normalizedTitle
-  }
-
-  return `[${prefix}] ${normalizedTitle}`
-}
-
-function escapeRegExp(value) {
-  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 function resetActiveTemplateInputs() {
   const template = selectedTemplate.value
   if (!template) {
@@ -401,23 +307,18 @@ function resetActiveTemplateInputs() {
 
   title.value = ''
   selectedLabels.value = resolveDefaultLabels(template)
+  const nextFieldState = buildInitialFieldState(template)
 
   for (const key of Object.keys(fieldValues)) {
-    fieldValues[key] = ''
+    delete fieldValues[key]
   }
 
-  for (const field of template.fields || []) {
-    if (typeof field?.key !== 'string' || field.key.trim() === '') {
-      continue
-    }
-
-    fieldValues[field.key] = typeof field.defaultValue === 'string' ? field.defaultValue : ''
-  }
+  Object.assign(fieldValues, nextFieldState)
 
   templateDrafts[template.key] = {
     title: '',
     labels: selectedLabels.value.map((label) => cloneSelectedLabel(label)),
-    fields: snapshotFieldValues(template),
+    fields: snapshotFieldValues(template, fieldValues),
   }
 }
 
@@ -437,20 +338,15 @@ async function submitIssue() {
   persistTemplateDraft()
 
   try {
-    const { data } = await props.request({
-      url: '/github/issues',
-      method: 'POST',
-      csrfActionId: 'github.issue.create',
-      data: {
-        template: selectedTemplate.value.key,
-        title: title.value,
-        fields: buildSubmissionFields(selectedTemplate.value),
-        labelIds: selectedLabelIds.value,
-        newLabelNames: newLabelNames.value,
-        assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
-        repositoryOwner: repositorySelection.value.owner,
-        repositoryName: repositorySelection.value.name,
-      },
+    const { data } = await createGithubIssue(props.request, {
+      template: selectedTemplate.value.key,
+      title: title.value,
+      fields: buildSubmissionFields(selectedTemplate.value, fieldValues),
+      labelIds: selectedLabelIds.value,
+      newLabelNames: newLabelNames.value,
+      assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
+      repositoryOwner: repositorySelection.value.owner,
+      repositoryName: repositorySelection.value.name,
     })
 
     emit('issue-created', data || null)
@@ -462,31 +358,12 @@ async function submitIssue() {
   }
 }
 
-function splitRepositoryKey(value) {
-  const normalizedValue = String(value || '').trim()
-  const separatorIndex = normalizedValue.indexOf('/')
-
-  if (separatorIndex <= 0) {
-    return { owner: '', name: '' }
+function syncFieldValues(nextValues) {
+  for (const key of Object.keys(fieldValues)) {
+    delete fieldValues[key]
   }
 
-  return {
-    owner: normalizedValue.slice(0, separatorIndex),
-    name: normalizedValue.slice(separatorIndex + 1),
-  }
-}
-
-function extractHttpMessage(error, fallback) {
-  const responseMessage = error?.response?.data?.message
-  if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-    return responseMessage
-  }
-
-  if (typeof error?.message === 'string' && error.message.trim() !== '') {
-    return error.message
-  }
-
-  return fallback
+  Object.assign(fieldValues, nextValues || {})
 }
 
 function normalizeLabelName(value) {
@@ -645,184 +522,41 @@ function sanitizeSelectedLabels(rawLabels) {
               </p>
             </div>
 
-            <form v-if="selectedTemplate" class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]" @submit.prevent="submitIssue">
-              <div class="grid gap-4 md:grid-cols-2">
-                <label class="grid gap-2">
-                  <span class="text-sm font-semibold text-slate-900">Titulo</span>
-                  <input
-                    v-model="title"
-                    type="text"
-                    placeholder="Ex.: Ajustar fluxo de atendimento no portal"
-                    required
-                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                  >
-                </label>
-
-                <label class="grid gap-2">
-                  <span class="text-sm font-semibold text-slate-900">Responsavel</span>
-                  <select
-                    v-model="selectedAssigneeId"
-                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                  >
-                    <option value="">{{ assignablePlaceholderLabel }}</option>
-                    <option
-                      v-for="assignableUser in assignableUsers"
-                      :key="assignableUser.id || assignableUser.login"
-                      :value="assignableUser.id"
-                    >
-                      {{ assignableUser.name ? `${assignableUser.name} (${assignableUser.login})` : assignableUser.login }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <template v-if="isFeatureRequestTemplate">
-                <label v-if="featureRequestFields.description" class="grid gap-2">
-                  <span class="text-sm font-semibold text-slate-900">{{ featureRequestFields.description.label }}</span>
-                  <textarea
-                    v-model="fieldValues[featureRequestFields.description.key]"
-                    rows="5"
-                    :placeholder="featureRequestFields.description.placeholder || ''"
-                    :required="featureRequestFields.description.required"
-                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                  />
-                </label>
-
-                <label v-if="featureRequestFields.businessRule" class="grid gap-2">
-                  <span class="text-sm font-semibold text-slate-900">{{ featureRequestFields.businessRule.label }}</span>
-                  <textarea
-                    v-model="fieldValues[featureRequestFields.businessRule.key]"
-                    rows="5"
-                    :placeholder="featureRequestFields.businessRule.placeholder || ''"
-                    :required="featureRequestFields.businessRule.required"
-                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                  />
-                </label>
-
-                <label v-if="featureRequestFields.acceptanceCriteria" class="grid gap-2">
-                  <span class="text-sm font-semibold text-slate-900">{{ featureRequestFields.acceptanceCriteria.label }}</span>
-                  <textarea
-                    v-model="fieldValues[featureRequestFields.acceptanceCriteria.key]"
-                    rows="5"
-                    :placeholder="featureRequestFields.acceptanceCriteria.placeholder || ''"
-                    :required="featureRequestFields.acceptanceCriteria.required"
-                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                  />
-                </label>
-
-                <label class="grid gap-2">
-                  <span class="text-sm font-semibold text-slate-900">Tags</span>
-                  <MultiSelect
-                    v-model="selectedLabels"
-                    :options="labelOptions"
-                    search-placeholder="Pesquisar ou criar tag"
-                    helper-text="Pesquise tags existentes ou crie uma nova no proprio campo."
-                    selected-count-suffix="selecionada(s)"
-                    create-label-prefix="Criar tag"
-                    create-helper-text="A tag sera criada no GitHub ao enviar a issue."
-                    existing-option-helper-text="Tag existente no repositorio"
-                    empty-options-text="Nenhuma tag cadastrada. Digite para criar a primeira."
-                    empty-search-text="Nenhuma tag encontrada para essa busca."
-                    empty-idle-text="Digite para pesquisar tags existentes."
-                    new-option-badge="Nova"
-                  />
-                </label>
-              </template>
-
-              <div v-else class="grid gap-4 md:grid-cols-2">
-                <template v-for="field in selectedTemplate.fields || []" :key="field.key">
-                  <label v-if="field.type === 'textarea'" class="grid gap-2 md:col-span-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <textarea
-                      v-model="fieldValues[field.key]"
-                      rows="5"
-                      :placeholder="field.placeholder || ''"
-                      :required="field.required"
-                      class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    />
-                  </label>
-
-                  <label v-else-if="field.type === 'list'" class="grid gap-2 md:col-span-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <textarea
-                      v-model="fieldValues[field.key]"
-                      rows="4"
-                      :placeholder="field.placeholder || 'Um item por linha.'"
-                      :required="field.required"
-                      class="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    />
-                    <small class="text-sm text-slate-500">Use uma linha por item. O preview vira lista automaticamente.</small>
-                  </label>
-
-                  <label v-else-if="field.type === 'select'" class="grid gap-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <select
-                      v-model="fieldValues[field.key]"
-                      :required="field.required"
-                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    >
-                      <option value="">Selecione</option>
-                      <option v-for="option in field.options || []" :key="option.value" :value="option.value">
-                        {{ option.label }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label v-else class="grid gap-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <input
-                      v-model="fieldValues[field.key]"
-                      type="text"
-                      :placeholder="field.placeholder || ''"
-                      :required="field.required"
-                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    >
-                  </label>
-                </template>
-              </div>
-
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="submit"
-                  class="app-btn app-btn-primary"
-                  :disabled="submitting"
-                >
-                  {{ submitting ? 'Criando issue...' : 'Criar issue no GitHub' }}
-                </button>
-                <button
-                  type="button"
-                  class="app-btn app-btn-secondary"
-                  :disabled="submitting"
-                  @click="resetActiveTemplateInputs"
-                >
-                  Limpar formulario
-                </button>
-              </div>
-
-              <p
-                v-if="submitError"
-                class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
-              >
-                {{ submitError }}
-              </p>
-            </form>
+            <article
+              v-if="selectedTemplate"
+              class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
+            >
+              <RemoteIssueTemplateForm
+                :template="selectedTemplate"
+                :title="title"
+                :assignee-id="selectedAssigneeId"
+                :assignee-options="assignableUsers"
+                :assignee-placeholder="assignablePlaceholderLabel"
+                :field-values="fieldValues"
+                :selected-labels="selectedLabels"
+                :label-options="labelOptions"
+                :show-label-field="isFeatureRequestTemplate"
+                :submit-error="submitError"
+                :submitting="submitting"
+                submit-label="Criar issue no GitHub"
+                submitting-label="Criando issue..."
+                @update:title="title = $event"
+                @update:assignee-id="selectedAssigneeId = $event"
+                @update:selected-labels="selectedLabels = sanitizeSelectedLabels($event)"
+                @update:field-values="syncFieldValues"
+                @submit="submitIssue"
+                @reset="resetActiveTemplateInputs"
+              />
+            </article>
           </template>
         </article>
 
-        <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
-          <div>
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Preview Markdown</p>
-            <h3 class="mt-1 text-2xl font-semibold text-slate-950">Como a issue vai subir</h3>
-          </div>
-
-          <div class="rounded-2xl border border-cyan-200 bg-cyan-50/60 px-4 py-3 text-sm font-semibold text-cyan-950">
-            {{ previewTitle }}
-          </div>
-
-          <div class="min-h-[420px] overflow-auto rounded-[24px] border border-slate-200 bg-white px-5 py-4">
-            <MarkdownPreview :content="previewBody" />
-          </div>
-        </article>
+        <RemoteIssueTemplatePreview
+          :title="previewTitle"
+          :body="previewBody"
+          kicker="Preview Markdown"
+          heading="Como a issue vai subir"
+        />
       </div>
     </div>
   </div>

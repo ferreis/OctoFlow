@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import axios from 'axios'
+import { extractHttpMessage } from '../utils/httpErrors'
 import GoogleLogin from './GoogleLogin.vue'
 
 const props = defineProps({
@@ -180,22 +180,6 @@ function providerLabel(provider) {
   }
 }
 
-function extractHttpMessage(error, fallback) {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
-
-    return error.message || fallback
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return fallback
-}
 </script>
 
 <template>

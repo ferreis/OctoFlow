@@ -1,5 +1,7 @@
 <script setup>
 import { computed } from 'vue'
+import BaseCard from '../base/BaseCard.vue'
+import SectionHeader from '../base/SectionHeader.vue'
 
 const props = defineProps({
   workspace: {
@@ -25,56 +27,174 @@ const requesterEmail = computed(() => {
 </script>
 
 <template>
-  <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+  <BaseCard class="summary-card">
+    <div class="summary-header">
       <div class="min-w-0">
-        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">OctoFlow Dashboard</p>
-        <h3 class="mt-1 break-all text-2xl font-semibold text-slate-950">
+        <SectionHeader
+          kicker="OctoFlow Dashboard"
+          title=""
+          description=""
+        />
+        <h3 class="repository-title">
           {{ repository?.nameWithOwner || 'Repositorio nao configurado' }}
         </h3>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+        <p class="repository-copy">
           {{ repository?.description || 'O host monta cada painel remoto de forma isolada para carregar apenas o que fizer sentido para a sessao atual.' }}
         </p>
       </div>
 
-      <div class="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
-        <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Solicitante</span>
-        <strong class="break-all text-base font-semibold text-slate-950">{{ requesterEmail }}</strong>
+      <div class="requester-card">
+        <span>Solicitante</span>
+        <strong>{{ requesterEmail }}</strong>
       </div>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-        <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Templates</span>
-        <strong class="mt-2 block text-2xl font-semibold text-slate-950">{{ templatesCount }}</strong>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <span>Templates</span>
+        <strong>{{ templatesCount }}</strong>
       </div>
-      <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-        <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Labels</span>
-        <strong class="mt-2 block text-2xl font-semibold text-slate-950">{{ labelsCount }}</strong>
+      <div class="metric-card">
+        <span>Labels</span>
+        <strong>{{ labelsCount }}</strong>
       </div>
-      <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-        <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Projects</span>
-        <strong class="mt-2 block text-2xl font-semibold text-slate-950">{{ projectsCount }}</strong>
+      <div class="metric-card">
+        <span>Projects</span>
+        <strong>{{ projectsCount }}</strong>
       </div>
-      <div class="rounded-2xl border border-cyan-200 bg-cyan-50/80 p-4">
-        <span class="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Origem</span>
-        <strong class="mt-2 block text-base font-semibold text-cyan-950">Componentes federados</strong>
+      <div class="metric-card metric-card-accent">
+        <span>Origem</span>
+        <strong>Componentes federados</strong>
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2">
+    <div class="summary-actions">
       <a
         v-if="repository?.url"
         :href="repository.url"
         target="_blank"
         rel="noreferrer noopener"
-        class="inline-flex max-w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        class="link-button"
       >
         Abrir repositorio
       </a>
-      <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+      <span class="owner-pill">
         Owner: {{ repository?.ownerLogin || 'nao definido' }}
       </span>
     </div>
-  </article>
+  </BaseCard>
 </template>
+
+<style scoped>
+.summary-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.summary-header {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.repository-title {
+  color: var(--ink, #0f172a);
+  font-size: clamp(1.45rem, 2vw, 2rem);
+  font-weight: 700;
+  margin: 0.25rem 0 0;
+  word-break: break-word;
+}
+
+.repository-copy {
+  color: var(--muted, #475569);
+  line-height: 1.75;
+  margin: 0.75rem 0 0;
+  max-width: 48rem;
+}
+
+.requester-card {
+  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  border-radius: 18px;
+  color: var(--muted, #475569);
+  display: grid;
+  gap: 0.3rem;
+  min-width: 220px;
+  padding: 1rem;
+}
+
+.requester-card span,
+.metric-card span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.requester-card strong,
+.metric-card strong {
+  color: var(--ink, #0f172a);
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.metrics-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.metric-card {
+  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  border-radius: 18px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+}
+
+.metric-card-accent {
+  background: color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white);
+  border-color: color-mix(in srgb, var(--color-secondary, #06b6d4) 28%, white);
+}
+
+.summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.link-button {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  border-radius: 14px;
+  color: var(--ink, #0f172a);
+  display: inline-flex;
+  font-size: 0.95rem;
+  font-weight: 700;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+}
+
+.owner-pill {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  border-radius: 999px;
+  color: var(--muted, #475569);
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.4rem 0.8rem;
+}
+
+@media (min-width: 1024px) {
+  .summary-header {
+    flex-direction: row;
+  }
+}
+</style>

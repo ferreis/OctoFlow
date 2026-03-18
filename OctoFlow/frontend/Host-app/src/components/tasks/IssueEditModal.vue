@@ -1,6 +1,15 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import MarkdownPreview from '../shared/MarkdownPreview.vue'
+import { useNotification } from '../../composables/useNotification'
+import { RemoteMarkdownPreview as MarkdownPreview } from '../../federation/remoteComponents'
+import { fetchGithubIssueDetails, updateGithubIssue } from '../../services/tasks'
+import { formatDateTime } from '../../utils/date'
+import { extractHttpMessage } from '../../utils/httpErrors'
+import {
+  buildInitialFieldState,
+  buildSubmissionFields,
+  snapshotFieldValues,
+} from '../../utils/issueTemplate'
 
 const props = defineProps({
   request: {
@@ -39,6 +48,7 @@ const form = reactive({
   additionalNotes: '',
   assignCollaboratorId: '',
 })
+const { notifyUser } = useNotification(props.notify)
 
 const canEdit = computed(() => Boolean(currentIssue.value?.viewerCanUpdate))
 const selectedTemplate = computed(() => props.updateTemplates.find((template) => template.key === selectedTemplateKey.value) || null)
@@ -97,10 +107,7 @@ async function loadLatestIssue(issueId) {
   })
 
   try {
-    const { data } = await props.request({
-      url: `/github/issues/${encodeURIComponent(issueId)}`,
-      method: 'GET',
-    })
+    const { data } = await fetchGithubIssueDetails(props.request, issueId)
 
     currentIssue.value = normalizeIssuePayload(data?.item || currentIssue.value)
     currentHistory.value = normalizeHistoryEntries(data?.history, currentIssue.value)
@@ -133,39 +140,6 @@ function syncFormFromIssue(issue) {
   form.assignCollaboratorId = ''
 }
 
-function notifyUser(payload, type = 'info') {
-  if (typeof props.notify !== 'function') {
-    return
-  }
-
-  if (typeof payload === 'string') {
-    const normalizedMessage = payload.trim()
-    if (normalizedMessage === '') {
-      return
-    }
-
-    props.notify({
-      message: normalizedMessage,
-      type,
-    })
-
-    return
-  }
-
-  const normalizedMessage = String(payload?.message || '').trim()
-  if (normalizedMessage === '') {
-    return
-  }
-
-  props.notify({
-    ...payload,
-    message: normalizedMessage,
-    type: typeof payload?.type === 'string' && payload.type.trim() !== ''
-      ? payload.type.trim()
-      : type,
-  })
-}
-
 function resetTemplateCatalog() {
   selectedTemplateKey.value = ''
 
@@ -190,7 +164,7 @@ function persistTemplateDraft(templateKey = selectedTemplateKey.value) {
   }
 
   templateDrafts[templateKey] = {
-    fields: snapshotTemplateFieldValues(template),
+    fields: snapshotFieldValues(template, templateFieldValues),
   }
 }
 
@@ -200,7 +174,7 @@ function restoreTemplateDraft(templateKey) {
     return
   }
 
-  const restoredFields = buildInitialTemplateFieldState(template)
+  const restoredFields = buildInitialFieldState(template)
   const existingDraft = templateDrafts[templateKey]?.fields || {}
 
   for (const field of template.fields || []) {
@@ -221,86 +195,8 @@ function restoreTemplateDraft(templateKey) {
   Object.assign(templateFieldValues, restoredFields)
 }
 
-function buildInitialTemplateFieldState(template) {
-  const state = {}
-
-  for (const field of template?.fields || []) {
-    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
-    if (fieldKey === '') {
-      continue
-    }
-
-    state[fieldKey] = resolveFieldDefaultValue(field)
-  }
-
-  return state
-}
-
-function resolveFieldDefaultValue(field) {
-  if (typeof field?.defaultValue === 'function') {
-    const computedValue = field.defaultValue()
-    return typeof computedValue === 'string' ? computedValue : ''
-  }
-
-  return typeof field?.defaultValue === 'string' ? field.defaultValue : ''
-}
-
-function snapshotTemplateFieldValues(template) {
-  const snapshot = {}
-
-  for (const field of template?.fields || []) {
-    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
-    if (fieldKey === '') {
-      continue
-    }
-
-    snapshot[fieldKey] = typeof templateFieldValues[fieldKey] === 'string' ? templateFieldValues[fieldKey] : ''
-  }
-
-  return snapshot
-}
-
 function buildTemplateSubmissionFields(template) {
-  const submission = {}
-
-  for (const field of template?.fields || []) {
-    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
-    if (fieldKey === '') {
-      continue
-    }
-
-    const rawValue = typeof templateFieldValues[fieldKey] === 'string' ? templateFieldValues[fieldKey] : ''
-
-    if (field.type === 'list') {
-      submission[fieldKey] = splitMultilineItems(rawValue)
-      continue
-    }
-
-    if (field.type === 'select') {
-      submission[fieldKey] = resolveSelectLabel(field, rawValue)
-      continue
-    }
-
-    submission[fieldKey] = rawValue.trim()
-  }
-
-  return submission
-}
-
-function splitMultilineItems(rawValue) {
-  return String(rawValue || '')
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function resolveSelectLabel(field, value) {
-  const normalizedValue = String(value || '').trim()
-  const option = Array.isArray(field?.options)
-    ? field.options.find((candidate) => candidate.value === normalizedValue)
-    : null
-
-  return option?.label || normalizedValue
+  return buildSubmissionFields(template, templateFieldValues, { resolveSelectToLabel: true })
 }
 
 function renderUpdateTemplate(template, submissionFields) {
@@ -438,9 +334,9 @@ function resetTemplateInputs() {
     delete templateFieldValues[key]
   }
 
-  Object.assign(templateFieldValues, buildInitialTemplateFieldState(selectedTemplate.value))
+  Object.assign(templateFieldValues, buildInitialFieldState(selectedTemplate.value))
   templateDrafts[selectedTemplate.value.key] = {
-    fields: snapshotTemplateFieldValues(selectedTemplate.value),
+    fields: snapshotFieldValues(selectedTemplate.value, templateFieldValues),
   }
 }
 
@@ -480,16 +376,11 @@ async function saveIssue() {
   error.value = ''
 
   try {
-    const { data } = await props.request({
-      url: `/github/issues/${encodeURIComponent(currentIssue.value.id)}`,
-      method: 'PATCH',
-      csrfActionId: 'github.issue.update',
-      data: {
-        title: form.title,
-        body: finalBody.value,
-        state: form.state,
-        assigneeIds: form.assignCollaboratorId ? [form.assignCollaboratorId] : [],
-      },
+    const { data } = await updateGithubIssue(props.request, currentIssue.value.id, {
+      title: form.title,
+      body: finalBody.value,
+      state: form.state,
+      assigneeIds: form.assignCollaboratorId ? [form.assignCollaboratorId] : [],
     })
 
     currentIssue.value = normalizeIssuePayload(data?.item || currentIssue.value)
@@ -632,29 +523,6 @@ function historyBadgeClass(kind) {
   }
 }
 
-function formatDate(value) {
-  if (typeof value !== 'string' || value.trim() === '') {
-    return 'sem data'
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function extractHttpMessage(error, fallback) {
-  const responseMessage = error?.response?.data?.message
-  if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-    return responseMessage
-  }
-
-  if (typeof error?.message === 'string' && error.message.trim() !== '') {
-    return error.message
-  }
-
-  return fallback
-}
 </script>
 
 <template>
@@ -734,14 +602,14 @@ function extractHttpMessage(error, fallback) {
               </div>
               <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
                 <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Atualizada</span>
-                <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDate(currentIssue?.updatedAt) }}</strong>
+                <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDateTime(currentIssue?.updatedAt) }}</strong>
               </div>
             </div>
 
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
                 <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Criada em</span>
-                <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDate(currentIssue?.createdAt) }}</strong>
+                <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDateTime(currentIssue?.createdAt) }}</strong>
               </div>
               <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
                 <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Responsaveis</span>
@@ -809,7 +677,7 @@ function extractHttpMessage(error, fallback) {
                   </div>
 
                   <div class="flex items-center gap-3">
-                    <span class="text-xs font-medium text-slate-500">{{ formatDate(entry.createdAt) }}</span>
+                    <span class="text-xs font-medium text-slate-500">{{ formatDateTime(entry.createdAt) }}</span>
                     <a
                       v-if="entry.url"
                       class="text-xs font-semibold text-cyan-700 underline"
