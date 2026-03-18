@@ -63,7 +63,7 @@ async function loadTask(taskId) {
     form.completed = Boolean(task?.completed)
   } catch (requestError) {
     resetForm()
-    error.value = extractMessage(requestError, 'Falha ao carregar tarefa para edicao.')
+    error.value = extractMessage(requestError, 'Falha ao carregar tarefa para edição.')
   } finally {
     loading.value = false
   }
@@ -127,7 +127,7 @@ function extractMessage(error, fallback) {
     <h4>Editar tarefa</h4>
 
     <p v-if="!taskId" class="empty">Selecione uma tarefa na lista para editar.</p>
-    <p v-else-if="loading" class="empty">Carregando dados para edicao...</p>
+    <p v-else-if="loading" class="empty">Carregando dados para edição...</p>
 
     <form v-else class="task-form" @submit.prevent="saveTask">
       <label class="field">
@@ -136,7 +136,7 @@ function extractMessage(error, fallback) {
       </label>
 
       <label class="field">
-        <span>Descricao</span>
+        <span>Descriçao</span>
         <textarea v-model="form.description" rows="3"></textarea>
       </label>
 

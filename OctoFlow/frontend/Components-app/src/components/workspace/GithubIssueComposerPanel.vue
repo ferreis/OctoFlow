@@ -387,7 +387,7 @@ function labelChipStyle(label) {
         <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Templates</p>
         <h3 class="mt-1 text-2xl font-semibold text-slate-950">Abrir novo chamado</h3>
         <p class="mt-3 text-sm leading-7 text-slate-600">
-          Este painel remoto cuida apenas da criacao da issue. O host decide quando ele deve ser montado.
+          Este painel remoto cuida apenas da criação da issue. O host decide quando ele deve ser montado.
         </p>
       </div>
 

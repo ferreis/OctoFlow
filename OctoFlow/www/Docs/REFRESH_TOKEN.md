@@ -19,7 +19,7 @@ Fonte no codigo:
 - `src/Repository/RefreshTokenRepository.php`
 - `src/Controller/AuthController.php`
 
-## 2. Cookie e Configuracao
+## 2. Cookie e Configuração
 
 Arquivo: `www/.env`
 

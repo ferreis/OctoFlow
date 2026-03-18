@@ -107,7 +107,7 @@ Comportamento:
 - `isBlacklisted(jwt)` consulta hash ativo
 - `blacklist(jwt, exp, reason)` evita duplicidade e estende expiracao quando necessario
 
-## 8. Configuracao
+## 8. Configuração
 
 Arquivo: `www/.env`
 

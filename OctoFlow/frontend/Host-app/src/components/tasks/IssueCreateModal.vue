@@ -29,8 +29,6 @@ const workspace = ref(null)
 const submitting = ref(false)
 const submitError = ref('')
 const selectedTemplateKey = ref('')
-const selectedProjectId = ref('')
-const selectedStatusOptionId = ref('')
 const selectedAssigneeId = ref('')
 const selectedRepositoryKey = ref('')
 const title = ref('')
@@ -61,8 +59,6 @@ const templates = computed(() => Array.isArray(workspace.value?.templates) ? wor
 const repository = computed(() => workspace.value?.repository || null)
 const labels = computed(() => Array.isArray(repository.value?.labels) ? repository.value.labels : [])
 const assignableUsers = computed(() => Array.isArray(repository.value?.assignableUsers) ? repository.value.assignableUsers : [])
-const projects = computed(() => Array.isArray(workspace.value?.projects) ? workspace.value.projects : [])
-const projectsMeta = computed(() => workspace.value?.projectsMeta || { available: true, message: null })
 const requesterEmail = computed(() => {
   const primaryEmail = typeof props.currentUser?.defaultEmail === 'string' ? props.currentUser.defaultEmail.trim() : ''
   const fallbackEmail = typeof props.currentUser?.email === 'string' ? props.currentUser.email.trim() : ''
@@ -70,11 +66,26 @@ const requesterEmail = computed(() => {
   return primaryEmail || fallbackEmail || 'usuario autenticado'
 })
 const selectedTemplate = computed(() => templates.value.find((template) => template.key === selectedTemplateKey.value) || null)
-const selectedProject = computed(() => projects.value.find((project) => project.id === selectedProjectId.value) || null)
-const selectedProjectStatusOptions = computed(() => Array.isArray(selectedProject.value?.statusField?.options) ? selectedProject.value.statusField.options : [])
 const repositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value || repository.value?.nameWithOwner || ''))
 const previewTitle = computed(() => formatTitle(selectedTemplate.value, title.value))
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value), requesterEmail.value))
+const isFeatureRequestTemplate = computed(() => selectedTemplate.value?.key === 'feature-request')
+const featureRequestFields = computed(() => {
+  const catalog = new Map()
+
+  for (const field of selectedTemplate.value?.fields || []) {
+    const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
+    if (fieldKey !== '') {
+      catalog.set(fieldKey, field)
+    }
+  }
+
+  return {
+    description: catalog.get('description') || null,
+    businessRule: catalog.get('businessRule') || null,
+    acceptanceCriteria: catalog.get('acceptanceCriteria') || null,
+  }
+})
 const assignablePlaceholderLabel = computed(() => {
   if (loadingWorkspace.value && assignableUsers.value.length === 0) {
     return 'Carregando colaboradores...'
@@ -84,7 +95,7 @@ const assignablePlaceholderLabel = computed(() => {
     return 'Nenhum colaborador encontrado'
   }
 
-  return 'Sem atribuicao inicial'
+  return 'Sem atribuição inicial'
 })
 
 onMounted(() => {
@@ -108,12 +119,6 @@ watch(selectedTemplateKey, (newKey, oldKey) => {
   if (newKey) {
     restoreTemplateDraft(newKey)
     submitError.value = ''
-  }
-})
-
-watch(selectedProjectId, () => {
-  if (!selectedProjectStatusOptions.value.some((option) => option.id === selectedStatusOptionId.value)) {
-    selectedStatusOptionId.value = ''
   }
 })
 
@@ -172,8 +177,6 @@ async function loadWorkspace() {
 
 function initializeWorkspaceState() {
   selectedTemplateKey.value = ''
-  selectedProjectId.value = ''
-  selectedStatusOptionId.value = ''
   selectedAssigneeId.value = ''
   title.value = ''
   selectedLabelIds.value = []
@@ -272,20 +275,6 @@ function resolveDefaultLabelIds(template) {
   return labels.value
     .filter((label) => defaultLabelSet.has(label.name))
     .map((label) => label.id)
-}
-
-function toggleLabel(labelId) {
-  const normalizedLabelId = String(labelId || '').trim()
-  if (normalizedLabelId === '') {
-    return
-  }
-
-  if (selectedLabelIds.value.includes(normalizedLabelId)) {
-    selectedLabelIds.value = selectedLabelIds.value.filter((currentId) => currentId !== normalizedLabelId)
-    return
-  }
-
-  selectedLabelIds.value = [...selectedLabelIds.value, normalizedLabelId]
 }
 
 function splitMultilineItems(rawValue) {
@@ -443,8 +432,6 @@ async function submitIssue() {
         fields: buildSubmissionFields(selectedTemplate.value),
         labelIds: selectedLabelIds.value,
         assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
-        projectId: selectedProjectId.value || null,
-        statusOptionId: selectedStatusOptionId.value || null,
         repositoryOwner: repositorySelection.value.owner,
         repositoryName: repositorySelection.value.name,
       },
@@ -456,24 +443,6 @@ async function submitIssue() {
     submitError.value = extractHttpMessage(error, 'Nao foi possivel criar a issue no GitHub.')
   } finally {
     submitting.value = false
-  }
-}
-
-function labelChipStyle(label) {
-  if (typeof label?.color === 'string' && label.color.trim() !== '') {
-    const color = `#${label.color.trim()}`
-
-    return {
-      borderColor: color,
-      background: `${color}18`,
-      color,
-    }
-  }
-
-  return {
-    borderColor: 'var(--color-primary)',
-    background: 'color-mix(in srgb, var(--color-primary) 14%, transparent)',
-    color: 'var(--color-primary)',
   }
 }
 
@@ -558,7 +527,7 @@ function extractHttpMessage(error, fallback) {
             v-if="loadingWorkspace"
             class="rounded-[28px] border border-white/60 bg-white/85 p-5 text-sm text-slate-500 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
           >
-            Carregando templates, labels e projects do repositorio...
+            Carregando templates e configuracoes do repositorio...
           </article>
 
           <template v-else>
@@ -592,35 +561,87 @@ function extractHttpMessage(error, fallback) {
             </div>
 
             <form v-if="selectedTemplate" class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]" @submit.prevent="submitIssue">
-              <label class="grid gap-2">
-                <span class="text-sm font-semibold text-slate-900">Titulo</span>
-                <input
-                  v-model="title"
-                  type="text"
-                  placeholder="Ex.: Ajustar fluxo de atendimento no portal"
-                  required
-                  class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                >
-              </label>
-
-              <label class="grid gap-2 sm:max-w-lg">
-                <span class="text-sm font-semibold text-slate-900">Atribuir para</span>
-                <select
-                  v-model="selectedAssigneeId"
-                  class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                >
-                  <option value="">{{ assignablePlaceholderLabel }}</option>
-                  <option
-                    v-for="assignableUser in assignableUsers"
-                    :key="assignableUser.id || assignableUser.login"
-                    :value="assignableUser.id"
-                  >
-                    {{ assignableUser.name ? `${assignableUser.name} (${assignableUser.login})` : assignableUser.login }}
-                  </option>
-                </select>
-              </label>
-
               <div class="grid gap-4 md:grid-cols-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Titulo</span>
+                  <input
+                    v-model="title"
+                    type="text"
+                    placeholder="Ex.: Ajustar fluxo de atendimento no portal"
+                    required
+                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  >
+                </label>
+
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Responsavel</span>
+                  <select
+                    v-model="selectedAssigneeId"
+                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  >
+                    <option value="">{{ assignablePlaceholderLabel }}</option>
+                    <option
+                      v-for="assignableUser in assignableUsers"
+                      :key="assignableUser.id || assignableUser.login"
+                      :value="assignableUser.id"
+                    >
+                      {{ assignableUser.name ? `${assignableUser.name} (${assignableUser.login})` : assignableUser.login }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <template v-if="isFeatureRequestTemplate">
+                <label v-if="featureRequestFields.description" class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">{{ featureRequestFields.description.label }}</span>
+                  <textarea
+                    v-model="fieldValues[featureRequestFields.description.key]"
+                    rows="5"
+                    :placeholder="featureRequestFields.description.placeholder || ''"
+                    :required="featureRequestFields.description.required"
+                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+
+                <label v-if="featureRequestFields.businessRule" class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">{{ featureRequestFields.businessRule.label }}</span>
+                  <textarea
+                    v-model="fieldValues[featureRequestFields.businessRule.key]"
+                    rows="5"
+                    :placeholder="featureRequestFields.businessRule.placeholder || ''"
+                    :required="featureRequestFields.businessRule.required"
+                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+
+                <label v-if="featureRequestFields.acceptanceCriteria" class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">{{ featureRequestFields.acceptanceCriteria.label }}</span>
+                  <textarea
+                    v-model="fieldValues[featureRequestFields.acceptanceCriteria.key]"
+                    rows="5"
+                    :placeholder="featureRequestFields.acceptanceCriteria.placeholder || ''"
+                    :required="featureRequestFields.acceptanceCriteria.required"
+                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Tags</span>
+                  <select
+                    v-model="selectedLabelIds"
+                    multiple
+                    :disabled="labels.length === 0"
+                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
+                  >
+                    <option v-if="labels.length === 0" disabled value="">Nenhuma tag disponivel</option>
+                    <option v-for="label in labels" :key="label.id" :value="label.id">
+                      {{ label.name }}
+                    </option>
+                  </select>
+                </label>
+              </template>
+
+              <div v-else class="grid gap-4 md:grid-cols-2">
                 <template v-for="field in selectedTemplate.fields || []" :key="field.key">
                   <label v-if="field.type === 'textarea'" class="grid gap-2 md:col-span-2">
                     <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
@@ -670,62 +691,6 @@ function extractHttpMessage(error, fallback) {
                     >
                   </label>
                 </template>
-              </div>
-
-              <div class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                <div>
-                  <span class="text-sm font-semibold text-slate-900">Labels</span>
-                  <div v-if="labels.length" class="mt-3 flex flex-wrap gap-2">
-                    <button
-                      v-for="label in labels"
-                      :key="label.id"
-                      type="button"
-                      class="inline-flex max-w-full items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold transition"
-                      :class="selectedLabelIds.includes(label.id) ? 'shadow-[0_10px_20px_rgba(15,23,42,0.08)]' : ''"
-                      :style="labelChipStyle(label)"
-                      @click="toggleLabel(label.id)"
-                    >
-                      {{ label.name }}
-                    </button>
-                  </div>
-                  <p v-else class="mt-3 text-sm text-slate-500">Esse repositorio ainda nao expos labels via GraphQL.</p>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-2">
-                  <label class="grid gap-2">
-                    <span class="text-sm font-semibold text-slate-900">Project</span>
-                    <select
-                      v-model="selectedProjectId"
-                      :disabled="projects.length === 0"
-                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
-                    >
-                      <option value="">Sem project</option>
-                      <option v-for="project in projects" :key="project.id" :value="project.id">
-                        {{ project.title }}
-                      </option>
-                    </select>
-                    <small v-if="!projectsMeta.available && projectsMeta.message" class="text-sm text-slate-500">
-                      {{ projectsMeta.message }}
-                    </small>
-                  </label>
-
-                  <label class="grid gap-2">
-                    <span class="text-sm font-semibold text-slate-900">Status do project</span>
-                    <select
-                      v-model="selectedStatusOptionId"
-                      :disabled="!selectedProject || selectedProjectStatusOptions.length === 0"
-                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
-                    >
-                      <option value="">Sem status inicial</option>
-                      <option v-for="statusOption in selectedProjectStatusOptions" :key="statusOption.id" :value="statusOption.id">
-                        {{ statusOption.name }}
-                      </option>
-                    </select>
-                    <small v-if="selectedProject && selectedProjectStatusOptions.length === 0" class="text-sm text-slate-500">
-                      O project selecionado nao expoe um campo Status.
-                    </small>
-                  </label>
-                </div>
               </div>
 
               <div class="flex flex-wrap gap-2">

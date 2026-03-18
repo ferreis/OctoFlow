@@ -87,7 +87,7 @@ function extractMessage(error, fallback) {
       </label>
 
       <label class="field">
-        <span>Descricao</span>
+        <span>Descriçao</span>
         <textarea v-model="form.description" rows="3"></textarea>
       </label>
 

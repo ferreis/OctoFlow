@@ -11,7 +11,7 @@ final class Version20260317193000 extends AbstractMigration
 {
     public function getDescription(): string
     {
-        return 'Cria cache local de issues do GitHub por usuario e estado de sincronizacao com TTL';
+        return 'Cria cache local de issues do GitHub por usuario e estado de sincronização com TTL';
     }
 
     public function up(Schema $schema): void

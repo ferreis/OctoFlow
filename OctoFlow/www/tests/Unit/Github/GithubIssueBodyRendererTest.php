@@ -17,28 +17,23 @@ final class GithubIssueBodyRendererTest extends TestCase
         $this->renderer = new GithubIssueBodyRenderer();
     }
 
-    public function testRenderFeatureRequestAddsPrefixAndChecklist(): void
+    public function testRenderFeatureRequestAddsPrefixAndStructuredFields(): void
     {
         $template = $this->templateCatalog->find('feature-request');
         self::assertIsArray($template);
 
         $renderedIssue = $this->renderer->render($template, 'Integrar workspace GitHub', [
-            'problem' => 'Hoje a abertura de issue e manual.',
-            'proposal' => 'Criar um fluxo dentro da aplicacao para subir issues.',
-            'userImpact' => 'O time reduz o trabalho operacional.',
-            'acceptanceCriteria' => [
-                'Criar issue no repositorio configurado',
-                'Adicionar a issue ao Project selecionado',
-            ],
-            'outOfScope' => "Automatizar deploy\nCriar dashboard externo",
+            'description' => 'Hoje a abertura de issue e manual.',
+            'businessRule' => 'A funcionalidade precisa seguir o fluxo operacional definido pelo time.',
+            'acceptanceCriteria' => "Criar issue no repositorio configurado\nAdicionar a issue ao backlog interno",
         ], 'owner@example.com');
 
         $this->assertSame('[feat] Integrar workspace GitHub', $renderedIssue['title']);
         $this->assertStringContainsString('> Solicitante: owner@example.com', $renderedIssue['body']);
-        $this->assertStringContainsString('## Criterios de aceite', $renderedIssue['body']);
-        $this->assertStringContainsString('- [ ] Criar issue no repositorio configurado', $renderedIssue['body']);
-        $this->assertStringContainsString('## Fora de escopo', $renderedIssue['body']);
-        $this->assertStringContainsString('- Automatizar deploy', $renderedIssue['body']);
+        $this->assertStringContainsString('## Descriçao', $renderedIssue['body']);
+        $this->assertStringContainsString('## Regra de negocio', $renderedIssue['body']);
+        $this->assertStringContainsString('## Criterios de aceitação', $renderedIssue['body']);
+        $this->assertStringContainsString('Criar issue no repositorio configurado', $renderedIssue['body']);
     }
 
     public function testRenderRejectsMissingRequiredField(): void

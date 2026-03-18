@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Planeje uma nova entrega com impacto, proposta e criterios de aceite.
+about: Planeje uma nova entrega com impacto, proposta e Criterios de aceitação.
 title: "[feat] "
 labels:
   - enhancement
@@ -16,7 +16,7 @@ Explique o fluxo esperado, integracoes, telas ou comportamento desejado.
 ## Impacto para usuario ou time
 Quais ganhos concretos essa entrega deve gerar?
 
-## Criterios de aceite
+## Criterios de aceitação
 - [ ] Criterio 1
 - [ ] Criterio 2
 

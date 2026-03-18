@@ -87,8 +87,8 @@ function extractMessage(error, fallback) {
         <p class="value">{{ task.title }}</p>
       </div>
       <div>
-        <p class="label">Descricao</p>
-        <p class="value">{{ task.description || 'Sem descricao' }}</p>
+        <p class="label">Descriçao</p>
+        <p class="value">{{ task.description || 'Sem Descriçao' }}</p>
       </div>
       <div>
         <p class="label">Status</p>

@@ -31,7 +31,7 @@ final class GithubIssueTemplateCatalog
                 ],
                 [
                     'key' => 'currentSituation',
-                    'label' => 'Situacao atual',
+                    'label' => 'Situação atual',
                     'type' => 'textarea',
                     'required' => true,
                     'placeholder' => 'O que o usuario ou time esta vendo agora?',
@@ -69,7 +69,7 @@ final class GithubIssueTemplateCatalog
         'incident-report' => [
             'key' => 'incident-report',
             'name' => 'Incidente operacional',
-            'description' => 'Template para indisponibilidade, degradacao ou falha critica em producao.',
+            'description' => 'Template para indisponibilidade, degradação ou falha critica em produção.',
             'titlePrefix' => 'incident',
             'defaultLabels' => ['bug'],
             'fields' => [
@@ -96,7 +96,7 @@ final class GithubIssueTemplateCatalog
                 ],
                 [
                     'key' => 'mitigation',
-                    'label' => 'Mitigacao imediata',
+                    'label' => 'Mitigação imediata',
                     'type' => 'textarea',
                     'required' => false,
                     'placeholder' => 'Acoes ja executadas para reduzir impacto.',
@@ -107,11 +107,11 @@ final class GithubIssueTemplateCatalog
                     'type' => 'list',
                     'style' => 'checklist',
                     'required' => true,
-                    'placeholder' => 'Uma acao por linha.',
+                    'placeholder' => 'Uma ação por linha.',
                 ],
                 [
                     'key' => 'communication',
-                    'label' => 'Plano de comunicacao',
+                    'label' => 'Plano de comunicação',
                     'type' => 'textarea',
                     'required' => false,
                     'placeholder' => 'Como esse incidente precisa ser comunicado para o time ou clientes?',
@@ -120,14 +120,14 @@ final class GithubIssueTemplateCatalog
         ],
         'service-request' => [
             'key' => 'service-request',
-            'name' => 'Solicitacao de servico',
+            'name' => 'Solicitação de servico',
             'description' => 'Template para ajustes operacionais, acessos e demandas recorrentes.',
             'titlePrefix' => 'service',
             'defaultLabels' => [],
             'fields' => [
                 [
                     'key' => 'requestType',
-                    'label' => 'Tipo da solicitacao',
+                    'label' => 'Tipo da solicitação',
                     'type' => 'select',
                     'required' => true,
                     'defaultValue' => 'operacional',
@@ -135,7 +135,7 @@ final class GithubIssueTemplateCatalog
                         ['value' => 'operacional', 'label' => 'Operacional'],
                         ['value' => 'acesso', 'label' => 'Acesso'],
                         ['value' => 'dados', 'label' => 'Dados'],
-                        ['value' => 'configuracao', 'label' => 'Configuracao'],
+                        ['value' => 'configuração', 'label' => 'Configuração'],
                     ],
                 ],
                 [
@@ -143,14 +143,14 @@ final class GithubIssueTemplateCatalog
                     'label' => 'Contexto de negocio',
                     'type' => 'textarea',
                     'required' => true,
-                    'placeholder' => 'Explique por que essa solicitacao foi aberta.',
+                    'placeholder' => 'Explique por que essa solicitação foi aberta.',
                 ],
                 [
                     'key' => 'requestedAction',
-                    'label' => 'Acao solicitada',
+                    'label' => 'Ação solicitada',
                     'type' => 'textarea',
                     'required' => true,
-                    'placeholder' => 'Descreva a alteracao ou entrega esperada.',
+                    'placeholder' => 'Descreva a alteração ou entrega esperada.',
                 ],
                 [
                     'key' => 'dueDate',
@@ -165,7 +165,7 @@ final class GithubIssueTemplateCatalog
                     'type' => 'list',
                     'style' => 'bullets',
                     'required' => false,
-                    'placeholder' => 'Uma aprovacao ou responsavel por linha.',
+                    'placeholder' => 'Uma aprovação ou responsavel por linha.',
                 ],
                 [
                     'key' => 'completionCriteria',
@@ -179,54 +179,38 @@ final class GithubIssueTemplateCatalog
         ],
         'feature-request' => [
             'key' => 'feature-request',
-            'name' => 'Nova funcionalidade',
-            'description' => 'Estrutura para novas entregas orientadas a impacto e criterios de aceite.',
+            'name' => 'Feat - Nova Funcionalidade',
+            'description' => 'Estrutura para novas funcionalidades com Descrição, regra de negocio e criterios de aceitação.',
             'titlePrefix' => 'feat',
             'defaultLabels' => ['enhancement'],
             'fields' => [
                 [
-                    'key' => 'problem',
-                    'label' => 'Problema ou oportunidade',
+                    'key' => 'description',
+                    'label' => 'Descriçao',
                     'type' => 'textarea',
                     'required' => true,
-                    'placeholder' => 'Explique por que essa entrega faz sentido agora.',
+                    'placeholder' => 'Descreva a funcionalidade e o objetivo da entrega.',
                 ],
                 [
-                    'key' => 'proposal',
-                    'label' => 'Proposta de solucao',
+                    'key' => 'businessRule',
+                    'label' => 'Regra de negocio',
                     'type' => 'textarea',
                     'required' => true,
-                    'placeholder' => 'Descreva o fluxo esperado, APIs ou comportamento desejado.',
-                ],
-                [
-                    'key' => 'userImpact',
-                    'label' => 'Impacto para usuario ou time',
-                    'type' => 'textarea',
-                    'required' => true,
-                    'placeholder' => 'Qual melhoria concreta essa funcionalidade entrega?',
+                    'placeholder' => 'Explique a regra de negocio que precisa ser atendida.',
                 ],
                 [
                     'key' => 'acceptanceCriteria',
-                    'label' => 'Criterios de aceite',
-                    'type' => 'list',
-                    'style' => 'checklist',
+                    'label' => 'Criterios de aceitação',
+                    'type' => 'textarea',
                     'required' => true,
-                    'placeholder' => 'Um item por linha.',
-                ],
-                [
-                    'key' => 'outOfScope',
-                    'label' => 'Fora de escopo',
-                    'type' => 'list',
-                    'style' => 'bullets',
-                    'required' => false,
-                    'placeholder' => 'Opcional. Um item por linha.',
+                    'placeholder' => 'Liste os criterios de aceitação esperados para concluir a funcionalidade.',
                 ],
             ],
         ],
         'bug-report' => [
             'key' => 'bug-report',
             'name' => 'Bug report',
-            'description' => 'Modelo para falhas com contexto, reproducao e severidade.',
+            'description' => 'Modelo para falhas com contexto, reprodução e severidade.',
             'titlePrefix' => 'bug',
             'defaultLabels' => ['bug'],
             'fields' => [
@@ -235,7 +219,7 @@ final class GithubIssueTemplateCatalog
                     'label' => 'Ambiente',
                     'type' => 'text',
                     'required' => true,
-                    'placeholder' => 'Ex.: producao, staging, localhost, branch x.',
+                    'placeholder' => 'Ex.: produção, staging, localhost, branch x.',
                 ],
                 [
                     'key' => 'severity',
@@ -285,7 +269,7 @@ final class GithubIssueTemplateCatalog
         'maintenance-task' => [
             'key' => 'maintenance-task',
             'name' => 'Tarefa tecnica',
-            'description' => 'Modelo para manutencao, melhorias operacionais e debito tecnico.',
+            'description' => 'Modelo para manutenção, melhorias operacionais e debito tecnico.',
             'titlePrefix' => 'chore',
             'defaultLabels' => [],
             'fields' => [
@@ -294,7 +278,7 @@ final class GithubIssueTemplateCatalog
                     'label' => 'Contexto tecnico',
                     'type' => 'textarea',
                     'required' => true,
-                    'placeholder' => 'Qual parte do sistema precisa de atencao e por que?',
+                    'placeholder' => 'Qual parte do sistema precisa de atenção e por que?',
                 ],
                 [
                     'key' => 'deliverables',

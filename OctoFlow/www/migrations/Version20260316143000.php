@@ -11,7 +11,7 @@ final class Version20260316143000 extends AbstractMigration
 {
     public function getDescription(): string
     {
-        return 'Armazena configuracao do workspace GitHub por usuario no banco de dados';
+        return 'Armazena configuração do workspace GitHub por usuario no banco de dados';
     }
 
     public function up(Schema $schema): void

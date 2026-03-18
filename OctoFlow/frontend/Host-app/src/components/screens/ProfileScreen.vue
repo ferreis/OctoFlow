@@ -2,6 +2,20 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
+import {
+  COLOR_VISION_MODE_OPTIONS,
+  DEFAULT_COLOR_VISION_INTENSITY,
+  DEFAULT_COLOR_VISION_MODE,
+  DEFAULT_FONT_SCALE,
+  FONT_SCALE_OPTIONS,
+  getColorVisionModeDefinition,
+  getFontScaleDefinition,
+  normalizeColorVisionIntensity,
+  normalizeColorVisionMode,
+  normalizeFontScale,
+  normalizeHighContrastEnabled,
+  normalizeUiSettingsPayload,
+} from '../../theme'
 
 const props = defineProps({
   request: {
@@ -28,7 +42,15 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  uiSettings: {
+    type: Object,
+    default: () => ({}),
+  },
   setTheme: {
+    type: Function,
+    default: null,
+  },
+  updateUiSettings: {
     type: Function,
     default: null,
   },
@@ -43,6 +65,7 @@ const profileLoading = ref(false)
 const profileError = ref('')
 const profileSuccess = ref('')
 const savingProfile = ref(false)
+const savingAccessibility = ref(false)
 const savingRepository = ref(false)
 const savingRepositoryId = ref(0)
 const deletingRepositoryId = ref(0)
@@ -52,6 +75,7 @@ const collapsedSections = reactive({
   github: true,
   repositories: true,
   theme: true,
+  accessibility: true,
   emails: true,
 })
 const profileForm = reactive({
@@ -64,6 +88,12 @@ const repositoryForm = reactive({
   name: '',
   url: '',
   isIgnored: false,
+})
+const accessibilityForm = reactive({
+  colorVisionMode: DEFAULT_COLOR_VISION_MODE,
+  colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
+  highContrastEnabled: false,
+  fontScale: DEFAULT_FONT_SCALE,
 })
 
 const displayEmail = computed(() => props.currentUser?.defaultEmail || props.currentUser?.email || 'Nao definido')
@@ -93,6 +123,32 @@ const defaultRepositoryLabel = computed(() => {
   const repositoryKey = typeof profile.value?.defaultRepositoryKey === 'string' ? profile.value.defaultRepositoryKey.trim() : ''
   return repositoryKey !== '' ? repositoryKey : 'nao definido'
 })
+const colorVisionModeOptions = COLOR_VISION_MODE_OPTIONS
+const fontScaleOptions = FONT_SCALE_OPTIONS
+const normalizedUiSettings = computed(() => normalizeUiSettingsPayload(props.uiSettings || {}))
+const savedColorVisionMode = computed(() => normalizeColorVisionMode(normalizedUiSettings.value.colorVisionMode))
+const savedColorVisionIntensity = computed(() => normalizeColorVisionIntensity(normalizedUiSettings.value.colorVisionIntensity))
+const savedHighContrastEnabled = computed(() => normalizeHighContrastEnabled(normalizedUiSettings.value.highContrastEnabled))
+const savedFontScale = computed(() => normalizeFontScale(normalizedUiSettings.value.fontScale))
+const selectedColorVisionDefinition = computed(() => getColorVisionModeDefinition(accessibilityForm.colorVisionMode))
+const selectedFontScaleDefinition = computed(() => getFontScaleDefinition(accessibilityForm.fontScale))
+const accessibilityIntensityLabel = computed(() => (
+  accessibilityForm.colorVisionMode === DEFAULT_COLOR_VISION_MODE
+    ? 'Desativado'
+    : `${accessibilityForm.colorVisionIntensity}%`
+))
+const hasAccessibilityChanges = computed(() => (
+  accessibilityForm.colorVisionMode !== savedColorVisionMode.value
+  || accessibilityForm.colorVisionIntensity !== savedColorVisionIntensity.value
+  || accessibilityForm.highContrastEnabled !== savedHighContrastEnabled.value
+  || accessibilityForm.fontScale !== savedFontScale.value
+))
+const isDefaultAccessibilityForm = computed(() => (
+  accessibilityForm.colorVisionMode === DEFAULT_COLOR_VISION_MODE
+  && accessibilityForm.colorVisionIntensity === DEFAULT_COLOR_VISION_INTENSITY
+  && accessibilityForm.highContrastEnabled === false
+  && accessibilityForm.fontScale === DEFAULT_FONT_SCALE
+))
 
 onMounted(async () => {
   await loadProfile()
@@ -129,6 +185,17 @@ watch(profileSuccess, (message) => {
   notifyUser(message, 'success')
   profileSuccess.value = ''
 })
+
+watch(
+  () => props.uiSettings,
+  () => {
+    syncAccessibilityForm()
+  },
+  {
+    immediate: true,
+    deep: true,
+  },
+)
 
 watch(
   () => repositories.value.length,
@@ -208,6 +275,13 @@ function resetRepositoryForm() {
   repositoryForm.name = ''
   repositoryForm.url = ''
   repositoryForm.isIgnored = false
+}
+
+function syncAccessibilityForm() {
+  accessibilityForm.colorVisionMode = savedColorVisionMode.value
+  accessibilityForm.colorVisionIntensity = savedColorVisionIntensity.value
+  accessibilityForm.highContrastEnabled = savedHighContrastEnabled.value
+  accessibilityForm.fontScale = savedFontScale.value
 }
 
 async function saveProfile() {
@@ -337,6 +411,54 @@ function forwardSessionUpdate(session) {
 function selectTheme(themeKey) {
   if (typeof props.setTheme === 'function') {
     props.setTheme(themeKey)
+  }
+}
+
+async function saveAccessibilitySettings() {
+  if (typeof props.updateUiSettings !== 'function') {
+    return
+  }
+
+  savingAccessibility.value = true
+
+  try {
+    await props.updateUiSettings(
+      {
+        colorVisionMode: accessibilityForm.colorVisionMode,
+        colorVisionIntensity: accessibilityForm.colorVisionIntensity,
+        highContrastEnabled: accessibilityForm.highContrastEnabled,
+        fontScale: accessibilityForm.fontScale,
+      },
+      {
+        successMessage: 'Preferencias de acessibilidade atualizadas.',
+      },
+    )
+  } finally {
+    savingAccessibility.value = false
+  }
+}
+
+async function restoreAccessibilityDefaults() {
+  if (typeof props.updateUiSettings !== 'function') {
+    return
+  }
+
+  savingAccessibility.value = true
+
+  try {
+    await props.updateUiSettings(
+      {
+        colorVisionMode: DEFAULT_COLOR_VISION_MODE,
+        colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
+        highContrastEnabled: false,
+        fontScale: DEFAULT_FONT_SCALE,
+      },
+      {
+        successMessage: 'Acessibilidade restaurada para o padrao.',
+      },
+    )
+  } finally {
+    savingAccessibility.value = false
   }
 }
 
@@ -725,6 +847,131 @@ function extractHttpMessage(error, fallback) {
       </div>
     </article>
 
+    <article class="surface-card profile-accessibility-card">
+      <div class="panel-head-inline collapsible-head">
+        <div>
+          <p class="section-kicker">Acessibilidade</p>
+          <h2>Painel de acessibilidade</h2>
+        </div>
+
+        <button
+          class="panel-toggle-button"
+          type="button"
+          :aria-expanded="isSectionOpen('accessibility')"
+          @click="toggleSection('accessibility')"
+        >
+          {{ isSectionOpen('accessibility') ? 'Recolher' : 'Abrir' }}
+        </button>
+      </div>
+
+      <template v-if="isSectionOpen('accessibility')">
+        <div class="profile-stats accessibility-status-grid">
+          <div class="stat-chip">
+            <span>Daltonismo</span>
+            <strong>{{ selectedColorVisionDefinition.label }}</strong>
+          </div>
+          <div class="stat-chip">
+            <span>Intensidade</span>
+            <strong>{{ accessibilityIntensityLabel }}</strong>
+          </div>
+          <div class="stat-chip">
+            <span>Contraste</span>
+            <strong>{{ accessibilityForm.highContrastEnabled ? 'Alto' : 'Padrao' }}</strong>
+          </div>
+          <div class="stat-chip">
+            <span>Fonte</span>
+            <strong>{{ selectedFontScaleDefinition.label }}</strong>
+          </div>
+        </div>
+
+        <p class="inline-note accessibility-note">
+          Esses ajustes sao aplicados globalmente em todo o sistema e ficam salvos na sua conta para as proximas sessoes.
+        </p>
+
+        <form class="settings-form accessibility-form" @submit.prevent="saveAccessibilitySettings">
+          <div class="field-grid accessibility-grid">
+            <label class="field">
+              <span>Modo de daltonismo</span>
+              <select v-model="accessibilityForm.colorVisionMode">
+                <option v-for="option in colorVisionModeOptions" :key="option.key" :value="option.key">
+                  {{ option.label }}
+                </option>
+              </select>
+              <small class="field-help">{{ selectedColorVisionDefinition.description }}</small>
+            </label>
+
+            <label class="field">
+              <span>Tamanho da fonte</span>
+              <select v-model="accessibilityForm.fontScale">
+                <option v-for="option in fontScaleOptions" :key="option.key" :value="option.key">
+                  {{ option.label }}
+                </option>
+              </select>
+              <small class="field-help">Ajusta a tipografia de toda a interface mantendo o layout responsivo.</small>
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Intensidade do ajuste visual</span>
+            <div class="slider-row">
+              <input
+                v-model.number="accessibilityForm.colorVisionIntensity"
+                class="range-input"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                :disabled="accessibilityForm.colorVisionMode === DEFAULT_COLOR_VISION_MODE"
+              >
+              <strong>{{ accessibilityIntensityLabel }}</strong>
+            </div>
+            <small class="field-help">
+              0 remove o filtro. 100 aplica a adaptacao visual completa para o modo selecionado.
+            </small>
+          </label>
+
+          <label class="checkbox-row accessibility-checkbox">
+            <input v-model="accessibilityForm.highContrastEnabled" type="checkbox">
+            <span>Ativar alto contraste em toda a interface</span>
+          </label>
+
+          <div class="form-actions form-actions-between accessibility-actions">
+            <p class="inline-note accessibility-note">
+              Sempre e possivel voltar para o padrao do sistema usando o botao de restauracao.
+            </p>
+
+            <div class="form-actions-inline">
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="savingAccessibility || !hasAccessibilityChanges"
+                @click="syncAccessibilityForm"
+              >
+                Descartar alteracoes
+              </button>
+
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="savingAccessibility || isDefaultAccessibilityForm"
+                @click="restoreAccessibilityDefaults"
+              >
+                Restaurar padrao
+              </button>
+
+              <button
+                class="button-primary"
+                type="submit"
+                :disabled="savingAccessibility || !hasAccessibilityChanges"
+              >
+                {{ savingAccessibility ? 'Aplicando...' : 'Aplicar acessibilidade' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </template>
+    </article>
+
     <article class="surface-card profile-emails-card">
       <div class="panel-head-inline collapsible-head">
         <div>
@@ -763,6 +1010,7 @@ function extractHttpMessage(error, fallback) {
 .github-settings-card,
 .repositories-card,
 .profile-theme-card,
+.profile-accessibility-card,
 .profile-emails-card {
   display: grid;
   gap: 18px;
@@ -831,6 +1079,57 @@ function extractHttpMessage(error, fallback) {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.accessibility-status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.accessibility-form {
+  gap: 18px;
+}
+
+.accessibility-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field-help {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.slider-row {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.range-input {
+  accent-color: var(--accent);
+  cursor: pointer;
+  width: 100%;
+}
+
+.range-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.accessibility-checkbox {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.accessibility-note {
+  line-height: 1.6;
+}
+
+.accessibility-actions {
+  align-items: end;
 }
 
 .theme-option {
@@ -1069,7 +1368,8 @@ function extractHttpMessage(error, fallback) {
 
 @media (max-width: 1100px) {
   .repository-form-grid,
-  .theme-grid {
+  .theme-grid,
+  .accessibility-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1091,7 +1391,12 @@ function extractHttpMessage(error, fallback) {
 
   .profile-stats,
   .field-grid,
-  .theme-grid {
+  .theme-grid,
+  .accessibility-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .slider-row {
     grid-template-columns: 1fr;
   }
 }

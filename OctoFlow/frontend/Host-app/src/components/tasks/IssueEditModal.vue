@@ -28,7 +28,6 @@ const currentHistory = ref([])
 const saving = ref(false)
 const detailLoading = ref(false)
 const error = ref('')
-const detailWarning = ref('')
 const detailSource = ref('cache')
 const selectedTemplateKey = ref('')
 const activePanel = ref('view')
@@ -70,7 +69,6 @@ watch(
     resetTemplateCatalog()
     activePanel.value = 'view'
     error.value = ''
-    detailWarning.value = ''
     detailSource.value = 'cache'
 
     if (issue?.id) {
@@ -92,7 +90,11 @@ watch(selectedTemplateKey, (newKey, oldKey) => {
 
 async function loadLatestIssue(issueId) {
   detailLoading.value = true
-  detailWarning.value = ''
+  notifyUser({
+    message: 'Atualizando esta issue direto do GitHub...',
+    type: 'info',
+    duration: 7000,
+  })
 
   try {
     const { data } = await props.request({
@@ -103,14 +105,21 @@ async function loadLatestIssue(issueId) {
     currentIssue.value = normalizeIssuePayload(data?.item || currentIssue.value)
     currentHistory.value = normalizeHistoryEntries(data?.history, currentIssue.value)
     detailSource.value = data?.source || 'github'
-    detailWarning.value = data?.warning || ''
     syncFormFromIssue(currentIssue.value)
+
+    const detailWarning = String(data?.warning || '').trim()
+    if (detailWarning !== '') {
+      notifyUser(detailWarning, 'warning')
+    }
 
     if (detailSource.value === 'github') {
       notifyUser('Detalhes confirmados com o GitHub e salvos no banco local.', 'success')
     }
   } catch (requestError) {
-    detailWarning.value = extractHttpMessage(requestError, 'Nao foi possivel atualizar os detalhes da issue no GitHub. Mantendo o cache local.')
+    notifyUser(
+      extractHttpMessage(requestError, 'Nao foi possivel atualizar os detalhes da issue no GitHub. Mantendo o cache local.'),
+      'warning'
+    )
     currentHistory.value = buildFallbackHistory(currentIssue.value)
   } finally {
     detailLoading.value = false
@@ -124,16 +133,36 @@ function syncFormFromIssue(issue) {
   form.assignCollaboratorId = ''
 }
 
-function notifyUser(message, type = 'info') {
-  const normalizedMessage = String(message || '').trim()
+function notifyUser(payload, type = 'info') {
+  if (typeof props.notify !== 'function') {
+    return
+  }
 
-  if (normalizedMessage === '' || typeof props.notify !== 'function') {
+  if (typeof payload === 'string') {
+    const normalizedMessage = payload.trim()
+    if (normalizedMessage === '') {
+      return
+    }
+
+    props.notify({
+      message: normalizedMessage,
+      type,
+    })
+
+    return
+  }
+
+  const normalizedMessage = String(payload?.message || '').trim()
+  if (normalizedMessage === '') {
     return
   }
 
   props.notify({
+    ...payload,
     message: normalizedMessage,
-    type,
+    type: typeof payload?.type === 'string' && payload.type.trim() !== ''
+      ? payload.type.trim()
+      : type,
   })
 }
 
@@ -279,7 +308,7 @@ function renderUpdateTemplate(template, submissionFields) {
     return ''
   }
 
-  const lines = [`## ${template.markdownTitle || template.label || 'Atualizacao'}`]
+  const lines = [`## ${template.markdownTitle || template.label || 'Atualização'}`]
   let hasContent = false
 
   for (const field of template.fields || []) {
@@ -639,7 +668,7 @@ function extractHttpMessage(error, fallback) {
               #{{ currentIssue?.number }} {{ currentIssue?.title }}
             </h2>
             <p class="mt-2 text-sm leading-7 text-slate-600">
-              Visualizacao detalhada da issue com historico renderizado e modelos de atualizacao.
+              Visualização detalhada da issue com historico renderizado e modelos de atualização.
             </p>
           </div>
 
@@ -685,20 +714,6 @@ function extractHttpMessage(error, fallback) {
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto p-5">
-        <div
-          v-if="detailLoading"
-          class="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-medium text-cyan-800"
-        >
-          Atualizando esta issue direto do GitHub...
-        </div>
-
-        <div
-          v-if="detailWarning"
-          class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800"
-        >
-          {{ detailWarning }}
-        </div>
-
         <div
           v-if="activePanel === 'view'"
           class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(320px,0.95fr)]"
@@ -748,14 +763,14 @@ function extractHttpMessage(error, fallback) {
 
             <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
               <div>
-                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Descricao</p>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Descriçao</p>
                 <h3 class="mt-1 text-2xl font-semibold text-slate-950">Conteudo formatado</h3>
               </div>
 
               <div class="mt-4 overflow-auto rounded-[24px] border border-slate-200 bg-white px-5 py-4">
                 <MarkdownPreview
                   :content="currentIssue?.body || ''"
-                  empty-label="Nenhuma descricao em Markdown foi informada para esta issue."
+                  empty-label="Nenhuma Descriçao em Markdown foi informada para esta issue."
                 />
               </div>
             </div>
@@ -832,8 +847,8 @@ function extractHttpMessage(error, fallback) {
           <article class="grid gap-4">
             <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
               <div>
-                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Modelos de atualizacao</p>
-                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Escolha o formato da atualizacao</h3>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Modelos de atualização</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Escolha o formato da atualização</h3>
               </div>
 
               <div v-if="updateTemplates.length" class="mt-4 grid gap-3 md:grid-cols-2">
@@ -941,7 +956,7 @@ function extractHttpMessage(error, fallback) {
                   rows="6"
                   :disabled="!canEdit || saving"
                   class="min-h-[144px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
-                  placeholder="Se precisar complementar a atualizacao, escreva aqui."
+                  placeholder="Se precisar complementar a atualização, escreva aqui."
                 />
               </label>
 
@@ -1005,16 +1020,16 @@ function extractHttpMessage(error, fallback) {
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Preview Markdown</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Resultado final da atualizacao</h3>
+              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Resultado final da atualização</h3>
               <p class="mt-2 text-sm text-slate-500">
-                O preview abaixo considera a descricao atual da issue, o modelo preenchido e as observacoes adicionais.
+                O preview abaixo considera a Descriçao atual da issue, o modelo preenchido e as observacoes adicionais.
               </p>
             </div>
 
             <div class="min-h-[540px] overflow-auto rounded-[24px] border border-slate-200 bg-white px-5 py-4">
               <MarkdownPreview
                 :content="finalBody"
-                empty-label="Preencha os campos do modelo para gerar a atualizacao."
+                empty-label="Preencha os campos do modelo para gerar a atualização."
               />
             </div>
           </article>

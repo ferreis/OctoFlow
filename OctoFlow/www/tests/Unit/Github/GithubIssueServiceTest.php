@@ -145,8 +145,8 @@ final class GithubIssueServiceTest extends TestCase
                     $this->assertSame('repo-id', $variables['repositoryId']);
                     $this->assertSame('[feat] Entregar workspace GitHub', $variables['title']);
                     $this->assertSame(['label-enhancement'], $variables['labelIds']);
-                    $this->assertStringContainsString('## Criterios de aceite', $variables['body']);
-                    $this->assertStringContainsString('- [ ] Sincronizar Project automaticamente', $variables['body']);
+                    $this->assertStringContainsString('## Criterios de aceitação', $variables['body']);
+                    $this->assertStringContainsString('Sincronizar backlog automaticamente', $variables['body']);
 
                     return [
                         'createIssue' => [
@@ -230,13 +230,9 @@ final class GithubIssueServiceTest extends TestCase
             'repositoryOwner' => 'acme',
             'repositoryName' => 'delivery-desk',
             'fields' => [
-                'problem' => 'Hoje o backlog vive fora da aplicacao.',
-                'proposal' => 'Criar um painel com templates e preview.',
-                'userImpact' => 'Menos retrabalho para o time.',
-                'acceptanceCriteria' => [
-                    'Criar issue no repo correto',
-                    'Sincronizar Project automaticamente',
-                ],
+                'description' => 'Hoje o backlog vive fora da aplicação.',
+                'businessRule' => 'A funcionalidade precisa respeitar o fluxo de atendimento e priorização do time.',
+                'acceptanceCriteria' => "Criar issue no repo correto\nSincronizar backlog automaticamente",
             ],
             'labelIds' => ['label-enhancement'],
             'projectId' => 'project-1',
@@ -428,13 +424,9 @@ final class GithubIssueServiceTest extends TestCase
             'repositoryOwner' => 'acme',
             'repositoryName' => 'delivery-desk',
             'fields' => [
-                'problem' => 'A fila trava depois do retry.',
-                'proposal' => 'Reorganizar o processamento e o controle de retry.',
-                'userImpact' => 'Evita bloqueio operacional em atendimento.',
-                'acceptanceCriteria' => [
-                    'Registrar retries sem congelar a fila',
-                    'Permitir nova execucao automatica',
-                ],
+                'description' => 'A fila trava depois do retry.',
+                'businessRule' => 'O fluxo de reprocessamento deve manter a fila operacional durante novas tentativas.',
+                'acceptanceCriteria' => "Registrar retries sem congelar a fila\nPermitir nova execução automatica",
             ],
             'assigneeIds' => ['user-node-1'],
         ]);

@@ -22,9 +22,9 @@ const props = defineProps({
 const updateTemplates = [
   {
     key: 'status-update',
-    label: 'Atualizacao de status',
+    label: 'Atualização de status',
     description: 'Resumo rapido do andamento atual do chamado.',
-    markdownTitle: 'Atualizacao de status',
+    markdownTitle: 'Atualização de status',
     fields: [
       {
         key: 'date',
@@ -49,7 +49,7 @@ const updateTemplates = [
       },
       {
         key: 'currentStatus',
-        label: 'Situacao atual',
+        label: 'Situação atual',
         type: 'textarea',
         placeholder: 'Descreva o estado atual do chamado.',
       },
@@ -57,7 +57,7 @@ const updateTemplates = [
         key: 'nextStep',
         label: 'Proximo passo',
         type: 'textarea',
-        placeholder: 'Informe a proxima acao prevista.',
+        placeholder: 'Informe a proxima ação prevista.',
       },
       {
         key: 'notes',
@@ -70,7 +70,7 @@ const updateTemplates = [
   {
     key: 'blocker-update',
     label: 'Bloqueio',
-    description: 'Padrao para registrar impedimento e acao necessaria.',
+    description: 'Padrao para registrar impedimento e ação necessaria.',
     markdownTitle: 'Bloqueio',
     fields: [
       {
@@ -108,7 +108,7 @@ const updateTemplates = [
       },
       {
         key: 'requiredAction',
-        label: 'Acao necessaria',
+        label: 'Ação necessaria',
         type: 'textarea',
         placeholder: 'O que precisa acontecer para liberar o fluxo.',
       },
@@ -145,7 +145,7 @@ const updateTemplates = [
         key: 'currentContext',
         label: 'Contexto atual',
         type: 'textarea',
-        placeholder: 'Resumo do que ja foi feito e da situacao atual.',
+        placeholder: 'Resumo do que ja foi feito e da situação atual.',
       },
       {
         key: 'doneItems',
@@ -165,9 +165,9 @@ const updateTemplates = [
   },
   {
     key: 'resolution-update',
-    label: 'Resolucao',
+    label: 'Resolução',
     description: 'Fechamento estruturado do chamado.',
-    markdownTitle: 'Resolucao do chamado',
+    markdownTitle: 'Resolução do chamado',
     fields: [
       {
         key: 'date',
@@ -181,7 +181,7 @@ const updateTemplates = [
         label: 'Responsavel',
         type: 'text',
         renderAs: 'bullet',
-        placeholder: 'Quem aplicou a correcao',
+        placeholder: 'Quem aplicou a correção',
       },
       {
         key: 'commitRef',
@@ -204,10 +204,10 @@ const updateTemplates = [
       },
       {
         key: 'validation',
-        label: 'Validacao realizada',
+        label: 'Validação realizada',
         type: 'list',
         listStyle: 'checklist',
-        placeholder: 'Um teste ou validacao por linha.',
+        placeholder: 'Um teste ou validação por linha.',
       },
       {
         key: 'followUp',
@@ -371,7 +371,7 @@ const scopeTitle = computed(() => {
 })
 const scopeDescription = computed(() => {
   if (issueScope.value === 'repository') {
-    return 'O sistema preenche a lista primeiro com o cache local do repositorio e depois sincroniza com o GitHub quando o TTL expira ou quando voce pedir atualizacao.'
+    return 'O sistema preenche a lista primeiro com o cache local do repositorio e depois sincroniza com o GitHub quando o TTL expira ou quando voce pedir atualização.'
   }
 
   if (issueScope.value === 'assigned') {
@@ -396,7 +396,7 @@ const lastSyncedLabel = computed(() => {
   const lastSyncedAt = cacheMeta.value?.lastSyncedAt
   return typeof lastSyncedAt === 'string' && lastSyncedAt.trim() !== ''
     ? formatDate(lastSyncedAt)
-    : 'sem sincronizacao anterior'
+    : 'sem sincronização anterior'
 })
 
 function notifyUser(message, type = 'info') {
@@ -540,7 +540,7 @@ async function syncIssues(options = {}) {
     error.value = extractHttpMessage(requestError, 'Nao foi possivel sincronizar as issues com o GitHub.')
 
     if (issues.value.length > 0) {
-      info.value = 'Mantendo a listagem do banco local enquanto a sincronizacao do GitHub nao responde.'
+      info.value = 'Mantendo a listagem do banco local enquanto a sincronização do GitHub nao responde.'
     }
   } finally {
     syncing.value = false
@@ -587,7 +587,7 @@ function updateCacheInfo(data, syncStrategy) {
     return
   }
 
-  info.value = `Listagem servida do banco local. Ultima sincronizacao: ${lastSyncedLabel.value}.`
+  info.value = `Listagem servida do banco local. Ultima sincronização: ${lastSyncedLabel.value}.`
 }
 
 function openCreateModal() {

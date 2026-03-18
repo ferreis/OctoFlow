@@ -11,7 +11,7 @@ final class Version20260318023000 extends AbstractMigration
 {
     public function getDescription(): string
     {
-        return 'Remove campos redundantes viewer_login e repository_key das tabelas de sincronizacao e cache de issues';
+        return 'Remove campos redundantes viewer_login e repository_key das tabelas de sincronização e cache de issues';
     }
 
     public function up(Schema $schema): void

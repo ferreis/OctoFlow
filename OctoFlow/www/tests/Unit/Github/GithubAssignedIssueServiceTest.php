@@ -270,7 +270,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                         'nodes' => [
                             [
                                 'id' => 'comment-1',
-                                'body' => "## Atualizacao\nTudo validado",
+                                'body' => "## Atualização\nTudo validado",
                                 'createdAt' => '2026-03-12T12:00:00Z',
                                 'updatedAt' => '2026-03-12T12:30:00Z',
                                 'url' => 'https://github.com/acme/alpha/issues/14#issuecomment-1',
@@ -352,7 +352,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 if (str_contains($query, 'updateIssue')) {
                     $this->assertSame([
                         'issueId' => 'issue-node-9',
-                        'title' => '[feat] Ajustar automacao',
+                        'title' => '[feat] Ajustar automação',
                         'body' => 'Corpo atualizado',
                         'state' => 'OPEN',
                     ], $variables);
@@ -362,7 +362,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                             'issue' => [
                                 'id' => 'issue-node-9',
                                 'number' => 9,
-                                'title' => '[feat] Ajustar automacao',
+                                'title' => '[feat] Ajustar automação',
                                 'body' => 'Corpo atualizado',
                                 'state' => 'OPEN',
                                 'url' => 'https://github.com/acme/alpha/issues/9',
@@ -406,7 +406,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                         'assignable' => [
                             'id' => 'issue-node-9',
                             'number' => 9,
-                            'title' => '[feat] Ajustar automacao',
+                            'title' => '[feat] Ajustar automação',
                             'body' => 'Corpo atualizado',
                             'state' => 'OPEN',
                             'url' => 'https://github.com/acme/alpha/issues/9',
@@ -477,7 +477,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
         );
 
         $result = $service->updateIssue($this->buildTokenOnlyUser(), 'issue-node-9', [
-            'title' => '[feat] Ajustar automacao',
+            'title' => '[feat] Ajustar automação',
             'body' => 'Corpo atualizado',
             'state' => 'OPEN',
             'assigneeIds' => ['user-new'],

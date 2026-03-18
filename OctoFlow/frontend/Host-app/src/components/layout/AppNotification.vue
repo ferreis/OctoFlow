@@ -60,7 +60,7 @@ const tone = computed(() => {
   return {
     frame: 'border-cyan-200 bg-cyan-50/95 text-cyan-950 shadow-[0_22px_50px_rgba(8,145,178,0.16)]',
     badge: 'bg-cyan-100 text-cyan-700',
-    title: 'Informacao',
+    title: 'Informação',
   }
 })
 

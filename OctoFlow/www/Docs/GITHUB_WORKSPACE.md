@@ -10,7 +10,7 @@ Adicionar um workspace autenticado para:
 - Criar issues a partir de templates estruturados.
 - Adicionar a issue a um Project e definir um status inicial via GraphQL.
 
-## Onde fica a configuracao
+## Onde fica a configuração
 
 Os dados do GitHub agora ficam por usuario no banco de dados:
 
@@ -30,7 +30,7 @@ O token e criptografado no backend antes de ser salvo. O unico segredo de infrae
 
 ### `GET /github/profile`
 
-Retorna o resumo da configuracao GitHub do usuario autenticado:
+Retorna o resumo da configuração GitHub do usuario autenticado:
 
 - owner
 - repository name
@@ -39,7 +39,7 @@ Retorna o resumo da configuracao GitHub do usuario autenticado:
 
 ### `PATCH /github/profile`
 
-Atualiza a configuracao GitHub do usuario autenticado.
+Atualiza a configuração GitHub do usuario autenticado.
 
 Payload esperado:
 
@@ -70,13 +70,9 @@ Payload esperado:
   "template": "feature-request",
   "title": "Integrar criacao de issues com Projects",
   "fields": {
-    "problem": "Hoje o fluxo esta manual.",
-    "proposal": "Criar uma tela dedicada para o backlog.",
-    "userImpact": "Menos trabalho operacional para o time.",
-    "acceptanceCriteria": [
-      "Criar issue no repositorio correto",
-      "Adicionar automaticamente ao Project"
-    ]
+    "description": "Hoje o fluxo esta manual.",
+    "businessRule": "A funcionalidade precisa seguir o fluxo operacional definido pelo time.",
+    "acceptanceCriteria": "Criar issue no repositorio correto\nAdicionar automaticamente ao backlog interno"
   },
   "labelIds": ["LA_kwDOAA..."],
   "projectId": "PVT_kwHOAA...",
@@ -88,7 +84,7 @@ Payload esperado:
 
 1. O frontend autenticado carrega `/github/profile`.
 2. Cada usuario salva owner, repositorio e token no proprio perfil.
-3. O frontend carrega `/github/workspace` usando essa configuracao.
+3. O frontend carrega `/github/workspace` usando essa configuração.
 4. O usuario escolhe um template, preenche o formulario e gera o preview.
 5. O host pede um CSRF challenge autenticado.
 6. O backend cria a issue via `createIssue`.

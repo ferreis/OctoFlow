@@ -3,7 +3,7 @@
 ## Objetivo
 Este documento consolida, em um unico lugar, como a autenticacao funciona no projeto e como a requisicao trafega entre frontend, proxy e backend.
 
-## Configuracao Atual (fonte de verdade)
+## Configuração Atual (fonte de verdade)
 Arquivo: `www/.env`
 
 - `JWT_TOKEN_TTL=600` (Access Token = 10 minutos)

@@ -85,7 +85,7 @@ const taskOverviewCards = computed(() => [
   {
     label: 'Repositorios',
     value: String(repositories.value.length),
-    note: 'fontes em observacao',
+    note: 'fontes em observação',
     cardClass: 'border-cyan-200 bg-cyan-50/80',
     labelClass: 'text-cyan-700',
     valueClass: 'text-cyan-950',
@@ -279,7 +279,7 @@ async function loadDashboardContext(showStatus = false) {
       issueBoard.value = null
 
       if (showStatus) {
-        status.value = 'Perfil GitHub carregado. Finalize a configuracao no Perfil para liberar as analises.'
+        status.value = 'Perfil GitHub carregado. Finalize a configuração no Perfil para liberar as analises.'
       }
 
       return
@@ -342,7 +342,7 @@ async function syncIssueAnalytics(showStatus = false) {
     }
   } catch (requestError) {
     if (issues.value.length > 0) {
-      status.value = 'Mantendo as analises do banco local enquanto a sincronizacao do GitHub nao responde.'
+      status.value = 'Mantendo as analises do banco local enquanto a sincronização do GitHub nao responde.'
       return
     }
 
@@ -730,7 +730,7 @@ function extractHttpMessage(error, fallback) {
 
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
             <div>
-              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Atualizacao</p>
+              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Atualização</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tempo sem mexer nas tarefas abertas</h3>
             </div>
 
@@ -794,7 +794,7 @@ function extractHttpMessage(error, fallback) {
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Resposta por tipo</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tempo medio por categoria</h3>
               <p class="mt-3 text-sm leading-7 text-slate-600">
-                Leitura comparativa do tempo medio entre criacao e ultimo movimento para cada tipo de tarefa.
+                Leitura comparativa do tempo medio entre criação e ultimo movimento para cada tipo de tarefa.
               </p>
             </div>
 
@@ -837,7 +837,7 @@ function extractHttpMessage(error, fallback) {
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Financeiro</p>
           <h3 class="mt-1 text-3xl font-semibold text-slate-950">Espaco reservado para os proximos indicadores</h3>
           <p class="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-            Esta aba fica pronta para receber analises financeiras no futuro, sem misturar operacao de tarefas com custo, receita ou margem.
+            Esta aba fica pronta para receber analises financeiras no futuro, sem misturar operação de tarefas com custo, receita ou margem.
           </p>
         </div>
 

@@ -75,7 +75,7 @@ function closeAction() {
 
   activeAction.value = null
   mountKey.value += 1
-  panelStatus.value = 'Componente encerrado e destruido. Clique em uma acao para montar novamente.'
+  panelStatus.value = 'Componente encerrado e destruido. Clique em uma ação para montar novamente.'
 }
 
 function onTaskSelected(taskId) {
@@ -114,7 +114,7 @@ function onStatus(message) {
       <p class="task-kicker">Componente Remoto de Task</p>
       <h3>Acoes sob demanda</h3>
       <p>Os componentes de lista, create, view e edit sao montados apenas quando voce clica no botao correspondente.</p>
-      <p>Ao fechar ou trocar de acao, o componente atual e destruido.</p>
+      <p>Ao fechar ou trocar de ação, o componente atual e destruido.</p>
     </header>
 
     <div class="toolbar">

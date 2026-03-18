@@ -302,7 +302,7 @@ function extractHttpMessage(error, fallback) {
         </button>
 
         <p v-if="!githubTokenConfigured" class="hint">
-          Configure primeiro o token do GitHub no painel de perfil para habilitar a sincronizacao.
+          Configure primeiro o token do GitHub no painel de perfil para habilitar a sincronização.
         </p>
       </div>
     </div>

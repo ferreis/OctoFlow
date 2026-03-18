@@ -183,7 +183,7 @@ function statusLabel(task) {
             <p class="task-title" :class="{ done: task.completed }">{{ task.title }}</p>
             <span class="status-chip" :class="task.completed ? 'done' : 'pending'">{{ statusLabel(task) }}</span>
           </div>
-          <p class="task-description">{{ task.description || 'Sem descricao' }}</p>
+          <p class="task-description">{{ task.description || 'Sem Descriçao' }}</p>
         </div>
 
         <div class="task-actions">

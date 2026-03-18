@@ -97,7 +97,7 @@ async function loadProfile() {
       resetWorkspaceData()
     }
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel carregar a configuracao GitHub do seu perfil.')
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel carregar a configuração GitHub do seu perfil.')
   } finally {
     profileLoading.value = false
   }
@@ -130,7 +130,7 @@ async function saveProfile() {
 
     profile.value = data?.profile || null
     syncProfileForm()
-    profileSuccess.value = 'Configuracao do perfil GitHub salva com sucesso.'
+    profileSuccess.value = 'Configuração do perfil GitHub salva com sucesso.'
     editingProfile.value = !workspaceReady.value
 
     if (workspaceReady.value) {
@@ -139,7 +139,7 @@ async function saveProfile() {
       resetWorkspaceData()
     }
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel salvar a configuracao GitHub do perfil.')
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel salvar a configuração GitHub do perfil.')
   } finally {
     savingProfile.value = false
   }
@@ -500,7 +500,7 @@ function projectStatusStyle(option) {
     <header class="workspace-header">
       <div>
         <p class="kicker">OctoFlow</p>
-        <h3>Workspace por usuario com configuracao salva no banco</h3>
+        <h3>Workspace por usuario com configuração salva no banco</h3>
         <p>
           Cada usuario salva seu proprio owner, repositorio e token do GitHub no perfil.
           O token fica criptografado no backend e nunca volta em texto puro para o frontend.
@@ -517,7 +517,7 @@ function projectStatusStyle(option) {
       <div class="section-heading">
         <div>
           <p class="section-kicker">Perfil</p>
-          <h4>Configuracao GitHub do usuario</h4>
+          <h4>Configuração GitHub do usuario</h4>
         </div>
 
         <button
@@ -526,12 +526,12 @@ function projectStatusStyle(option) {
           class="ghost small"
           @click="editingProfile = true"
         >
-          Editar configuracao
+          Editar configuração
         </button>
       </div>
 
       <div v-if="profileLoading" class="loading-state inline-loader">
-        <p>Carregando configuracao do perfil...</p>
+        <p>Carregando configuração do perfil...</p>
       </div>
 
       <template v-else>
@@ -592,7 +592,7 @@ function projectStatusStyle(option) {
 
             <div class="form-actions field-wide">
               <button type="submit" class="primary" :disabled="savingProfile">
-                {{ savingProfile ? 'Salvando perfil...' : 'Salvar configuracao' }}
+                {{ savingProfile ? 'Salvando perfil...' : 'Salvar configuração' }}
               </button>
               <button
                 v-if="workspaceReady"
@@ -611,12 +611,12 @@ function projectStatusStyle(option) {
 
     <div v-if="!workspaceReady" class="surface notice empty-state">
       <p>
-        Complete a configuracao do seu perfil GitHub para liberar labels, templates, criacao de issues e sincronizacao com Projects.
+        Complete a configuração do seu perfil GitHub para liberar labels, templates, criação de issues e sincronização com Projects.
       </p>
     </div>
 
     <div v-else-if="workspaceLoading" class="surface loading-state">
-      <p>Carregando configuracao do repositorio, labels e Projects do GitHub...</p>
+      <p>Carregando configuração do repositorio, labels e Projects do GitHub...</p>
     </div>
 
     <div v-else-if="loadError" class="surface notice error">
@@ -628,7 +628,7 @@ function projectStatusStyle(option) {
         <article class="surface summary-card">
           <div class="summary-copy">
             <h4>{{ repository?.nameWithOwner }}</h4>
-            <p>{{ repository?.description || 'Sem descricao cadastrada no GitHub.' }}</p>
+            <p>{{ repository?.description || 'Sem Descriçao cadastrada no GitHub.' }}</p>
             <a v-if="repository?.url" :href="repository.url" target="_blank" rel="noreferrer noopener">Abrir repositorio</a>
           </div>
 
@@ -686,7 +686,7 @@ function projectStatusStyle(option) {
               <input
                 v-model="title"
                 type="text"
-                placeholder="Ex.: Integrar criacao de issues com Projects do GitHub"
+                placeholder="Ex.: Integrar criação de issues com Projects do GitHub"
                 required
               >
             </label>
@@ -844,7 +844,7 @@ function projectStatusStyle(option) {
                 <strong>{{ project.title }}</strong>
                 <a v-if="project.url" :href="project.url" target="_blank" rel="noreferrer noopener">Abrir</a>
               </div>
-              <p>{{ project.shortDescription || 'Sem descricao curta.' }}</p>
+              <p>{{ project.shortDescription || 'Sem Descriçao curta.' }}</p>
 
               <div v-if="project.statusField?.options?.length" class="status-list">
                 <span

@@ -10,12 +10,14 @@ import TasksScreen from './components/screens/TasksScreen.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
 import {
   APP_THEME_OPTIONS,
+  applyAccessibilityToDocument,
   DEFAULT_APP_THEME_KEY,
+  DEFAULT_UI_SETTINGS,
   applyThemeToDocument,
   getThemeDefinition,
   hasUiSettingsLoadedInSession,
   markUiSettingsLoadedInSession,
-  normalizeThemeKey,
+  normalizeUiSettingsPayload,
   readStoredUiSettings,
   writeStoredUiSettings,
 } from './theme'
@@ -72,10 +74,10 @@ const navigationItems = [
     key: 'profile',
     short: 'PR',
     label: 'Perfil',
-    description: 'Emails vinculados e configuracao do GitHub',
+    description: 'Emails vinculados e configuração do GitHub',
     eyebrow: 'Perfil',
     title: 'Identidade e configuracoes',
-    descriptionLong: 'Centralize emails vinculados, email padrao e configuracao do GitHub em um unico lugar.',
+    descriptionLong: 'Centralize emails vinculados, email padrao e configuração do GitHub em um unico lugar.',
   },
 ]
 
@@ -89,9 +91,7 @@ const loginLoading = ref(false)
 const actionLoading = ref(false)
 const notification = ref(null)
 const activeThemeKey = ref(DEFAULT_APP_THEME_KEY)
-const uiSettings = ref({
-  themeKey: DEFAULT_APP_THEME_KEY,
-})
+const uiSettings = ref({ ...DEFAULT_UI_SETTINGS })
 const availableThemes = APP_THEME_OPTIONS
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
@@ -387,7 +387,7 @@ function getCsrfActionId(config, method) {
   const actionId = typeof config?.csrfActionId === 'string' ? config.csrfActionId.trim() : ''
 
   if (isMutatingMethod(method) && actionId === '') {
-    throw new Error('Toda requisicao mutavel precisa informar csrfActionId.')
+    throw new Error('Toda requisição mutavel precisa informar csrfActionId.')
   }
 
   return actionId
@@ -480,7 +480,7 @@ async function requestWithCsrf(config, canRetryCsrf = true, canRetryAuth = true)
       : DEFAULT_CSRF_ACTION_HEADER_NAME
 
     if (token === '') {
-      throw new Error('O backend nao retornou um CSRF token valido para esta acao.')
+      throw new Error('O backend nao retornou um CSRF token valido para esta ação.')
     }
 
     headers[issuedHeaderName] = token
@@ -548,22 +548,11 @@ function clearAuth() {
   registerForm.confirmPassword = ''
   uiSettingsSyncKey = ''
   uiSettingsSyncPromise = null
-  applyUiSettingsLocally({
-    themeKey: DEFAULT_APP_THEME_KEY,
-  })
+  applyUiSettingsLocally(DEFAULT_UI_SETTINGS)
 }
 
 function normalizeUiSettings(settings = {}, baseSettings = uiSettings.value) {
-  const nextSettings = settings && typeof settings === 'object' ? settings : {}
-  const fallbackSettings = baseSettings && typeof baseSettings === 'object'
-    ? baseSettings
-    : {
-        themeKey: DEFAULT_APP_THEME_KEY,
-      }
-
-  return {
-    themeKey: normalizeThemeKey(nextSettings?.themeKey ?? fallbackSettings?.themeKey ?? DEFAULT_APP_THEME_KEY),
-  }
+  return normalizeUiSettingsPayload(settings, baseSettings)
 }
 
 function applyUiSettingsLocally(settings = {}, baseSettings = uiSettings.value) {
@@ -571,6 +560,7 @@ function applyUiSettingsLocally(settings = {}, baseSettings = uiSettings.value) 
   uiSettings.value = nextSettings
   activeThemeKey.value = nextSettings.themeKey
   applyThemeToDocument(nextSettings.themeKey)
+  applyAccessibilityToDocument(nextSettings)
 
   return nextSettings
 }
@@ -579,20 +569,14 @@ function applyCachedUiSettings(user = currentUser.value) {
   const cachedSettings = readStoredUiSettings(user)
 
   return applyUiSettingsLocally(
-    cachedSettings || {
-      themeKey: DEFAULT_APP_THEME_KEY,
-    },
-    {
-      themeKey: DEFAULT_APP_THEME_KEY,
-    },
+    cachedSettings || DEFAULT_UI_SETTINGS,
+    DEFAULT_UI_SETTINGS,
   )
 }
 
 async function syncUiSettingsForSession(user = currentUser.value, options = {}) {
   if (!user) {
-    applyUiSettingsLocally({
-      themeKey: DEFAULT_APP_THEME_KEY,
-    })
+    applyUiSettingsLocally(DEFAULT_UI_SETTINGS)
     return null
   }
 
@@ -614,9 +598,7 @@ async function syncUiSettingsForSession(user = currentUser.value, options = {}) 
         method: 'GET',
       })
 
-      const nextSettings = normalizeUiSettings({
-        themeKey: normalizeThemeKey(data?.settings?.themeKey),
-      })
+      const nextSettings = normalizeUiSettings(data?.settings || {})
 
       writeStoredUiSettings(user, nextSettings)
       markUiSettingsLoadedInSession(user)
@@ -635,15 +617,15 @@ async function syncUiSettingsForSession(user = currentUser.value, options = {}) 
 }
 
 async function updateUiSettings(partialSettings = {}, options = {}) {
-  const previousSettings = normalizeUiSettings(uiSettings.value, {
-    themeKey: DEFAULT_APP_THEME_KEY,
-  })
+  const previousSettings = normalizeUiSettings(uiSettings.value, DEFAULT_UI_SETTINGS)
   const nextSettings = applyUiSettingsLocally(partialSettings, previousSettings)
   const currentSettingsUser = currentUser.value
   const payload = {}
 
-  if (Object.prototype.hasOwnProperty.call(partialSettings, 'themeKey')) {
-    payload.themeKey = nextSettings.themeKey
+  for (const fieldKey of ['themeKey', 'colorVisionMode', 'colorVisionIntensity', 'highContrastEnabled', 'fontScale']) {
+    if (Object.prototype.hasOwnProperty.call(partialSettings, fieldKey)) {
+      payload[fieldKey] = nextSettings[fieldKey]
+    }
   }
 
   writeStoredUiSettings(currentSettingsUser, nextSettings)
@@ -661,7 +643,8 @@ async function updateUiSettings(partialSettings = {}, options = {}) {
       })
 
       const persistedSettings = normalizeUiSettings({
-        themeKey: data?.settings?.themeKey ?? nextSettings.themeKey,
+        ...nextSettings,
+        ...(data?.settings || {}),
       })
 
       writeStoredUiSettings(currentSettingsUser, persistedSettings)
@@ -672,6 +655,8 @@ async function updateUiSettings(partialSettings = {}, options = {}) {
           showNotification(options.successMessage.trim(), 'success')
         } else if (Object.prototype.hasOwnProperty.call(payload, 'themeKey')) {
           showNotification(`Tema ${getThemeDefinition(persistedSettings.themeKey).label} aplicado.`, 'success')
+        } else if (Object.keys(payload).length > 0) {
+          showNotification('Preferencias de acessibilidade atualizadas.', 'success')
         }
       }
 
@@ -690,6 +675,8 @@ async function updateUiSettings(partialSettings = {}, options = {}) {
       showNotification(options.successMessage.trim(), 'success')
     } else if (Object.prototype.hasOwnProperty.call(payload, 'themeKey')) {
       showNotification(`Tema ${getThemeDefinition(nextSettings.themeKey).label} aplicado.`, 'success')
+    } else if (Object.keys(payload).length > 0) {
+      showNotification('Preferencias de acessibilidade atualizadas.', 'success')
     }
   }
 
@@ -807,15 +794,15 @@ function clearNotification() {
             <div class="highlight-grid">
               <div class="highlight-card">
                 <strong>Perfil</strong>
-                <p>Emails vinculados, email padrao e configuracao do GitHub do usuario.</p>
+                <p>Emails vinculados, email padrao e configuração do GitHub do usuario.</p>
               </div>
               <div class="highlight-card">
                 <strong>Tarefas</strong>
-                <p>Issues atribuidas a voce com selecao de repositorio e atualizacao do conteudo.</p>
+                <p>Issues atribuidas a voce com seleção de repositorio e atualização do conteudo.</p>
               </div>
               <div class="highlight-card">
                 <strong>Dashboard</strong>
-                <p>Resumo do repositorio, criacao de issue e leitura dos Projects em um unico painel.</p>
+                <p>Resumo do repositorio, criação de issue e leitura dos Projects em um unico painel.</p>
               </div>
             </div>
           </article>
@@ -823,10 +810,10 @@ function clearNotification() {
           <article class="surface-card auth-form-card">
             <div>
               <p class="section-kicker">Sessao</p>
-              <h2>{{ authMode === 'register' ? 'Criar conta' : 'Entrar na aplicacao' }}</h2>
+              <h2>{{ authMode === 'register' ? 'Criar conta' : 'Entrar na aplicação' }}</h2>
             </div>
 
-            <div class="auth-mode-switch" role="tablist" aria-label="Modos de autenticacao">
+            <div class="auth-mode-switch" role="tablist" aria-label="Modos de autenticação">
               <button
                 class="auth-mode-option"
                 :class="{ active: authMode === 'login' }"
@@ -917,10 +904,12 @@ function clearNotification() {
           :request="authRequest"
           :api-client="apiClient"
           :current-user="currentUser"
+          :ui-settings="uiSettings"
           :active-theme-key="activeThemeKey"
           :available-themes="availableThemes"
           :notify="showNotification"
           :set-theme="setAppTheme"
+          :update-ui-settings="updateUiSettings"
           @session-updated="handleSessionUpdated"
         />
       </main>

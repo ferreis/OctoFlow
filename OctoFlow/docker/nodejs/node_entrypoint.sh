@@ -23,7 +23,7 @@ run_install() {
 if [ -x /home/node/app/roda.sh ]; then
   /bin/bash /home/node/app/roda.sh
 elif [ ! -e "${SENTINEL_FILE}" ]; then
-  echo "[frontend] Instalacao inicial detectada"
+  echo "[frontend] Instalação inicial detectada"
   run_install /home/node/app/Components-app
   run_install /home/node/app/Host-app
   {

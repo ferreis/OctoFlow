@@ -60,7 +60,7 @@ function projectStatusStyle(option) {
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
             <strong class="block break-words text-base font-semibold text-slate-950">{{ project.title }}</strong>
-            <p class="mt-2 text-sm text-slate-600">{{ project.shortDescription || 'Sem descricao curta.' }}</p>
+            <p class="mt-2 text-sm text-slate-600">{{ project.shortDescription || 'Sem Descriçao curta.' }}</p>
           </div>
 
           <a
