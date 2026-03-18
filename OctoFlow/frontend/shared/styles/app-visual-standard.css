@@ -1,0 +1,168 @@
+:root {
+  --app-panel-bg:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 90%, var(--nav-card, rgba(255, 255, 255, 0.06)) 10%),
+      color-mix(in srgb, var(--surface, rgba(19, 28, 50, 0.82)) 84%, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 16%)
+    );
+  --app-panel-bg-muted:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-muted, rgba(30, 41, 59, 0.76)) 90%, var(--nav-card, rgba(255, 255, 255, 0.06)) 10%),
+      color-mix(in srgb, var(--surface, rgba(19, 28, 50, 0.82)) 78%, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 22%)
+    );
+  --app-panel-solid-bg: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 88%, var(--nav-card, rgba(255, 255, 255, 0.06)) 12%);
+  --app-panel-border: color-mix(in srgb, var(--line, rgba(148, 163, 184, 0.22)) 72%, var(--nav-border, rgba(255, 255, 255, 0.1)) 28%);
+  --app-panel-border-strong: color-mix(in srgb, var(--line-strong, rgba(6, 182, 212, 0.24)) 58%, var(--color-secondary, #06b6d4) 42%);
+  --app-panel-shadow: var(--shadow-lg, 0 22px 60px rgba(2, 6, 23, 0.28));
+  --app-field-bg: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 82%, var(--nav-card, rgba(255, 255, 255, 0.06)) 18%);
+  --app-field-bg-hover: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 72%, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 28%);
+  --app-field-bg-focus: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 64%, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 36%);
+  --app-field-bg-disabled: color-mix(in srgb, var(--surface-muted, rgba(30, 41, 59, 0.76)) 88%, var(--color-bg, #0f172a) 12%);
+  --app-field-border: color-mix(in srgb, var(--line, rgba(148, 163, 184, 0.22)) 74%, var(--nav-border, rgba(255, 255, 255, 0.1)) 26%);
+  --app-field-border-focus: color-mix(in srgb, var(--color-secondary, #06b6d4) 58%, var(--line, rgba(148, 163, 184, 0.22)) 42%);
+  --app-field-placeholder: color-mix(in srgb, var(--muted, #cbd5e1) 82%, var(--ink, #f8fafc) 18%);
+  --app-choice-bg: var(--app-panel-solid-bg);
+  --app-choice-bg-active: color-mix(in srgb, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 78%, var(--surface-strong, rgba(15, 23, 42, 0.9)) 22%);
+  --app-choice-border: var(--app-panel-border);
+  --app-choice-border-active: var(--app-panel-border-strong);
+  --app-choice-shadow-active: 0 14px 28px rgba(14, 165, 233, 0.12);
+  --app-chip-bg: color-mix(in srgb, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 74%, var(--surface-strong, rgba(15, 23, 42, 0.9)) 26%);
+  --app-chip-border: color-mix(in srgb, var(--color-secondary, #06b6d4) 42%, var(--line, rgba(148, 163, 184, 0.22)) 58%);
+  --app-chip-text: color-mix(in srgb, var(--color-secondary, #06b6d4) 72%, var(--ink, #f8fafc) 28%);
+}
+
+:root[data-high-contrast='true'] {
+  --app-panel-bg: linear-gradient(180deg, var(--surface-strong), var(--surface));
+  --app-panel-bg-muted: linear-gradient(180deg, var(--surface), var(--surface-muted));
+  --app-panel-solid-bg: var(--surface-strong);
+  --app-panel-border: var(--line);
+  --app-panel-border-strong: var(--line-strong);
+  --app-field-bg: var(--surface-strong);
+  --app-field-bg-hover: var(--surface);
+  --app-field-bg-focus: var(--surface);
+  --app-field-bg-disabled: var(--surface-muted);
+  --app-field-border: var(--line);
+  --app-field-border-focus: var(--line-strong);
+  --app-field-placeholder: var(--muted);
+  --app-choice-bg: var(--surface-strong);
+  --app-choice-bg-active: var(--surface);
+  --app-choice-border: var(--line);
+  --app-choice-border-active: var(--line-strong);
+  --app-chip-bg: var(--surface);
+  --app-chip-border: var(--line-strong);
+  --app-chip-text: var(--ink);
+}
+
+.app-panel-standard,
+.app-panel-muted,
+.app-empty-panel {
+  border: 1px solid var(--app-panel-border);
+  box-shadow: var(--app-panel-shadow);
+}
+
+.app-panel-standard {
+  background: var(--app-panel-bg);
+}
+
+.app-panel-muted {
+  background: var(--app-panel-bg-muted);
+}
+
+.app-empty-panel {
+  background: var(--app-panel-bg-muted);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.app-field-control {
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
+  border-radius: 16px;
+  color: var(--ink, #0f172a);
+  outline: none;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.app-field-control:hover {
+  background: var(--app-field-bg-hover);
+}
+
+.app-field-control:focus {
+  background: var(--app-field-bg-focus);
+  border-color: var(--app-field-border-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #06b6d4) 18%, transparent);
+}
+
+.app-field-control:disabled {
+  background: var(--app-field-bg-disabled);
+  cursor: not-allowed;
+}
+
+.app-field-control::placeholder {
+  color: var(--app-field-placeholder);
+}
+
+.app-field-control option,
+.app-field-control optgroup,
+input.app-field-control,
+textarea.app-field-control,
+select.app-field-control {
+  background: var(--app-field-bg);
+  color: var(--ink, #0f172a);
+}
+
+select.app-field-control option,
+select.app-field-control optgroup {
+  background-color: var(--app-field-bg);
+  color: var(--ink, #0f172a);
+}
+
+.app-choice-card {
+  background: var(--app-choice-bg);
+  border: 1px solid var(--app-choice-border);
+  border-radius: 20px;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.app-choice-card:hover {
+  background: var(--app-field-bg-hover);
+  border-color: var(--app-panel-border-strong);
+  transform: translateY(-1px);
+}
+
+.app-choice-card.is-active {
+  background: var(--app-choice-bg-active);
+  border-color: var(--app-choice-border-active);
+  box-shadow: var(--app-choice-shadow-active);
+}
+
+.app-chip {
+  background: var(--app-chip-bg);
+  border: 1px solid var(--app-chip-border);
+  color: var(--app-chip-text);
+}
+
+.app-link-surface {
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
+  color: var(--ink, #0f172a);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.app-link-surface:hover {
+  background: var(--app-field-bg-hover);
+  border-color: var(--app-panel-border-strong);
+  transform: translateY(-1px);
+}

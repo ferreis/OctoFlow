@@ -299,14 +299,38 @@ function updateFieldValue(fieldKey, nextValue) {
 .field input,
 .field textarea,
 .field select {
-  background: white;
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
+  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
   border-radius: 16px;
   color: var(--ink, #0f172a);
   font: inherit;
   outline: none;
   padding: 0.85rem 0.9rem;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
   width: 100%;
+}
+
+.field input::placeholder,
+.field textarea::placeholder,
+.field select::placeholder {
+  color: var(--app-field-placeholder, var(--muted, #475569));
+}
+
+.field input:hover,
+.field textarea:hover,
+.field select:hover {
+  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  background: var(--app-field-bg-focus, var(--surface, rgba(19, 28, 50, 0.82)));
+  border-color: var(--app-field-border-focus, var(--color-secondary, #06b6d4));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #06b6d4) 18%, transparent);
 }
 
 .field textarea {
@@ -345,8 +369,8 @@ function updateFieldValue(fieldKey, nextValue) {
 }
 
 .secondary-action {
-  background: white;
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-panel-solid-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
+  border: 1px solid var(--app-panel-border, var(--line, rgba(148, 163, 184, 0.22)));
   color: var(--ink, #0f172a);
 }
 

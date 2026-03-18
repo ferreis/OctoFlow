@@ -147,8 +147,8 @@ const requesterEmail = computed(() => {
 }
 
 .metric-card {
-  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-panel-bg-muted, color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white));
+  border: 1px solid var(--app-panel-border, var(--line, rgba(148, 163, 184, 0.22)));
   border-radius: 18px;
   display: grid;
   gap: 0.35rem;
@@ -156,8 +156,8 @@ const requesterEmail = computed(() => {
 }
 
 .metric-card-accent {
-  background: color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white);
-  border-color: color-mix(in srgb, var(--color-secondary, #06b6d4) 28%, white);
+  background: var(--app-choice-bg-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white));
+  border-color: var(--app-choice-border-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 28%, white));
 }
 
 .summary-actions {
@@ -168,8 +168,8 @@ const requesterEmail = computed(() => {
 
 .link-button {
   align-items: center;
-  background: white;
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
+  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
   border-radius: 14px;
   color: var(--ink, #0f172a);
   display: inline-flex;
@@ -178,14 +178,24 @@ const requesterEmail = computed(() => {
   justify-content: center;
   padding: 0.75rem 1rem;
   text-decoration: none;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.link-button:hover {
+  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
+  border-color: var(--app-panel-border-strong, var(--color-secondary, #06b6d4));
+  transform: translateY(-1px);
 }
 
 .owner-pill {
   align-items: center;
-  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-chip-bg, color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white));
+  border: 1px solid var(--app-chip-border, var(--line, rgba(148, 163, 184, 0.22)));
   border-radius: 999px;
-  color: var(--muted, #475569);
+  color: var(--app-chip-text, var(--muted, #475569));
   display: inline-flex;
   font-size: 0.8rem;
   font-weight: 700;

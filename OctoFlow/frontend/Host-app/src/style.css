@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../shared/styles/app-visual-standard.css";
 
 :root {
   --radius-xl: 30px;
@@ -708,12 +709,51 @@ a {
 .field input,
 .field textarea,
 .field select {
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
   border-radius: 16px;
+  color: var(--ink);
   min-height: 44px;
   padding: 10px 14px;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
   width: 100%;
+}
+
+.field select option,
+.field select optgroup,
+input,
+textarea,
+select {
+  color: var(--ink);
+}
+
+select option,
+select optgroup {
+  background-color: var(--app-field-bg);
+  color: var(--ink);
+}
+
+.field input::placeholder,
+.field textarea::placeholder,
+.field select::placeholder {
+  color: var(--app-field-placeholder);
+}
+
+.field input:hover,
+.field textarea:hover,
+.field select:hover {
+  background: var(--app-field-bg-hover);
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  background: var(--app-field-bg-focus);
+  border-color: var(--app-field-border-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent);
 }
 
 .field textarea {
@@ -835,7 +875,7 @@ a {
 .bg-white\/80,
 .bg-white\/85,
 .bg-white\/90 {
-  background-color: var(--surface-strong) !important;
+  background: var(--app-panel-bg) !important;
 }
 
 .bg-slate-50,
@@ -845,7 +885,7 @@ a {
 .bg-slate-100\/80,
 .bg-slate-200,
 .bg-slate-200\/80 {
-  background-color: var(--surface-muted) !important;
+  background: var(--app-panel-bg-muted) !important;
 }
 
 .bg-white\/5,
@@ -899,7 +939,7 @@ a {
 .border-slate-200,
 .border-slate-200\/80,
 .border-slate-300 {
-  border-color: var(--line) !important;
+  border-color: var(--app-panel-border) !important;
 }
 
 .border-white\/8,
@@ -997,7 +1037,7 @@ a {
 .hover\:bg-white:hover,
 .hover\:bg-slate-50:hover,
 .hover\:bg-slate-100:hover {
-  background-color: var(--surface-muted) !important;
+  background: var(--app-field-bg-hover) !important;
 }
 
 .hover\:bg-white\/8:hover,
@@ -1007,15 +1047,16 @@ a {
 
 .hover\:border-white\/15:hover,
 .hover\:border-slate-300:hover {
-  border-color: var(--nav-border-strong) !important;
+  border-color: var(--app-panel-border-strong) !important;
 }
 
 .focus\:border-cyan-300:focus {
-  border-color: var(--color-secondary) !important;
+  border-color: var(--app-field-border-focus) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent) !important;
 }
 
 .disabled\:bg-slate-100:disabled {
-  background-color: var(--surface-muted) !important;
+  background: var(--app-field-bg-disabled) !important;
 }
 
 .from-cyan-500,

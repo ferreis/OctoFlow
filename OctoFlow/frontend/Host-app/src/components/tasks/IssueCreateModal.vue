@@ -395,7 +395,7 @@ function normalizeLabelOption(label) {
 
       <div class="grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1.08fr),minmax(320px,0.92fr)]">
         <article class="grid gap-4">
-          <div class="grid gap-3 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+          <div class="app-panel-standard grid gap-3 rounded-[28px] p-5">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Destino</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Onde a tarefa nasce</h3>
@@ -407,8 +407,8 @@ function normalizeLabelOption(label) {
             <div class="grid gap-3 md:grid-cols-2">
               <button
                 type="button"
-                class="grid gap-2 rounded-2xl border p-4 text-left transition"
-                :class="!isLocalMode ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                class="app-choice-card grid gap-2 p-4 text-left"
+                :class="{ 'is-active': !isLocalMode }"
                 :disabled="!canUseGithubMode"
                 @click="creationMode = 'github'"
               >
@@ -422,8 +422,8 @@ function normalizeLabelOption(label) {
 
               <button
                 type="button"
-                class="grid gap-2 rounded-2xl border p-4 text-left transition"
-                :class="isLocalMode ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                class="app-choice-card grid gap-2 p-4 text-left"
+                :class="{ 'is-active': isLocalMode }"
                 @click="creationMode = 'local'"
               >
                 <strong class="text-base font-semibold text-slate-950">Criar localmente</strong>
@@ -443,7 +443,7 @@ function normalizeLabelOption(label) {
             </span>
             <select
               v-model="selectedRepositoryKey"
-              class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+              class="app-field-control h-11 px-3 text-sm text-slate-900"
             >
               <option value="">
                 {{ isLocalMode ? 'Definir depois' : 'Repositório padrão do perfil' }}
@@ -467,13 +467,13 @@ function normalizeLabelOption(label) {
 
           <article
             v-if="loadingTemplates || (!isLocalMode && loadingWorkspace)"
-            class="rounded-[28px] border border-white/60 bg-white/85 p-5 text-sm text-slate-500 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
+            class="app-panel-standard rounded-[28px] p-5 text-sm text-slate-500"
           >
             {{ isLocalMode ? 'Carregando templates do sistema...' : 'Carregando templates e configuracoes do repositorio...' }}
           </article>
 
           <template v-else>
-            <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+            <div class="app-panel-standard rounded-[28px] p-5">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Templates</p>
                 <h3 class="mt-1 text-2xl font-semibold text-slate-950">
@@ -486,8 +486,8 @@ function normalizeLabelOption(label) {
                   v-for="template in templates"
                   :key="template.key"
                   type="button"
-                  class="grid min-w-0 gap-2 rounded-2xl border p-4 text-left transition"
-                  :class="template.key === selectedTemplateKey ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                  class="app-choice-card grid min-w-0 gap-2 p-4 text-left"
+                  :class="{ 'is-active': template.key === selectedTemplateKey }"
                   @click="selectedTemplateKey = template.key"
                 >
                   <span class="text-xs font-black uppercase tracking-[0.18em] text-orange-600">[{{ template.titlePrefix || 'issue' }}]</span>
@@ -498,7 +498,7 @@ function normalizeLabelOption(label) {
 
               <p
                 v-else
-                class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
+                class="app-empty-panel mt-4 rounded-2xl px-4 py-6 text-sm text-slate-500"
               >
                 {{ isLocalMode ? 'Nenhum template local foi carregado.' : 'Esse repositorio nao retornou templates disponiveis.' }}
               </p>
@@ -506,7 +506,7 @@ function normalizeLabelOption(label) {
 
             <article
               v-if="selectedTemplate"
-              class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
+              class="app-panel-standard rounded-[28px] p-5"
             >
               <RemoteIssueTemplateForm
                 :template="selectedTemplate"

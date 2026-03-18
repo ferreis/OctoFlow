@@ -39,12 +39,14 @@ const createModalOpen = ref(false)
 const editingIssueId = ref('')
 const selectedIssueId = ref('')
 const issueScope = ref('all')
+const sourceFilter = ref('all')
 const stateFilter = ref('open')
 const searchTerm = ref('')
 const selectedLabel = ref('all')
 const selectedTicketType = ref('all')
 const selectedRepositoryKey = ref('all')
 const draftIssueScope = ref('all')
+const draftSourceFilter = ref('all')
 const draftStateFilter = ref('open')
 const draftSearchTerm = ref('')
 const draftSelectedLabel = ref('all')
@@ -61,6 +63,25 @@ const editingIssue = computed(() => issues.value.find((issue) => issue.id === ed
 const activeRepository = computed(() => issueBoard.value?.repository || null)
 const cacheMeta = computed(() => issueBoard.value?.cache || null)
 const repositoriesCount = computed(() => repositories.value.length)
+const repositoryFilterOptions = computed(() => {
+  const catalog = new Map()
+
+  for (const repository of repositories.value) {
+    const key = String(repository?.nameWithOwner || '').trim()
+    if (key !== '') {
+      catalog.set(key, key)
+    }
+  }
+
+  for (const task of localTasks.value) {
+    const key = String(task?.repositoryKey || '').trim()
+    if (key !== '') {
+      catalog.set(key, key)
+    }
+  }
+
+  return Array.from(catalog.values()).sort((left, right) => left.localeCompare(right, 'pt-BR'))
+})
 const availableLabels = computed(() => {
   const labelsMap = new Map()
 
@@ -90,65 +111,110 @@ const availableTicketTypes = computed(() => {
 
   return Array.from(types.values())
 })
-const filteredIssues = computed(() => {
+const taskEntries = computed(() => {
+  const githubEntries = issues.value.map((issue) => ({
+    entryKey: `github:${issue.id}`,
+    entryType: 'github',
+    searchableText: [
+      issue.title,
+      issue.body,
+      issue.repository?.nameWithOwner,
+      issue.authorLogin,
+      ...(issue.labels || []).map((label) => label.name),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase(),
+    repositoryKey: issue.repository?.nameWithOwner || '',
+    state: issue.state,
+    updatedAt: issue.updatedAt,
+    createdAt: issue.createdAt,
+    ticketType: detectTicketType(issue),
+    issue,
+  }))
+
+  const localEntries = localTasks.value.map((task) => ({
+    entryKey: `local:${task.id}`,
+    entryType: 'local',
+    searchableText: [
+      task.title,
+      task.body,
+      task.repositoryKey,
+      task.templateKey,
+      task.syncError,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase(),
+    repositoryKey: task.repositoryKey || '',
+    state: task.state,
+    updatedAt: task.updatedAt,
+    createdAt: task.createdAt,
+    ticketType: detectTicketType(task),
+    localTask: task,
+  }))
+
+  return [...githubEntries, ...localEntries].sort((left, right) => {
+    return String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''))
+  })
+})
+const filteredTaskEntries = computed(() => {
   const normalizedSearch = searchTerm.value.trim().toLowerCase()
 
-  return issues.value.filter((issue) => {
-    if (stateFilter.value === 'open' && issue.state === 'CLOSED') {
+  return taskEntries.value.filter((entry) => {
+    if (sourceFilter.value !== 'all' && entry.entryType !== sourceFilter.value) {
       return false
     }
 
-    if (stateFilter.value === 'closed' && issue.state !== 'CLOSED') {
+    if (stateFilter.value === 'open' && entry.state === 'CLOSED') {
       return false
     }
 
-    if (selectedRepositoryKey.value !== 'all' && issue.repository?.nameWithOwner !== selectedRepositoryKey.value) {
+    if (stateFilter.value === 'closed' && entry.state !== 'CLOSED') {
       return false
     }
 
-    if (selectedLabel.value !== 'all' && !(issue.labels || []).some((label) => label.name === selectedLabel.value)) {
+    if (selectedRepositoryKey.value !== 'all' && entry.repositoryKey !== selectedRepositoryKey.value) {
       return false
     }
 
-    const ticketType = detectTicketType(issue)
-    if (selectedTicketType.value !== 'all' && ticketType.key !== selectedTicketType.value) {
+    if (
+      selectedLabel.value !== 'all'
+      && entry.entryType === 'github'
+      && !(entry.issue?.labels || []).some((label) => label.name === selectedLabel.value)
+    ) {
       return false
     }
 
-    if (normalizedSearch !== '') {
-      const haystack = [
-        issue.title,
-        issue.body,
-        issue.repository?.nameWithOwner,
-        issue.authorLogin,
-        ...(issue.labels || []).map((label) => label.name),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
+    if (selectedLabel.value !== 'all' && entry.entryType !== 'github') {
+      return false
+    }
 
-      if (!haystack.includes(normalizedSearch)) {
-        return false
-      }
+    if (selectedTicketType.value !== 'all' && entry.ticketType.key !== selectedTicketType.value) {
+      return false
+    }
+
+    if (normalizedSearch !== '' && !entry.searchableText.includes(normalizedSearch)) {
+      return false
     }
 
     return true
   })
 })
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredIssues.value.length / ITEMS_PER_PAGE)))
-const paginatedIssues = computed(() => {
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredTaskEntries.value.length / ITEMS_PER_PAGE)))
+const paginatedTaskEntries = computed(() => {
   const start = (currentPage.value - 1) * ITEMS_PER_PAGE
-  return filteredIssues.value.slice(start, start + ITEMS_PER_PAGE)
+  return filteredTaskEntries.value.slice(start, start + ITEMS_PER_PAGE)
 })
 const paginationSummary = computed(() => {
-  if (filteredIssues.value.length === 0) {
-    return '0 de 0 issues'
+  if (filteredTaskEntries.value.length === 0) {
+    return '0 de 0 tarefas'
   }
 
   const start = (currentPage.value - 1) * ITEMS_PER_PAGE + 1
-  const end = Math.min(currentPage.value * ITEMS_PER_PAGE, filteredIssues.value.length)
+  const end = Math.min(currentPage.value * ITEMS_PER_PAGE, filteredTaskEntries.value.length)
 
-  return `${start}-${end} de ${filteredIssues.value.length} issues`
+  return `${start}-${end} de ${filteredTaskEntries.value.length} tarefas`
 })
 const visiblePages = computed(() => {
   const pages = []
@@ -168,6 +234,17 @@ const issueStats = computed(() => ({
   open: issues.value.filter((issue) => issue.state !== 'CLOSED').length,
   closed: issues.value.filter((issue) => issue.state === 'CLOSED').length,
 }))
+const listLoading = computed(() => {
+  if (sourceFilter.value === 'github') {
+    return loadingCache.value
+  }
+
+  if (sourceFilter.value === 'local') {
+    return loadingLocalTasks.value
+  }
+
+  return loadingCache.value || loadingLocalTasks.value
+})
 const scopeTitle = computed(() => {
   if (issueScope.value === 'repository') {
     return activeRepository.value?.nameWithOwner || selectedRepositoryKey.value || 'Repositorio padrao do perfil'
@@ -215,7 +292,7 @@ onMounted(async () => {
 })
 
 watch(
-  [issueScope, stateFilter, searchTerm, selectedLabel, selectedTicketType, selectedRepositoryKey],
+  [issueScope, sourceFilter, stateFilter, searchTerm, selectedLabel, selectedTicketType, selectedRepositoryKey],
   () => {
     currentPage.value = 1
   }
@@ -274,6 +351,7 @@ watch(info, (message) => {
 
 function syncDraftFilters() {
   draftIssueScope.value = issueScope.value
+  draftSourceFilter.value = sourceFilter.value
   draftStateFilter.value = stateFilter.value
   draftSearchTerm.value = searchTerm.value
   draftSelectedLabel.value = selectedLabel.value
@@ -480,6 +558,7 @@ function mergeIssueIntoBoard(updatedIssue) {
 
 function resetFilters() {
   issueScope.value = 'all'
+  sourceFilter.value = 'all'
   stateFilter.value = 'open'
   searchTerm.value = ''
   selectedLabel.value = 'all'
@@ -496,6 +575,7 @@ async function applyFilters() {
   const scopeChanged = issueScope.value !== nextIssueScope
 
   issueScope.value = nextIssueScope
+  sourceFilter.value = draftSourceFilter.value
   stateFilter.value = draftStateFilter.value
   searchTerm.value = draftSearchTerm.value
   selectedLabel.value = draftSelectedLabel.value
@@ -590,6 +670,74 @@ function formatLocalTaskStatus(task) {
   return 'Sincronizada'
 }
 
+function isGithubEntry(entry) {
+  return entry?.entryType === 'github' && entry?.issue
+}
+
+function openTaskEntry(entry) {
+  if (!isGithubEntry(entry)) {
+    return
+  }
+
+  openIssueModal(entry.issue)
+}
+
+function resolveEntryTitle(entry) {
+  return isGithubEntry(entry) ? entry.issue.title : entry.localTask?.title || 'Tarefa local'
+}
+
+function resolveEntryNumberLabel(entry) {
+  if (isGithubEntry(entry)) {
+    return `#${entry.issue.number}`
+  }
+
+  return `LOCAL-${entry.localTask?.id || ''}`
+}
+
+function resolveEntryStatusLabel(entry) {
+  if (isGithubEntry(entry)) {
+    return entry.issue.state === 'CLOSED' ? 'Fechada' : 'Aberta'
+  }
+
+  return formatLocalTaskStatus(entry.localTask)
+}
+
+function resolveEntryStatusClass(entry) {
+  if (isGithubEntry(entry)) {
+    return entry.issue.state === 'CLOSED'
+      ? 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
+      : 'bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200'
+  }
+
+  return entry.localTask?.syncState === 'FAILED'
+    ? 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
+    : 'bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200'
+}
+
+function resolveEntryAssignees(entry) {
+  if (isGithubEntry(entry)) {
+    return formatAssignees(entry.issue)
+  }
+
+  return 'Tarefa local'
+}
+
+function resolveEntryRepository(entry) {
+  if (isGithubEntry(entry)) {
+    return entry.issue.repository?.nameWithOwner || 'Repositorio atual'
+  }
+
+  return entry.localTask?.repositoryKey || 'Sem repositorio definido'
+}
+
+function resolveEntryLabels(entry) {
+  if (isGithubEntry(entry)) {
+    return formatLabels(entry.issue)
+  }
+
+  return entry.localTask?.templateKey || 'personalizado'
+}
+
 </script>
 
 <template>
@@ -641,79 +789,6 @@ function formatLocalTaskStatus(task) {
     </article>
 
     <article
-      class="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur"
-    >
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Fila local</p>
-          <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tarefas locais pendentes</h3>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Essas tarefas foram abertas no sistema e aguardam uma próxima sincronização com o GitHub.
-          </p>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-            Total: {{ localTaskStats.total }}
-          </span>
-          <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
-            Pendentes: {{ localTaskStats.pending }}
-          </span>
-          <span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800">
-            Falhas: {{ localTaskStats.failed }}
-          </span>
-        </div>
-      </div>
-
-      <div v-if="loadingLocalTasks" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
-        Carregando tarefas locais...
-      </div>
-
-      <div v-else-if="localTasks.length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
-        Nenhuma tarefa local pendente. Se preferir, voce pode continuar criando tarefas locais mesmo sem usar o GitHub imediatamente.
-      </div>
-
-      <div v-else class="mt-4 grid gap-3">
-        <article
-          v-for="task in localTasks"
-          :key="task.id"
-          class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4"
-        >
-          <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div class="min-w-0">
-              <strong class="block break-words text-base font-semibold text-slate-950">{{ task.title }}</strong>
-              <p class="mt-2 text-sm leading-6 text-slate-600">
-                {{ task.repositoryKey || 'Sem repositório definido ainda. O sistema tentará usar o repositório padrão quando houver sincronização.' }}
-              </p>
-            </div>
-
-            <span
-              class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
-              :class="task.syncState === 'FAILED'
-                ? 'border border-rose-200 bg-rose-50 text-rose-700'
-                : 'border border-amber-200 bg-amber-50 text-amber-700'"
-            >
-              {{ formatLocalTaskStatus(task) }}
-            </span>
-          </div>
-
-          <div class="grid gap-2 text-sm text-slate-600 md:grid-cols-3">
-            <span>Criada em: {{ formatDateTime(task.createdAt) }}</span>
-            <span>Atualizada em: {{ formatDateTime(task.updatedAt) }}</span>
-            <span>Template: {{ task.templateKey || 'personalizado' }}</span>
-          </div>
-
-          <p
-            v-if="task.syncError"
-            class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
-          >
-            {{ task.syncError }}
-          </p>
-        </article>
-      </div>
-    </article>
-
-    <article
       class="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
@@ -758,13 +833,23 @@ function formatLocalTaskStatus(task) {
           <label class="grid min-w-0 gap-2 xl:col-span-2">
             <span class="text-sm font-semibold text-slate-900">Buscar</span>
             <input v-model="draftSearchTerm" type="text" placeholder="Titulo, label, autor, repositorio..."
-              class="h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              class="app-field-control h-11 w-full min-w-0 px-3 text-sm text-slate-900">
+          </label>
+
+          <label class="grid min-w-0 gap-2">
+            <span class="text-sm font-semibold text-slate-900">Origem</span>
+            <select v-model="draftSourceFilter"
+              class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
+              <option value="all">Local e GitHub</option>
+              <option value="github">Apenas GitHub</option>
+              <option value="local">Apenas local</option>
+            </select>
           </label>
 
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Estado</span>
             <select v-model="draftStateFilter"
-              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
               <option value="all">Todos</option>
               <option value="open">Abertas</option>
               <option value="closed">Fechadas</option>
@@ -774,11 +859,11 @@ function formatLocalTaskStatus(task) {
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Repositorio</span>
             <select v-model="draftSelectedRepositoryKey"
-              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
               <option value="all">Todos os repositorios</option>
-              <option v-for="repository in repositories" :key="repository.nameWithOwner"
-                :value="repository.nameWithOwner">
-                {{ repository.nameWithOwner }}
+              <option v-for="repositoryKey in repositoryFilterOptions" :key="repositoryKey"
+                :value="repositoryKey">
+                {{ repositoryKey }}
               </option>
             </select>
           </label>
@@ -786,7 +871,7 @@ function formatLocalTaskStatus(task) {
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Label</span>
             <select v-model="draftSelectedLabel"
-              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
               <option value="all">Todas as labels</option>
               <option v-for="label in availableLabels" :key="label.id" :value="label.name">
                 {{ label.name }}
@@ -797,7 +882,7 @@ function formatLocalTaskStatus(task) {
           <label class="grid min-w-0 gap-2">
             <span class="text-sm font-semibold text-slate-900">Tipo de chamado</span>
             <select v-model="draftSelectedTicketType"
-              class="h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300">
+              class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
               <option value="all">Todos os tipos</option>
               <option v-for="type in availableTicketTypes" :key="type.key" :value="type.key">
                 {{ type.label }}
@@ -834,18 +919,25 @@ function formatLocalTaskStatus(task) {
           <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
             Escopo: {{ issueScope === 'all' ? 'Todos os repositorios' : issueScope === 'assigned' ? 'Atribuidas a mim' : 'Repositorio especifico' }}
           </span>
+          <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+            Locais pendentes: {{ localTaskStats.pending }}
+          </span>
           <span class="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-800">
             Ultima sync: {{ lastSyncedLabel }}
           </span>
         </div>
       </div>
 
-      <div v-if="!loadingCache || issues.length > 0" class="mt-4 grid gap-2">
-        <button v-for="issue in paginatedIssues" :key="issue.id" type="button"
-          class="w-full rounded-xl border px-4 py-3 text-left transition-all" :class="issue.id === selectedIssueId
+      <div v-if="listLoading && filteredTaskEntries.length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
+        Carregando tarefas...
+      </div>
+
+      <div v-else class="mt-4 grid gap-2">
+        <button v-for="entry in paginatedTaskEntries" :key="entry.entryKey" type="button"
+          class="w-full rounded-xl border px-4 py-3 text-left transition-all" :class="isGithubEntry(entry) && entry.issue.id === selectedIssueId
               ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_12px_28px_rgba(34,211,238,0.10)]'
               : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-            " @click="openIssueModal(issue)">
+            " @click="openTaskEntry(entry)">
           <div class="space-y-3">
             <div class="grid grid-cols-[10%_65%_25%] gap-x-4 items-start">
               <div class="min-w-0">
@@ -853,7 +945,7 @@ function formatLocalTaskStatus(task) {
                   Número
                 </p>
                 <strong class="mt-1 block text-base font-bold leading-none text-slate-950">
-                  #{{ issue.number }}
+                  {{ resolveEntryNumberLabel(entry) }}
                 </strong>
               </div>
 
@@ -862,7 +954,7 @@ function formatLocalTaskStatus(task) {
                   Título
                 </p>
                 <strong class="mt-1 block truncate text-base font-bold leading-5 text-slate-950">
-                  {{ issue.title }}
+                  {{ resolveEntryTitle(entry) }}
                 </strong>
               </div>
 
@@ -870,11 +962,8 @@ function formatLocalTaskStatus(task) {
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                   Status
                 </p>
-                <span class="mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-bold" :class="issue.state === 'CLOSED'
-                    ? 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
-                    : 'bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200'
-                  ">
-                  {{ issue.state === 'CLOSED' ? 'Fechada' : 'Aberta' }}
+                <span class="mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-bold" :class="resolveEntryStatusClass(entry)">
+                  {{ resolveEntryStatusLabel(entry) }}
                 </span>
               </div>
             </div>
@@ -885,7 +974,7 @@ function formatLocalTaskStatus(task) {
                   Data de abertura
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ formatDateTime(issue.createdAt) }}
+                  {{ formatDateTime(entry.createdAt) }}
                 </strong>
               </div>
 
@@ -894,16 +983,16 @@ function formatLocalTaskStatus(task) {
                   Data de atualização
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ formatDateTime(issue.updatedAt) }}
+                  {{ formatDateTime(entry.updatedAt) }}
                 </strong>
               </div>
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Responsável
+                  {{ isGithubEntry(entry) ? 'Responsável' : 'Origem' }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ formatAssignees(issue) }}
+                  {{ resolveEntryAssignees(entry) }}
                 </strong>
               </div>
             </div>
@@ -914,31 +1003,38 @@ function formatLocalTaskStatus(task) {
                   Repositório
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ issue.repository?.nameWithOwner || 'Repositório atual' }}
+                  {{ resolveEntryRepository(entry) }}
                 </strong>
               </div>
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Labels
+                  {{ isGithubEntry(entry) ? 'Labels' : 'Template' }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
-                  {{ formatLabels(issue) }}
+                  {{ resolveEntryLabels(entry) }}
                 </strong>
               </div>
             </div>
+
+            <p
+              v-if="!isGithubEntry(entry) && entry.localTask?.syncError"
+              class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+            >
+              {{ entry.localTask.syncError }}
+            </p>
           </div>
         </button>
 
         <p
-          v-if="filteredIssues.length === 0"
+          v-if="filteredTaskEntries.length === 0"
           class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
         >
-          Nenhuma issue encontrada para os filtros atuais.
+          Nenhuma tarefa encontrada para os filtros atuais.
         </p>
 
         <div
-          v-if="filteredIssues.length > 0"
+          v-if="filteredTaskEntries.length > 0"
           class="mt-2 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <p class="text-sm font-medium text-slate-600">{{ paginationSummary }}</p>

@@ -38,26 +38,26 @@ const alertClass = computed(() => {
 }
 
 .alert-info {
-  background: color-mix(in srgb, var(--color-secondary, #06b6d4) 12%, white);
-  border-color: color-mix(in srgb, var(--color-secondary, #06b6d4) 32%, white);
-  color: color-mix(in srgb, var(--color-secondary, #06b6d4) 68%, black);
+  background: var(--secondary-soft, color-mix(in srgb, var(--color-secondary, #06b6d4) 12%, white));
+  border-color: color-mix(in srgb, var(--color-secondary, #06b6d4) 32%, var(--app-panel-border, transparent));
+  color: var(--color-secondary, #06b6d4);
 }
 
 .alert-success {
-  background: color-mix(in srgb, var(--success, #22c55e) 14%, white);
-  border-color: color-mix(in srgb, var(--success, #22c55e) 28%, white);
-  color: color-mix(in srgb, var(--success, #22c55e) 72%, black);
+  background: var(--success-bg, color-mix(in srgb, var(--success, #22c55e) 14%, white));
+  border-color: color-mix(in srgb, var(--success, #22c55e) 28%, var(--app-panel-border, transparent));
+  color: var(--success, #22c55e);
 }
 
 .alert-warning {
-  background: color-mix(in srgb, var(--warning, #f59e0b) 16%, white);
-  border-color: color-mix(in srgb, var(--warning, #f59e0b) 32%, white);
-  color: color-mix(in srgb, var(--warning, #f59e0b) 74%, black);
+  background: var(--warning-bg, color-mix(in srgb, var(--warning, #f59e0b) 16%, white));
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 32%, var(--app-panel-border, transparent));
+  color: var(--warning, #f59e0b);
 }
 
 .alert-error {
-  background: color-mix(in srgb, var(--danger, #ef4444) 14%, white);
-  border-color: color-mix(in srgb, var(--danger, #ef4444) 28%, white);
-  color: color-mix(in srgb, var(--danger, #ef4444) 72%, black);
+  background: var(--danger-bg, color-mix(in srgb, var(--danger, #ef4444) 14%, white));
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 28%, var(--app-panel-border, transparent));
+  color: var(--danger, #ef4444);
 }
 </style>

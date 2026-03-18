@@ -135,21 +135,31 @@ const labelOptions = computed(() => labels.value
 }
 
 .template-tile {
-  background: white;
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-choice-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
+  border: 1px solid var(--app-choice-border, var(--line, rgba(148, 163, 184, 0.22)));
   border-radius: 20px;
   cursor: pointer;
   display: grid;
   gap: 0.45rem;
   padding: 1rem;
   text-align: left;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.template-tile:hover {
+  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
+  border-color: var(--app-panel-border-strong, var(--color-secondary, #06b6d4));
+  transform: translateY(-1px);
 }
 
 .template-tile.active {
-  background: color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white);
-  border-color: color-mix(in srgb, var(--color-secondary, #06b6d4) 32%, white);
-  box-shadow: 0 14px 28px rgba(14, 165, 233, 0.12);
+  background: var(--app-choice-bg-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white));
+  border-color: var(--app-choice-border-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 32%, white));
+  box-shadow: var(--app-choice-shadow-active, 0 14px 28px rgba(14, 165, 233, 0.12));
 }
 
 .template-prefix {

@@ -136,8 +136,8 @@ function projectStatusStyle(option) {
 
 .project-link {
   align-items: center;
-  background: white;
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
+  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
   border-radius: 14px;
   color: var(--ink, #0f172a);
   display: inline-flex;
@@ -146,6 +146,16 @@ function projectStatusStyle(option) {
   justify-content: center;
   padding: 0.65rem 0.9rem;
   text-decoration: none;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.project-link:hover {
+  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
+  border-color: var(--app-panel-border-strong, var(--color-secondary, #06b6d4));
+  transform: translateY(-1px);
 }
 
 .status-grid {

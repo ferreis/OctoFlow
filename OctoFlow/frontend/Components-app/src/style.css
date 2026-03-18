@@ -1,8 +1,20 @@
 @import "tailwindcss";
+@import "../../shared/styles/app-visual-standard.css";
 
 :root {
   background: var(--color-bg, #f8fafc);
   color: var(--color-text, #0f172a);
+  --surface: rgba(19, 28, 50, 0.82);
+  --surface-strong: rgba(15, 23, 42, 0.9);
+  --surface-muted: rgba(30, 41, 59, 0.76);
+  --line: rgba(148, 163, 184, 0.22);
+  --line-strong: rgba(6, 182, 212, 0.24);
+  --ink: var(--color-text, #0f172a);
+  --muted: #94a3b8;
+  --nav-card: rgba(255, 255, 255, 0.06);
+  --nav-border: rgba(255, 255, 255, 0.1);
+  --secondary-soft: rgba(6, 182, 212, 0.18);
+  --shadow-lg: 0 22px 60px rgba(2, 6, 23, 0.28);
   font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
   font-synthesis: none;
   line-height: 1.5;

@@ -68,6 +68,10 @@ final class CsrfChallengeController
             return true;
         }
 
+        if (preg_match('#^/tasks(?:/|$)#', $path) === 1) {
+            return true;
+        }
+
         if (preg_match('#^/ui(?:/|$)#', $path) === 1) {
             return true;
         }

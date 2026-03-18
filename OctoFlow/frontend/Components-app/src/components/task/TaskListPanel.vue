@@ -245,9 +245,9 @@ function statusLabel(task) {
 }
 
 .feedback.error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background: var(--danger-bg, #fef2f2);
+  border: 1px solid color-mix(in srgb, var(--danger, #ef4444) 28%, transparent);
+  color: var(--danger, #991b1b);
 }
 
 .empty {
@@ -264,8 +264,8 @@ function statusLabel(task) {
 }
 
 .task-item {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--app-panel-bg, var(--surface-strong, #ffffff));
+  border: 1px solid var(--app-panel-border, #e2e8f0);
   border-radius: 10px;
   cursor: pointer;
   display: flex;
@@ -275,8 +275,8 @@ function statusLabel(task) {
 }
 
 .task-item.selected {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.12);
+  border-color: var(--app-panel-border-strong, #0f766e);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-secondary, #06b6d4) 14%, transparent);
 }
 
 .task-title-row {
@@ -337,13 +337,13 @@ button {
 }
 
 button.ghost {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: var(--app-field-bg, #e2e8f0);
+  color: var(--ink, #0f172a);
 }
 
 button.tag {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--app-chip-bg, #f1f5f9);
+  color: var(--app-chip-text, #0f172a);
 }
 
 button.danger {
