@@ -9,6 +9,13 @@ final class GithubWorkspaceService
 {
     private const REPOSITORY_QUERY = <<<'GRAPHQL'
 query GithubRepositoryWorkspace($owner: String!, $name: String!) {
+  viewer {
+    id
+    login
+    name
+    avatarUrl
+    url
+  }
   repository(owner: $owner, name: $name) {
     id
     name
@@ -24,6 +31,15 @@ query GithubRepositoryWorkspace($owner: String!, $name: String!) {
         name
         color
         description
+      }
+    }
+    assignableUsers(first: 50) {
+      nodes {
+        id
+        login
+        name
+        avatarUrl
+        url
       }
     }
   }
@@ -134,6 +150,12 @@ GRAPHQL;
             throw new GithubGraphQLException('GitHub returned an invalid repository owner.');
         }
 
+        $assignableUsers = $this->normalizeGithubUsers($repository['assignableUsers']['nodes'] ?? []);
+        $viewerUser = $this->normalizeGithubUser($data['viewer'] ?? null);
+        if ($viewerUser !== null) {
+            $assignableUsers = $this->mergeGithubUser($assignableUsers, $viewerUser);
+        }
+
         return [
             'id' => (string) ($repository['id'] ?? ''),
             'name' => (string) ($repository['name'] ?? ''),
@@ -142,6 +164,7 @@ GRAPHQL;
             'url' => (string) ($repository['url'] ?? ''),
             'ownerLogin' => trim((string) $owner['login']),
             'labels' => $this->normalizeLabels($repository['labels']['nodes'] ?? []),
+            'assignableUsers' => $assignableUsers,
         ];
     }
 
@@ -229,6 +252,91 @@ GRAPHQL;
         }
 
         return $labels;
+    }
+
+    /**
+     * @param mixed $rawUsers
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeGithubUsers(mixed $rawUsers): array
+    {
+        if (!is_array($rawUsers)) {
+            return [];
+        }
+
+        $users = [];
+
+        foreach ($rawUsers as $rawUser) {
+            if (!is_array($rawUser)) {
+                continue;
+            }
+
+            $login = trim((string) ($rawUser['login'] ?? ''));
+            if ($login === '') {
+                continue;
+            }
+
+            $users[] = [
+                'id' => trim((string) ($rawUser['id'] ?? '')),
+                'login' => $login,
+                'name' => $this->normalizeNullableString($rawUser['name'] ?? null),
+                'avatarUrl' => trim((string) ($rawUser['avatarUrl'] ?? '')),
+                'url' => trim((string) ($rawUser['url'] ?? '')),
+            ];
+        }
+
+        return $users;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function normalizeGithubUser(mixed $rawUser): ?array
+    {
+        if (!is_array($rawUser)) {
+            return null;
+        }
+
+        $login = trim((string) ($rawUser['login'] ?? ''));
+        if ($login === '') {
+            return null;
+        }
+
+        return [
+            'id' => trim((string) ($rawUser['id'] ?? '')),
+            'login' => $login,
+            'name' => $this->normalizeNullableString($rawUser['name'] ?? null),
+            'avatarUrl' => trim((string) ($rawUser['avatarUrl'] ?? '')),
+            'url' => trim((string) ($rawUser['url'] ?? '')),
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $users
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mergeGithubUser(array $users, array $candidate): array
+    {
+        $candidateId = trim((string) ($candidate['id'] ?? ''));
+        $candidateLogin = trim((string) ($candidate['login'] ?? ''));
+        if ($candidateId === '' && $candidateLogin === '') {
+            return $users;
+        }
+
+        foreach ($users as $user) {
+            $userId = trim((string) ($user['id'] ?? ''));
+            $userLogin = trim((string) ($user['login'] ?? ''));
+
+            if (($candidateId !== '' && $userId === $candidateId) || ($candidateLogin !== '' && $userLogin === $candidateLogin)) {
+                return $users;
+            }
+        }
+
+        $users[] = $candidate;
+
+        return array_values($users);
     }
 
     /**

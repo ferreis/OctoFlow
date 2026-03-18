@@ -27,6 +27,7 @@ mutation CreateIssue($repositoryId: ID!, $title: String!, $body: String!, $label
       }
       assignees(first: 10) {
         nodes {
+          id
           login
           name
           avatarUrl
@@ -44,6 +45,52 @@ mutation CreateIssue($repositoryId: ID!, $title: String!, $body: String!, $label
       repository {
         nameWithOwner
         url
+      }
+    }
+  }
+}
+GRAPHQL;
+
+    private const ADD_ASSIGNEES_MUTATION = <<<'GRAPHQL'
+mutation AddAssigneesToIssue($issueId: ID!, $assigneeIds: [ID!]!) {
+  addAssigneesToAssignable(input: {assignableId: $issueId, assigneeIds: $assigneeIds}) {
+    assignable {
+      ... on Issue {
+        id
+        number
+        title
+        body
+        state
+        url
+        createdAt
+        updatedAt
+        viewerCanUpdate
+        viewerCanClose
+        viewerCanReopen
+        author {
+          login
+        }
+        assignees(first: 10) {
+          nodes {
+            id
+            login
+            name
+            avatarUrl
+            url
+          }
+        }
+        labels(first: 15) {
+          nodes {
+            id
+            name
+            color
+            description
+          }
+        }
+        repository {
+          nameWithOwner
+          url
+        }
       }
     }
   }
@@ -120,6 +167,8 @@ GRAPHQL;
             $repositorySelection['repositoryOwner'],
             $repositorySelection['repositoryName']
         );
+        $requestedAssigneeIds = $this->normalizeIdList($payload['assigneeIds'] ?? []);
+        $this->assertAssignableUsers($requestedAssigneeIds, $repository);
         $projectSelection = $this->normalizeProjectSelection($payload);
         $validatedProject = $this->validateProjectSelection(
             $user,
@@ -140,6 +189,7 @@ GRAPHQL;
             throw new GithubGraphQLException('GitHub did not return the created issue payload.');
         }
 
+        $issue = $this->assignIssueToCollaborators($token, $issue, $requestedAssigneeIds);
         $cachedIssue = $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
 
         $projectResult = [
@@ -376,12 +426,141 @@ GRAPHQL;
             'viewerCanClose' => (bool) ($issue['viewerCanClose'] ?? false),
             'viewerCanReopen' => (bool) ($issue['viewerCanReopen'] ?? false),
             'authorLogin' => is_array($issue['author'] ?? null) ? ($issue['author']['login'] ?? null) : null,
-            'assignees' => is_array($assigneeNodes) ? array_values(array_filter($assigneeNodes, 'is_array')) : [],
+            'assignees' => $this->normalizeGithubUsers($assigneeNodes),
             'labels' => is_array($labelNodes) ? array_values(array_filter($labelNodes, 'is_array')) : [],
             'repository' => [
                 'nameWithOwner' => is_array($issue['repository'] ?? null) ? (string) (($issue['repository']['nameWithOwner'] ?? '')) : '',
                 'url' => is_array($issue['repository'] ?? null) ? ($issue['repository']['url'] ?? null) : null,
             ],
         ];
+    }
+
+    /**
+     * @param list<string> $assigneeIds
+     * @param array<string, mixed> $repository
+     */
+    private function assertAssignableUsers(array $assigneeIds, array $repository): void
+    {
+        if ($assigneeIds === []) {
+            return;
+        }
+
+        $availableAssigneeIds = array_values(array_filter(array_map(
+            static fn (array $user): string => trim((string) ($user['id'] ?? '')),
+            is_array($repository['assignableUsers'] ?? null) ? $repository['assignableUsers'] : []
+        )));
+
+        if ($availableAssigneeIds === []) {
+            throw new \InvalidArgumentException('The selected repository did not return assignable collaborators.');
+        }
+
+        foreach ($assigneeIds as $assigneeId) {
+            if (!in_array($assigneeId, $availableAssigneeIds, true)) {
+                throw new \InvalidArgumentException('The selected collaborator cannot be assigned in this repository.');
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     * @param list<string> $assigneeIds
+     *
+     * @return array<string, mixed>
+     */
+    private function assignIssueToCollaborators(string $token, array $issue, array $assigneeIds): array
+    {
+        if ($assigneeIds === []) {
+            return $issue;
+        }
+
+        $issueId = trim((string) ($issue['id'] ?? ''));
+        if ($issueId === '') {
+            throw new GithubGraphQLException('GitHub returned an invalid issue id for collaborator assignment.');
+        }
+
+        $existingAssigneeIds = $this->extractAssigneeIdsFromIssue($issue);
+        $missingAssigneeIds = array_values(array_filter(
+            $assigneeIds,
+            static fn (string $assigneeId): bool => !in_array($assigneeId, $existingAssigneeIds, true)
+        ));
+
+        if ($missingAssigneeIds === []) {
+            return $issue;
+        }
+
+        $data = $this->graphqlClient->query($token, self::ADD_ASSIGNEES_MUTATION, [
+            'issueId' => $issueId,
+            'assigneeIds' => $missingAssigneeIds,
+        ]);
+
+        $updatedIssue = $data['addAssigneesToAssignable']['assignable'] ?? null;
+        if (!is_array($updatedIssue)) {
+            throw new GithubGraphQLException('GitHub did not return the collaborator assignment payload.');
+        }
+
+        return $updatedIssue;
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     *
+     * @return list<string>
+     */
+    private function extractAssigneeIdsFromIssue(array $issue): array
+    {
+        $assigneeNodes = $issue['assignees']['nodes'] ?? [];
+        if (!is_array($assigneeNodes)) {
+            return [];
+        }
+
+        $assigneeIds = [];
+
+        foreach ($assigneeNodes as $assigneeNode) {
+            if (!is_array($assigneeNode)) {
+                continue;
+            }
+
+            $assigneeId = trim((string) ($assigneeNode['id'] ?? ''));
+            if ($assigneeId !== '') {
+                $assigneeIds[] = $assigneeId;
+            }
+        }
+
+        return array_values(array_unique($assigneeIds));
+    }
+
+    /**
+     * @param mixed $rawUsers
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeGithubUsers(mixed $rawUsers): array
+    {
+        if (!is_array($rawUsers)) {
+            return [];
+        }
+
+        $users = [];
+
+        foreach ($rawUsers as $rawUser) {
+            if (!is_array($rawUser)) {
+                continue;
+            }
+
+            $login = trim((string) ($rawUser['login'] ?? ''));
+            if ($login === '') {
+                continue;
+            }
+
+            $users[] = [
+                'id' => trim((string) ($rawUser['id'] ?? '')),
+                'login' => $login,
+                'name' => $rawUser['name'] ?? null,
+                'avatarUrl' => trim((string) ($rawUser['avatarUrl'] ?? '')),
+                'url' => trim((string) ($rawUser['url'] ?? '')),
+            ];
+        }
+
+        return $users;
     }
 }

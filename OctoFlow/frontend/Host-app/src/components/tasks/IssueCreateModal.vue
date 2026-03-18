@@ -31,6 +31,7 @@ const submitError = ref('')
 const selectedTemplateKey = ref('')
 const selectedProjectId = ref('')
 const selectedStatusOptionId = ref('')
+const selectedAssigneeId = ref('')
 const selectedRepositoryKey = ref('')
 const title = ref('')
 const selectedLabelIds = ref([])
@@ -59,6 +60,7 @@ const availableRepositories = computed(() => {
 const templates = computed(() => Array.isArray(workspace.value?.templates) ? workspace.value.templates : [])
 const repository = computed(() => workspace.value?.repository || null)
 const labels = computed(() => Array.isArray(repository.value?.labels) ? repository.value.labels : [])
+const assignableUsers = computed(() => Array.isArray(repository.value?.assignableUsers) ? repository.value.assignableUsers : [])
 const projects = computed(() => Array.isArray(workspace.value?.projects) ? workspace.value.projects : [])
 const projectsMeta = computed(() => workspace.value?.projectsMeta || { available: true, message: null })
 const requesterEmail = computed(() => {
@@ -73,6 +75,17 @@ const selectedProjectStatusOptions = computed(() => Array.isArray(selectedProjec
 const repositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value || repository.value?.nameWithOwner || ''))
 const previewTitle = computed(() => formatTitle(selectedTemplate.value, title.value))
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value), requesterEmail.value))
+const assignablePlaceholderLabel = computed(() => {
+  if (loadingWorkspace.value && assignableUsers.value.length === 0) {
+    return 'Carregando colaboradores...'
+  }
+
+  if (assignableUsers.value.length === 0) {
+    return 'Nenhum colaborador encontrado'
+  }
+
+  return 'Sem atribuicao inicial'
+})
 
 onMounted(() => {
   selectedRepositoryKey.value = resolveInitialRepositoryKey()
@@ -101,6 +114,12 @@ watch(selectedTemplateKey, (newKey, oldKey) => {
 watch(selectedProjectId, () => {
   if (!selectedProjectStatusOptions.value.some((option) => option.id === selectedStatusOptionId.value)) {
     selectedStatusOptionId.value = ''
+  }
+})
+
+watch(assignableUsers, (users) => {
+  if (!users.some((user) => user?.id === selectedAssigneeId.value)) {
+    selectedAssigneeId.value = ''
   }
 })
 
@@ -155,6 +174,7 @@ function initializeWorkspaceState() {
   selectedTemplateKey.value = ''
   selectedProjectId.value = ''
   selectedStatusOptionId.value = ''
+  selectedAssigneeId.value = ''
   title.value = ''
   selectedLabelIds.value = []
 
@@ -422,6 +442,7 @@ async function submitIssue() {
         title: title.value,
         fields: buildSubmissionFields(selectedTemplate.value),
         labelIds: selectedLabelIds.value,
+        assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
         projectId: selectedProjectId.value || null,
         statusOptionId: selectedStatusOptionId.value || null,
         repositoryOwner: repositorySelection.value.owner,
@@ -580,6 +601,23 @@ function extractHttpMessage(error, fallback) {
                   required
                   class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
                 >
+              </label>
+
+              <label class="grid gap-2 sm:max-w-lg">
+                <span class="text-sm font-semibold text-slate-900">Atribuir para</span>
+                <select
+                  v-model="selectedAssigneeId"
+                  class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                >
+                  <option value="">{{ assignablePlaceholderLabel }}</option>
+                  <option
+                    v-for="assignableUser in assignableUsers"
+                    :key="assignableUser.id || assignableUser.login"
+                    :value="assignableUser.id"
+                  >
+                    {{ assignableUser.name ? `${assignableUser.name} (${assignableUser.login})` : assignableUser.login }}
+                  </option>
+                </select>
               </label>
 
               <div class="grid gap-4 md:grid-cols-2">

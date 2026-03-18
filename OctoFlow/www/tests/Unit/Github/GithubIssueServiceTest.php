@@ -250,6 +250,200 @@ final class GithubIssueServiceTest extends TestCase
         $this->assertNull($result['project']['message']);
     }
 
+    public function testCreateIssueCanAssignCollaboratorAfterCreation(): void
+    {
+        $call = 0;
+
+        $this->cacheService
+            ->expects($this->once())
+            ->method('upsertIssue')
+            ->with(
+                $this->isInstanceOf(User::class),
+                $this->callback(function (array $issue): bool {
+                    $this->assertCount(1, $issue['assignees']);
+                    $this->assertSame('user-node-1', $issue['assignees'][0]['id']);
+                    $this->assertSame('ana', $issue['assignees'][0]['login']);
+
+                    return true;
+                })
+            )
+            ->willReturn([
+                'id' => 'issue-node-id',
+                'number' => 51,
+                'title' => '[bug] Corrigir fila de sync',
+                'body' => 'Body salvo no cache',
+                'state' => 'OPEN',
+                'url' => 'https://github.com/acme/delivery-desk/issues/51',
+                'createdAt' => '2026-03-18T12:00:00Z',
+                'updatedAt' => '2026-03-18T12:00:00Z',
+                'assignees' => [
+                    [
+                        'id' => 'user-node-1',
+                        'login' => 'ana',
+                        'name' => 'Ana Silva',
+                        'avatarUrl' => 'https://avatars.example/ana',
+                        'url' => 'https://github.com/ana',
+                    ],
+                ],
+                'repository' => [
+                    'nameWithOwner' => 'acme/delivery-desk',
+                    'url' => 'https://github.com/acme/delivery-desk',
+                ],
+            ]);
+
+        $this->graphqlClient
+            ->expects($this->exactly(3))
+            ->method('query')
+            ->willReturnCallback(function (string $token, string $query, array $variables) use (&$call): array {
+                ++$call;
+                $this->assertSame('ghp_test_token', $token);
+
+                if ($call === 1) {
+                    return [
+                        'repository' => [
+                            'id' => 'repo-id',
+                            'name' => 'delivery-desk',
+                            'nameWithOwner' => 'acme/delivery-desk',
+                            'description' => 'Workspace',
+                            'url' => 'https://github.com/acme/delivery-desk',
+                            'owner' => [
+                                'login' => 'acme',
+                            ],
+                            'labels' => [
+                                'nodes' => [],
+                            ],
+                            'assignableUsers' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'user-node-1',
+                                        'login' => 'ana',
+                                        'name' => 'Ana Silva',
+                                        'avatarUrl' => 'https://avatars.example/ana',
+                                        'url' => 'https://github.com/ana',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                if ($call === 2) {
+                    $this->assertStringContainsString('createIssue', $query);
+                    $this->assertSame('repo-id', $variables['repositoryId']);
+
+                    return [
+                        'createIssue' => [
+                            'issue' => [
+                                'id' => 'issue-node-id',
+                                'number' => 51,
+                                'title' => '[bug] Corrigir fila de sync',
+                                'body' => '## Problema ou oportunidade',
+                                'state' => 'OPEN',
+                                'url' => 'https://github.com/acme/delivery-desk/issues/51',
+                                'createdAt' => '2026-03-18T12:00:00Z',
+                                'updatedAt' => '2026-03-18T12:00:00Z',
+                                'viewerCanUpdate' => true,
+                                'viewerCanClose' => true,
+                                'viewerCanReopen' => false,
+                                'author' => [
+                                    'login' => 'owner',
+                                ],
+                                'assignees' => [
+                                    'nodes' => [],
+                                ],
+                                'labels' => [
+                                    'nodes' => [],
+                                ],
+                                'repository' => [
+                                    'nameWithOwner' => 'acme/delivery-desk',
+                                    'url' => 'https://github.com/acme/delivery-desk',
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                $this->assertStringContainsString('addAssigneesToAssignable', $query);
+                $this->assertSame('issue-node-id', $variables['issueId']);
+                $this->assertSame(['user-node-1'], $variables['assigneeIds']);
+
+                return [
+                    'addAssigneesToAssignable' => [
+                        'assignable' => [
+                            'id' => 'issue-node-id',
+                            'number' => 51,
+                            'title' => '[bug] Corrigir fila de sync',
+                            'body' => '## Problema ou oportunidade',
+                            'state' => 'OPEN',
+                            'url' => 'https://github.com/acme/delivery-desk/issues/51',
+                            'createdAt' => '2026-03-18T12:00:00Z',
+                            'updatedAt' => '2026-03-18T12:00:00Z',
+                            'viewerCanUpdate' => true,
+                            'viewerCanClose' => true,
+                            'viewerCanReopen' => false,
+                            'author' => [
+                                'login' => 'owner',
+                            ],
+                            'assignees' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'user-node-1',
+                                        'login' => 'ana',
+                                        'name' => 'Ana Silva',
+                                        'avatarUrl' => 'https://avatars.example/ana',
+                                        'url' => 'https://github.com/ana',
+                                    ],
+                                ],
+                            ],
+                            'labels' => [
+                                'nodes' => [],
+                            ],
+                            'repository' => [
+                                'nameWithOwner' => 'acme/delivery-desk',
+                                'url' => 'https://github.com/acme/delivery-desk',
+                            ],
+                        ],
+                    ],
+                ];
+            });
+
+        $workspaceService = new GithubWorkspaceService(
+            $this->profileService,
+            $this->graphqlClient,
+            $this->templateCatalog
+        );
+
+        $service = new GithubIssueService(
+            $workspaceService,
+            $this->profileService,
+            $this->graphqlClient,
+            $this->templateCatalog,
+            $this->renderer,
+            $this->cacheService
+        );
+
+        $result = $service->createIssue($this->buildConfiguredUser(), [
+            'template' => 'feature-request',
+            'title' => 'Corrigir fila de sync',
+            'repositoryOwner' => 'acme',
+            'repositoryName' => 'delivery-desk',
+            'fields' => [
+                'problem' => 'A fila trava depois do retry.',
+                'proposal' => 'Reorganizar o processamento e o controle de retry.',
+                'userImpact' => 'Evita bloqueio operacional em atendimento.',
+                'acceptanceCriteria' => [
+                    'Registrar retries sem congelar a fila',
+                    'Permitir nova execucao automatica',
+                ],
+            ],
+            'assigneeIds' => ['user-node-1'],
+        ]);
+
+        $this->assertSame('issue-node-id', $result['item']['id']);
+        $this->assertCount(1, $result['item']['assignees']);
+        $this->assertSame('ana', $result['item']['assignees'][0]['login']);
+    }
+
     private function buildConfiguredUser(): User
     {
         $cipher = new GithubTokenCipher('test-app-secret');

@@ -232,6 +232,13 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 ['issueId' => 'issue-node-1']
             )
             ->willReturn([
+                'viewer' => [
+                    'id' => 'viewer-node-1',
+                    'login' => 'octocat',
+                    'name' => 'Octo Cat',
+                    'avatarUrl' => 'https://avatars.example/octocat',
+                    'url' => 'https://github.com/octocat',
+                ],
                 'node' => [
                     '__typename' => 'Issue',
                     'id' => 'issue-node-1',
@@ -284,6 +291,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 $this->callback(function (array $issue): bool {
                     return ($issue['id'] ?? null) === 'issue-node-1'
                         && ($issue['closedAt'] ?? null) === '2026-03-13T09:30:00Z'
+                        && isset($issue['repository']['assignableUsers'])
+                        && count($issue['repository']['assignableUsers']) === 1
                         && isset($issue['history'])
                         && count($issue['history']) === 4;
                 })
@@ -306,6 +315,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                 'repository' => [
                     'nameWithOwner' => 'acme/alpha',
                     'url' => 'https://github.com/acme/alpha',
+                    'assignableUsers' => [],
                 ],
             ]);
 
@@ -327,6 +337,153 @@ final class GithubAssignedIssueServiceTest extends TestCase
         $this->assertSame('comment-1', $payload['history'][2]['id']);
         $this->assertSame('CLOSED', $payload['item']['state']);
         $this->assertSame('2026-03-13T09:30:00Z', $payload['item']['closedAt']);
+        $this->assertCount(1, $payload['item']['repository']['assignableUsers']);
+        $this->assertSame('octocat', $payload['item']['repository']['assignableUsers'][0]['login']);
+    }
+
+    public function testUpdateIssueCanAddCollaboratorWithoutReplacingCurrentAssignees(): void
+    {
+        $this->graphqlClient
+            ->expects($this->exactly(2))
+            ->method('query')
+            ->willReturnCallback(function (string $token, string $query, array $variables): array {
+                $this->assertSame('ghp_test_token', $token);
+
+                if (str_contains($query, 'updateIssue')) {
+                    $this->assertSame([
+                        'issueId' => 'issue-node-9',
+                        'title' => '[feat] Ajustar automacao',
+                        'body' => 'Corpo atualizado',
+                        'state' => 'OPEN',
+                    ], $variables);
+
+                    return [
+                        'updateIssue' => [
+                            'issue' => [
+                                'id' => 'issue-node-9',
+                                'number' => 9,
+                                'title' => '[feat] Ajustar automacao',
+                                'body' => 'Corpo atualizado',
+                                'state' => 'OPEN',
+                                'url' => 'https://github.com/acme/alpha/issues/9',
+                                'createdAt' => '2026-03-15T08:00:00Z',
+                                'updatedAt' => '2026-03-18T09:00:00Z',
+                                'viewerCanUpdate' => true,
+                                'viewerCanClose' => true,
+                                'viewerCanReopen' => true,
+                                'author' => [
+                                    'login' => 'alice',
+                                ],
+                                'assignees' => [
+                                    'nodes' => [
+                                        [
+                                            'id' => 'user-old',
+                                            'login' => 'bruno',
+                                            'name' => 'Bruno Lima',
+                                            'avatarUrl' => 'https://avatars.example/bruno',
+                                            'url' => 'https://github.com/bruno',
+                                        ],
+                                    ],
+                                ],
+                                'labels' => [
+                                    'nodes' => [],
+                                ],
+                                'repository' => [
+                                    'nameWithOwner' => 'acme/alpha',
+                                    'url' => 'https://github.com/acme/alpha',
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                $this->assertStringContainsString('addAssigneesToAssignable', $query);
+                $this->assertSame('issue-node-9', $variables['issueId']);
+                $this->assertSame(['user-new'], $variables['assigneeIds']);
+
+                return [
+                    'addAssigneesToAssignable' => [
+                        'assignable' => [
+                            'id' => 'issue-node-9',
+                            'number' => 9,
+                            'title' => '[feat] Ajustar automacao',
+                            'body' => 'Corpo atualizado',
+                            'state' => 'OPEN',
+                            'url' => 'https://github.com/acme/alpha/issues/9',
+                            'createdAt' => '2026-03-15T08:00:00Z',
+                            'updatedAt' => '2026-03-18T09:00:00Z',
+                            'viewerCanUpdate' => true,
+                            'viewerCanClose' => true,
+                            'viewerCanReopen' => true,
+                            'author' => [
+                                'login' => 'alice',
+                            ],
+                            'assignees' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'user-old',
+                                        'login' => 'bruno',
+                                        'name' => 'Bruno Lima',
+                                        'avatarUrl' => 'https://avatars.example/bruno',
+                                        'url' => 'https://github.com/bruno',
+                                    ],
+                                    [
+                                        'id' => 'user-new',
+                                        'login' => 'ana',
+                                        'name' => 'Ana Silva',
+                                        'avatarUrl' => 'https://avatars.example/ana',
+                                        'url' => 'https://github.com/ana',
+                                    ],
+                                ],
+                            ],
+                            'labels' => [
+                                'nodes' => [],
+                            ],
+                            'repository' => [
+                                'nameWithOwner' => 'acme/alpha',
+                                'url' => 'https://github.com/acme/alpha',
+                            ],
+                        ],
+                    ],
+                ];
+            });
+
+        $this->cacheService
+            ->expects($this->once())
+            ->method('upsertIssue')
+            ->with(
+                $this->isInstanceOf(User::class),
+                $this->callback(function (array $issue): bool {
+                    $this->assertCount(2, $issue['assignees']);
+                    $this->assertSame('bruno', $issue['assignees'][0]['login']);
+                    $this->assertSame('ana', $issue['assignees'][1]['login']);
+
+                    return true;
+                })
+            )
+            ->willReturn([
+                'id' => 'issue-node-9',
+                'assignees' => [
+                    ['id' => 'user-old', 'login' => 'bruno'],
+                    ['id' => 'user-new', 'login' => 'ana'],
+                ],
+            ]);
+
+        $service = new GithubAssignedIssueService(
+            $this->profileService,
+            $this->graphqlClient,
+            $this->cacheService,
+            $this->registryService
+        );
+
+        $result = $service->updateIssue($this->buildTokenOnlyUser(), 'issue-node-9', [
+            'title' => '[feat] Ajustar automacao',
+            'body' => 'Corpo atualizado',
+            'state' => 'OPEN',
+            'assigneeIds' => ['user-new'],
+        ]);
+
+        $this->assertCount(2, $result['assignees']);
     }
 
     private function buildTokenOnlyUser(): User

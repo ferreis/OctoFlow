@@ -7,6 +7,10 @@ const props = defineProps({
     type: Function,
     required: true,
   },
+  notify: {
+    type: Function,
+    default: null,
+  },
   issue: {
     type: Object,
     required: true,
@@ -34,15 +38,28 @@ const form = reactive({
   title: '',
   state: 'OPEN',
   additionalNotes: '',
+  assignCollaboratorId: '',
 })
 
 const canEdit = computed(() => Boolean(currentIssue.value?.viewerCanUpdate))
 const selectedTemplate = computed(() => props.updateTemplates.find((template) => template.key === selectedTemplateKey.value) || null)
 const repositoryName = computed(() => currentIssue.value?.repository?.nameWithOwner || 'Repositorio atual')
+const assignableUsers = computed(() => Array.isArray(currentIssue.value?.repository?.assignableUsers) ? currentIssue.value.repository.assignableUsers : [])
 const historyEntries = computed(() => normalizeHistoryEntries(currentHistory.value, currentIssue.value))
 const statusLabel = computed(() => currentIssue.value?.state === 'CLOSED' ? 'Fechada' : 'Aberta')
 const generatedTemplateBlock = computed(() => renderUpdateTemplate(selectedTemplate.value, buildTemplateSubmissionFields(selectedTemplate.value)))
 const finalBody = computed(() => buildFinalBody())
+const assignablePlaceholderLabel = computed(() => {
+  if (detailLoading.value && assignableUsers.value.length === 0) {
+    return 'Carregando colaboradores...'
+  }
+
+  if (assignableUsers.value.length === 0) {
+    return 'Nenhum colaborador encontrado'
+  }
+
+  return 'Nao adicionar colaborador'
+})
 
 watch(
   () => props.issue,
@@ -88,6 +105,10 @@ async function loadLatestIssue(issueId) {
     detailSource.value = data?.source || 'github'
     detailWarning.value = data?.warning || ''
     syncFormFromIssue(currentIssue.value)
+
+    if (detailSource.value === 'github') {
+      notifyUser('Detalhes confirmados com o GitHub e salvos no banco local.', 'success')
+    }
   } catch (requestError) {
     detailWarning.value = extractHttpMessage(requestError, 'Nao foi possivel atualizar os detalhes da issue no GitHub. Mantendo o cache local.')
     currentHistory.value = buildFallbackHistory(currentIssue.value)
@@ -100,6 +121,20 @@ function syncFormFromIssue(issue) {
   form.title = issue?.title || ''
   form.state = issue?.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
   form.additionalNotes = ''
+  form.assignCollaboratorId = ''
+}
+
+function notifyUser(message, type = 'info') {
+  const normalizedMessage = String(message || '').trim()
+
+  if (normalizedMessage === '' || typeof props.notify !== 'function') {
+    return
+  }
+
+  props.notify({
+    message: normalizedMessage,
+    type,
+  })
 }
 
 function resetTemplateCatalog() {
@@ -271,14 +306,14 @@ function renderUpdateTemplate(template, submissionFields) {
       continue
     }
 
-    const normalizedValue = String(rawValue || '').trim()
+    const normalizedValue = formatTemplateFieldValue(field, rawValue)
     if (normalizedValue === '') {
       continue
     }
 
     hasContent = true
 
-    if (field.renderAs === 'bullet') {
+    if (field.renderAs === 'bullet' || field.renderAs === 'commit') {
       lines.push(`- ${field.label}: ${normalizedValue}`)
       continue
     }
@@ -289,6 +324,80 @@ function renderUpdateTemplate(template, submissionFields) {
   }
 
   return hasContent ? lines.join('\n').trim() : ''
+}
+
+function formatTemplateFieldValue(field, value) {
+  const normalizedValue = String(value || '').trim()
+  if (normalizedValue === '') {
+    return ''
+  }
+
+  if (field?.renderAs === 'commit') {
+    return buildCommitReferenceMarkdown(normalizedValue)
+  }
+
+  return normalizedValue
+}
+
+function buildCommitReferenceMarkdown(value) {
+  const commitUrl = resolveCommitUrl(value)
+  if (commitUrl === '') {
+    return value
+  }
+
+  return `[${extractCommitLabel(value, commitUrl)}](${commitUrl})`
+}
+
+function resolveCommitUrl(value) {
+  const normalizedValue = String(value || '').trim()
+  if (normalizedValue === '') {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(normalizedValue)) {
+    return normalizedValue
+  }
+
+  const crossRepositoryCommit = normalizedValue.match(/^([\w.-]+\/[\w.-]+)@([a-f0-9]{7,40})$/i)
+  if (crossRepositoryCommit) {
+    const [, repositoryKey, sha] = crossRepositoryCommit
+    return `https://github.com/${repositoryKey}/commit/${sha}`
+  }
+
+  if (!/^[a-f0-9]{7,40}$/i.test(normalizedValue)) {
+    return ''
+  }
+
+  const repositoryKey = String(currentIssue.value?.repository?.nameWithOwner || '').trim()
+  if (repositoryKey === '') {
+    return ''
+  }
+
+  return `https://github.com/${repositoryKey}/commit/${normalizedValue}`
+}
+
+function extractCommitLabel(rawValue, commitUrl) {
+  const normalizedValue = String(rawValue || '').trim()
+  if (normalizedValue === '') {
+    return 'Commit'
+  }
+
+  if (!/^https?:\/\//i.test(normalizedValue)) {
+    const crossRepositoryCommit = normalizedValue.match(/^([\w.-]+\/[\w.-]+)@([a-f0-9]{7,40})$/i)
+    if (crossRepositoryCommit) {
+      return crossRepositoryCommit[2]
+    }
+
+    return normalizedValue
+  }
+
+  try {
+    const parsedUrl = new URL(commitUrl)
+    const lastPathSegment = parsedUrl.pathname.split('/').filter(Boolean).pop() || ''
+    return lastPathSegment || normalizedValue
+  } catch {
+    return normalizedValue
+  }
 }
 
 function resetTemplateInputs() {
@@ -350,6 +459,7 @@ async function saveIssue() {
         title: form.title,
         body: finalBody.value,
         state: form.state,
+        assigneeIds: form.assignCollaboratorId ? [form.assignCollaboratorId] : [],
       },
     })
 
@@ -580,13 +690,6 @@ function extractHttpMessage(error, fallback) {
           class="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-medium text-cyan-800"
         >
           Atualizando esta issue direto do GitHub...
-        </div>
-
-        <div
-          v-else-if="detailSource === 'github'"
-          class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"
-        >
-          Detalhes confirmados com o GitHub e salvos no banco local.
         </div>
 
         <div
@@ -851,6 +954,24 @@ function extractHttpMessage(error, fallback) {
                 >
                   <option value="OPEN">Aberta</option>
                   <option value="CLOSED">Fechada</option>
+                </select>
+              </label>
+
+              <label class="grid gap-2 sm:max-w-lg">
+                <span class="text-sm font-semibold text-slate-900">Atribuir colaborador</span>
+                <select
+                  v-model="form.assignCollaboratorId"
+                  :disabled="!canEdit || saving"
+                  class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
+                >
+                  <option value="">{{ assignablePlaceholderLabel }}</option>
+                  <option
+                    v-for="assignableUser in assignableUsers"
+                    :key="assignableUser.id || assignableUser.login"
+                    :value="assignableUser.id"
+                  >
+                    {{ assignableUser.name ? `${assignableUser.name} (${assignableUser.login})` : assignableUser.login }}
+                  </option>
                 </select>
               </label>
 

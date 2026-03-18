@@ -77,6 +77,17 @@ final class GithubWorkspaceServiceTest extends TestCase
                                     ],
                                 ],
                             ],
+                            'assignableUsers' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'user-1',
+                                        'login' => 'ana',
+                                        'name' => 'Ana Silva',
+                                        'avatarUrl' => 'https://avatars.example/ana',
+                                        'url' => 'https://github.com/ana',
+                                    ],
+                                ],
+                            ],
                         ],
                     ];
                 }
@@ -130,6 +141,8 @@ final class GithubWorkspaceServiceTest extends TestCase
         $workspace = $service->fetchWorkspace($this->buildConfiguredUser(), 'acme', 'delivery-desk');
 
         $this->assertSame('acme/delivery-desk', $workspace['repository']['nameWithOwner']);
+        $this->assertCount(1, $workspace['repository']['assignableUsers']);
+        $this->assertSame('ana', $workspace['repository']['assignableUsers'][0]['login']);
         $this->assertCount(6, $workspace['templates']);
         $this->assertTrue($workspace['projectsMeta']['available']);
         $this->assertCount(1, $workspace['projects']);
@@ -160,6 +173,9 @@ final class GithubWorkspaceServiceTest extends TestCase
                                 'login' => 'acme',
                             ],
                             'labels' => [
+                                'nodes' => [],
+                            ],
+                            'assignableUsers' => [
                                 'nodes' => [],
                             ],
                         ],

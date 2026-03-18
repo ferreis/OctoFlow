@@ -41,6 +41,13 @@ const updateTemplates = [
         placeholder: 'Quem esta conduzindo o atendimento',
       },
       {
+        key: 'commitRef',
+        label: 'Commit relacionado',
+        type: 'text',
+        renderAs: 'commit',
+        placeholder: 'Hash, SHA curto ou URL do commit',
+      },
+      {
         key: 'currentStatus',
         label: 'Situacao atual',
         type: 'textarea',
@@ -79,6 +86,13 @@ const updateTemplates = [
         type: 'text',
         renderAs: 'bullet',
         placeholder: 'Quem esta sinalizando o bloqueio',
+      },
+      {
+        key: 'commitRef',
+        label: 'Commit relacionado',
+        type: 'text',
+        renderAs: 'commit',
+        placeholder: 'Hash, SHA curto ou URL do commit',
       },
       {
         key: 'blocker',
@@ -121,6 +135,13 @@ const updateTemplates = [
         placeholder: 'Pessoa ou time que assume a issue',
       },
       {
+        key: 'commitRef',
+        label: 'Commit relacionado',
+        type: 'text',
+        renderAs: 'commit',
+        placeholder: 'Hash, SHA curto ou URL do commit',
+      },
+      {
         key: 'currentContext',
         label: 'Contexto atual',
         type: 'textarea',
@@ -161,6 +182,13 @@ const updateTemplates = [
         type: 'text',
         renderAs: 'bullet',
         placeholder: 'Quem aplicou a correcao',
+      },
+      {
+        key: 'commitRef',
+        label: 'Commit relacionado',
+        type: 'text',
+        renderAs: 'commit',
+        placeholder: 'Hash, SHA curto ou URL do commit',
       },
       {
         key: 'rootCause',
@@ -1083,6 +1111,7 @@ function extractHttpMessage(error, fallback) {
       v-if="editingIssue"
       :key="editingIssue.id"
       :request="props.request"
+      :notify="props.notify"
       :issue="editingIssue"
       :update-templates="updateTemplates"
       @close="closeIssueModal"
