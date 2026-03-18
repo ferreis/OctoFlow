@@ -19,6 +19,10 @@ class Github
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?User $owner = null;
 
+    #[ORM\ManyToOne(inversedBy: 'repositories')]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    private ?GithubAccount $account = null;
+
     #[ORM\Column(length: 191)]
     private string $ownerLogin = '';
 
@@ -100,6 +104,22 @@ class Github
     public function isIgnored(): bool
     {
         return $this->isIgnored;
+    }
+
+    public function getAccount(): ?GithubAccount
+    {
+        return $this->account;
+    }
+
+    public function setAccount(?GithubAccount $account): self
+    {
+        $this->account = $account;
+
+        if ($account !== null && !$account->getRepositories()->contains($this)) {
+            $account->addRepository($this);
+        }
+
+        return $this;
     }
 
     public function setIsIgnored(bool $isIgnored): self

@@ -70,4 +70,23 @@ class GithubRepository extends ServiceEntityRepository
             ->getQuery()
             ->getOneOrNullResult();
     }
+
+    /**
+     * @return list<Github>
+     */
+    public function findAllByAccount(\App\Entity\GithubAccount $account, bool $includeIgnored = true): array
+    {
+        $queryBuilder = $this->createQueryBuilder('github')
+            ->andWhere('github.account = :account')
+            ->setParameter('account', $account)
+            ->addOrderBy('github.isIgnored', 'ASC')
+            ->addOrderBy('github.ownerLogin', 'ASC')
+            ->addOrderBy('github.name', 'ASC');
+
+        if (!$includeIgnored) {
+            $queryBuilder->andWhere('github.isIgnored = false');
+        }
+
+        return $queryBuilder->getQuery()->getResult();
+    }
 }

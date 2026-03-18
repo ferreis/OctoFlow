@@ -5,6 +5,7 @@ namespace App\Entity;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
+use App\Entity\GithubAccount;
 use App\Entity\RefreshToken;
 use App\Entity\UserEmail;
 use App\Repository\UserRepository;
@@ -90,6 +91,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Github::class, mappedBy: 'owner', orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $githubRepositories;
 
+    /**
+     * @var Collection<int, GithubAccount>
+     */
+    #[ORM\OneToMany(targetEntity: GithubAccount::class, mappedBy: 'owner', orphanRemoval: true, cascade: ['persist', 'remove'])]
+    private Collection $githubAccounts;
+
     #[ORM\OneToOne(mappedBy: 'user', targetEntity: UISettings::class, cascade: ['persist', 'remove'], orphanRemoval: true)]
     private ?UISettings $uiSettings = null;
 
@@ -101,6 +108,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->refreshTokens = new ArrayCollection();
         $this->emailAddresses = new ArrayCollection();
         $this->githubRepositories = new ArrayCollection();
+        $this->githubAccounts = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -165,7 +173,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function hasGithubTokenConfigured(): bool
     {
-        return $this->githubTokenEncrypted !== null && $this->githubTokenEncrypted !== '';
+        if ($this->githubTokenEncrypted !== null && $this->githubTokenEncrypted !== '') {
+            return true;
+        }
+
+        foreach ($this->githubAccounts as $account) {
+            if ($account->hasTokenConfigured()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function hasGithubWorkspaceConfiguration(): bool
@@ -283,6 +301,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
         if ($githubRepository->getOwner() !== $this) {
             $githubRepository->setOwner($this);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, GithubAccount>
+     */
+    public function getGithubAccounts(): Collection
+    {
+        return $this->githubAccounts;
+    }
+
+    public function addGithubAccount(GithubAccount $githubAccount): self
+    {
+        if (!$this->githubAccounts->contains($githubAccount)) {
+            $this->githubAccounts->add($githubAccount);
+        }
+
+        if ($githubAccount->getOwner() !== $this) {
+            $githubAccount->setOwner($this);
+        }
+
+        return $this;
+    }
+
+    public function removeGithubAccount(GithubAccount $githubAccount): self
+    {
+        if ($this->githubAccounts->removeElement($githubAccount) && $githubAccount->getOwner() === $this) {
+            $githubAccount->setOwner(null);
         }
 
         return $this;

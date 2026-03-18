@@ -2,11 +2,13 @@
 
 namespace App\Tests\Unit\Github;
 
+use App\Entity\GithubAccount;
 use App\Entity\User;
 use App\Github\Exception\GithubConfigurationException;
 use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
+use App\Repository\GithubAccountRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -15,16 +17,21 @@ final class GithubProfileServiceTest extends TestCase
 {
     private EntityManagerInterface&MockObject $entityManager;
     private GithubRegistryService&MockObject $registryService;
+    private GithubAccountRepository&MockObject $githubAccountRepository;
+    private GithubTokenCipher $tokenCipher;
     private GithubProfileService $service;
 
     protected function setUp(): void
     {
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->registryService = $this->createMock(GithubRegistryService::class);
+        $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
+        $this->tokenCipher = new GithubTokenCipher('test-app-secret');
         $this->service = new GithubProfileService(
             $this->entityManager,
-            new GithubTokenCipher('test-app-secret'),
-            $this->registryService
+            $this->tokenCipher,
+            $this->registryService,
+            $this->githubAccountRepository,
         );
     }
 
@@ -34,17 +41,43 @@ final class GithubProfileServiceTest extends TestCase
         $user = (new User())
             ->setEmail('owner@example.com')
             ->setPassword('not-used');
+        $primaryAccount = (new GithubAccount())
+            ->setOwner($user)
+            ->setAccountLogin('acme')
+            ->setTokenEncrypted($this->tokenCipher->encrypt('ghp_secret_token'));
 
         $this->registryService
             ->method('buildCatalog')
             ->willReturn([$registeredRepository]);
 
         $this->registryService
+            ->method('buildAccountCatalog')
+            ->willReturn([
+                [
+                    'id' => 1,
+                    'accountLogin' => 'acme',
+                    'tokenConfigured' => true,
+                    'workspaceReady' => true,
+                    'defaultRepositoryKey' => 'acme/delivery-desk',
+                    'repositories' => [$registeredRepository],
+                ],
+            ]);
+
+        $this->registryService
             ->method('resolveDefaultRepository')
             ->willReturn($registeredRepository);
 
+        $this->registryService
+            ->method('findFirstOwnedAccount')
+            ->willReturn($primaryAccount);
+
+        $this->githubAccountRepository
+            ->method('findOneByOwnerAndLogin')
+            ->with($user, 'acme')
+            ->willReturn(null);
+
         $this->entityManager
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('flush');
 
         $profile = $this->service->updateProfile($user, [
@@ -60,7 +93,8 @@ final class GithubProfileServiceTest extends TestCase
         $this->assertTrue($profile['tokenConfigured']);
         $this->assertTrue($profile['workspaceReady']);
         $this->assertNotSame('ghp_secret_token', $user->getGithubTokenEncrypted());
-        $this->assertSame('ghp_secret_token', (new GithubTokenCipher('test-app-secret'))->decrypt((string) $user->getGithubTokenEncrypted()));
+        $this->assertCount(1, $profile['accounts']);
+        $this->assertSame('ghp_secret_token', $this->tokenCipher->decrypt((string) $user->getGithubTokenEncrypted()));
     }
 
     public function testBuildRuntimeConfigurationRejectsIncompleteProfile(): void

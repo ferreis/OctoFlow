@@ -10,6 +10,7 @@ use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
 use App\Github\GithubWorkspaceService;
+use App\Repository\GithubAccountRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -20,15 +21,29 @@ final class GithubWorkspaceServiceTest extends TestCase
     private GithubIssueTemplateCatalog $templateCatalog;
     private GithubProfileService $profileService;
     private GithubRegistryService&MockObject $registryService;
+    private GithubAccountRepository&MockObject $githubAccountRepository;
 
     protected function setUp(): void
     {
         $this->graphqlClient = $this->createMock(GithubGraphQLClientInterface::class);
         $this->templateCatalog = new GithubIssueTemplateCatalog();
         $this->registryService = $this->createMock(GithubRegistryService::class);
+        $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
         $this->registryService
             ->method('buildCatalog')
             ->willReturn([$this->buildRegisteredRepository()]);
+        $this->registryService
+            ->method('buildAccountCatalog')
+            ->willReturn([
+                [
+                    'id' => 1,
+                    'accountLogin' => 'acme',
+                    'tokenConfigured' => true,
+                    'workspaceReady' => true,
+                    'defaultRepositoryKey' => 'acme/delivery-desk',
+                    'repositories' => [$this->buildRegisteredRepository()],
+                ],
+            ]);
         $this->registryService
             ->method('resolveDefaultRepository')
             ->willReturn($this->buildRegisteredRepository());
@@ -36,7 +51,8 @@ final class GithubWorkspaceServiceTest extends TestCase
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
             new GithubTokenCipher('test-app-secret'),
-            $this->registryService
+            $this->registryService,
+            $this->githubAccountRepository,
         );
     }
 

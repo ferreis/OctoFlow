@@ -69,6 +69,76 @@ final class GithubController
         }
     }
 
+    #[Route('/accounts', name: 'github_account_create', methods: ['POST'])]
+    public function createAccount(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->profileService->createAccount($user, $payload),
+                'profile' => $this->profileService->buildProfilePayload($user),
+            ], JsonResponse::HTTP_CREATED);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
+    #[Route('/accounts/{id<\d+>}', name: 'github_account_update', methods: ['PATCH', 'PUT'])]
+    public function updateAccount(int $id, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $account = $this->profileService->findOwnedAccount($user, $id);
+        if (!$account instanceof \App\Entity\GithubAccount) {
+            return new JsonResponse(['message' => 'GitHub account not found.'], JsonResponse::HTTP_NOT_FOUND);
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->profileService->updateAccount($user, $account, $payload),
+                'profile' => $this->profileService->buildProfilePayload($user),
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
+    #[Route('/accounts/{id<\d+>}', name: 'github_account_delete', methods: ['DELETE'])]
+    public function deleteAccount(int $id, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $account = $this->profileService->findOwnedAccount($user, $id);
+        if (!$account instanceof \App\Entity\GithubAccount) {
+            return new JsonResponse(['message' => 'GitHub account not found.'], JsonResponse::HTTP_NOT_FOUND);
+        }
+
+        try {
+            $this->profileService->deleteAccount($user, $account);
+
+            return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
     #[Route('/repositories', name: 'github_repository_list', methods: ['GET'])]
     public function repositories(#[CurrentUser] ?User $user): JsonResponse
     {

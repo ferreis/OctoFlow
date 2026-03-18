@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import globals from 'globals'
 import pluginVue from 'eslint-plugin-vue'
 
 export default [
@@ -8,10 +9,14 @@ export default [
   js.configs.recommended,
   ...pluginVue.configs['flat/essential'],
   {
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
     rules: {
       'no-console': 'off',
-      'no-undef': 'off',
-      'no-useless-assignment': 'off',
       'no-unused-vars': 'warn',
     },
   },

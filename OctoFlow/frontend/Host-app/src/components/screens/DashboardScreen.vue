@@ -1,11 +1,6 @@
 <script setup>
-import { computed, onMounted, ref, toRef, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
-import { usePermissions } from '../../composables/usePermissions'
-import {
-  RemoteGithubProjectsCard,
-  RemoteGithubWorkspaceSummaryCard,
-} from '../../federation/remoteComponents'
 import { fetchGithubProfile, fetchGithubWorkspace } from '../../services/githubWorkspace'
 import { fetchGithubIssuesCache, syncGithubIssues } from '../../services/tasks'
 import { extractHttpMessage } from '../../utils/httpErrors'
@@ -34,10 +29,8 @@ const error = ref('')
 const status = ref('')
 const activeTab = ref('tasks')
 const { notifyUser } = useNotification(props.notify)
-const { canLoadRemoteGithubPanels } = usePermissions(toRef(props, 'currentUser'), { profile, workspace })
 
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
-const shouldRenderRemotePanels = computed(() => canLoadRemoteGithubPanels.value)
 const repositoryLabel = computed(() => {
   const repositories = Array.isArray(profile.value?.repositories) ? profile.value.repositories : []
   const owner = String(profile.value?.repositoryOwner || '').trim()
@@ -593,18 +586,6 @@ function formatDuration(hours) {
         </article>
 
         <template v-else>
-        <div v-if="shouldRenderRemotePanels" class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(0,0.95fr)]">
-          <RemoteGithubWorkspaceSummaryCard
-            v-if="workspace"
-            :workspace="workspace"
-            :current-user="currentUser"
-          />
-          <RemoteGithubProjectsCard
-            v-if="workspace"
-            :workspace="workspace"
-          />
-        </div>
-
         <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
           <article
             v-for="card in taskOverviewCards"

@@ -9,6 +9,7 @@ use App\Github\GithubIssueCacheService;
 use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
+use App\Repository\GithubAccountRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -19,16 +20,19 @@ final class GithubAssignedIssueServiceTest extends TestCase
     private GithubIssueCacheService&MockObject $cacheService;
     private GithubProfileService $profileService;
     private GithubRegistryService&MockObject $registryService;
+    private GithubAccountRepository&MockObject $githubAccountRepository;
 
     protected function setUp(): void
     {
         $this->graphqlClient = $this->createMock(GithubGraphQLClientInterface::class);
         $this->cacheService = $this->createMock(GithubIssueCacheService::class);
         $this->registryService = $this->createMock(GithubRegistryService::class);
+        $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
             new GithubTokenCipher('test-app-secret'),
-            $this->registryService
+            $this->registryService,
+            $this->githubAccountRepository,
         );
     }
 

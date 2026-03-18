@@ -2,8 +2,10 @@
 
 namespace App\Github;
 
+use App\Entity\GithubAccount;
 use App\Entity\Github;
 use App\Entity\User;
+use App\Repository\GithubAccountRepository;
 use App\Repository\GithubRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -12,6 +14,7 @@ class GithubRegistryService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly GithubRepository $githubRepository,
+        private readonly GithubAccountRepository $githubAccountRepository,
     ) {
     }
 
@@ -25,6 +28,19 @@ class GithubRegistryService
             : $this->githubRepository->findActiveByOwner($user);
 
         return array_map(fn (Github $github): array => $this->buildPayload($github), $repositories);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function buildAccountCatalog(User $user, bool $includeIgnored = true): array
+    {
+        $accounts = $this->githubAccountRepository->findAllByOwner($user);
+
+        return array_map(
+            fn (GithubAccount $account): array => $this->buildAccountPayload($account, $includeIgnored),
+            $accounts,
+        );
     }
 
     /**
@@ -50,6 +66,16 @@ class GithubRegistryService
         return null;
     }
 
+    public function findOwnedAccount(User $user, int $id): ?GithubAccount
+    {
+        return $this->githubAccountRepository->findOneOwnedBy($user, $id);
+    }
+
+    public function findFirstOwnedAccount(User $user): ?GithubAccount
+    {
+        return $this->githubAccountRepository->findAllByOwner($user)[0] ?? null;
+    }
+
     public function findOwnedRepository(User $user, int $id): ?Github
     {
         return $this->githubRepository->findOneOwnedBy($user, $id);
@@ -58,7 +84,8 @@ class GithubRegistryService
     public function createRepository(User $user, array $payload): Github
     {
         $repository = (new Github())
-            ->setOwner($user);
+            ->setOwner($user)
+            ->setAccount($this->resolveAccountForRepositoryPayload($user, $payload));
 
         $this->applyPayload($user, $repository, $payload);
         $this->entityManager->persist($repository);
@@ -104,6 +131,9 @@ class GithubRegistryService
 
         return [
             'id' => $repository->getId(),
+            'accountId' => $repository->getAccount()?->getId(),
+            'accountLogin' => $repository->getAccount()?->getAccountLogin(),
+            'accountTokenConfigured' => $repository->getAccount()?->hasTokenConfigured() ?? false,
             'ownerLogin' => $ownerLogin,
             'name' => $name,
             'nameWithOwner' => $nameWithOwner,
@@ -113,10 +143,38 @@ class GithubRegistryService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function buildAccountPayload(GithubAccount $account, bool $includeIgnored = true): array
+    {
+        $repositories = array_map(
+            fn (Github $repository): array => $this->buildPayload($repository),
+            $this->githubRepository->findAllByAccount($account, $includeIgnored),
+        );
+
+        $activeRepositories = array_values(array_filter(
+            $repositories,
+            static fn (array $repository): bool => ($repository['isIgnored'] ?? false) !== true,
+        ));
+        $defaultRepository = $activeRepositories[0] ?? null;
+
+        return [
+            'id' => $account->getId(),
+            'accountLogin' => $account->getAccountLogin(),
+            'tokenConfigured' => $account->hasTokenConfigured(),
+            'workspaceReady' => $account->hasTokenConfigured() && $defaultRepository !== null,
+            'defaultRepositoryKey' => $defaultRepository['nameWithOwner'] ?? null,
+            'repositories' => $repositories,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $payload
      */
     private function applyPayload(User $user, Github $repository, array $payload): void
     {
+        $repository->setAccount($this->resolveAccountForRepositoryPayload($user, $payload, $repository));
+
         $ownerLogin = trim((string) ($payload['ownerLogin'] ?? $repository->getOwnerLogin()));
         $name = trim((string) ($payload['name'] ?? $repository->getName()));
         $url = trim((string) ($payload['url'] ?? $repository->getUrl()));
@@ -153,6 +211,31 @@ class GithubRegistryService
         if ($existingRepository instanceof Github && $existingRepository->getId() !== $repository->getId()) {
             throw new \InvalidArgumentException('This GitHub repository is already registered for the authenticated user.');
         }
+    }
+
+    private function resolveAccountForRepositoryPayload(User $user, array $payload, ?Github $repository = null): GithubAccount
+    {
+        $accountId = (int) ($payload['accountId'] ?? 0);
+
+        if ($accountId > 0) {
+            $account = $this->findOwnedAccount($user, $accountId);
+            if ($account instanceof GithubAccount) {
+                return $account;
+            }
+
+            throw new \InvalidArgumentException('The selected GitHub account does not belong to the authenticated user.');
+        }
+
+        if ($repository?->getAccount() instanceof GithubAccount) {
+            return $repository->getAccount();
+        }
+
+        $firstAccount = $this->findFirstOwnedAccount($user);
+        if ($firstAccount instanceof GithubAccount) {
+            return $firstAccount;
+        }
+
+        throw new \InvalidArgumentException('Register a GitHub account before adding repositories.');
     }
 
     /**

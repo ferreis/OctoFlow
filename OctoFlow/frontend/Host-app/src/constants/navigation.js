@@ -10,7 +10,7 @@ export const navigationItems = [
   },
   {
     key: 'tasks',
-    short: 'TK',
+    short: 'TF',
     label: 'Tarefas',
     description: 'Issues atribuidas ou backlog completo do repositorio',
     eyebrow: 'Issues do GitHub',

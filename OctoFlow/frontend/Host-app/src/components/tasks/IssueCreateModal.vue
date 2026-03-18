@@ -1,19 +1,18 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   RemoteIssueTemplateForm,
   RemoteIssueTemplatePreview,
 } from '../../federation/remoteComponents'
+import { useIssueCreateComposer } from '../../composables/useIssueCreateComposer'
 import { fetchGithubWorkspace } from '../../services/githubWorkspace'
 import { createGithubIssue } from '../../services/tasks'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import {
-  buildInitialFieldState,
   buildSubmissionFields,
   formatTemplateTitle,
   resolveSelectLabel,
-  snapshotFieldValues,
 } from '../../utils/issueTemplate'
 
 const props = defineProps({
@@ -42,14 +41,9 @@ const workspaceError = ref('')
 const workspace = ref(null)
 const submitting = ref(false)
 const submitError = ref('')
-const selectedTemplateKey = ref('')
 const selectedAssigneeId = ref('')
 const selectedRepositoryKey = ref('')
-const title = ref('')
-const selectedLabels = ref([])
 const syncingRepositoryKey = ref(false)
-const fieldValues = reactive({})
-const templateDrafts = reactive({})
 
 const availableRepositories = computed(() => {
   const catalog = new Map()
@@ -77,15 +71,23 @@ const labelOptions = computed(() => labels.value
   .filter((label) => label.id !== '' && label.name !== '')
   .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' }))
 )
-const selectedLabelIds = computed(() => selectedLabels.value
-  .map((label) => String(label?.id || '').trim())
-  .filter(Boolean)
-)
-const newLabelNames = computed(() => selectedLabels.value
-  .filter((label) => String(label?.id || '').trim() === '')
-  .map((label) => normalizeLabelName(label?.name))
-  .filter(Boolean)
-)
+const {
+  fieldValues,
+  selectedLabels,
+  selectedTemplate,
+  selectedTemplateKey,
+  title,
+  initializeWorkspaceState,
+  persistTemplateDraft,
+  resetActiveTemplateInputs,
+  resolveNewLabelNames,
+  resolveSelectedLabelIds,
+  restoreTemplateDraft,
+  sanitizeSelectedLabels,
+  syncFieldValues,
+} = useIssueCreateComposer(templates, labelOptions)
+const selectedLabelIds = computed(() => resolveSelectedLabelIds())
+const newLabelNames = computed(() => resolveNewLabelNames())
 const assignableUsers = computed(() => Array.isArray(repository.value?.assignableUsers) ? repository.value.assignableUsers : [])
 const requesterEmail = computed(() => {
   const primaryEmail = typeof props.currentUser?.defaultEmail === 'string' ? props.currentUser.defaultEmail.trim() : ''
@@ -93,7 +95,6 @@ const requesterEmail = computed(() => {
 
   return primaryEmail || fallbackEmail || 'usuario autenticado'
 })
-const selectedTemplate = computed(() => templates.value.find((template) => template.key === selectedTemplateKey.value) || null)
 const repositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value || repository.value?.nameWithOwner || ''))
 const previewTitle = computed(() => formatTemplateTitle(selectedTemplate.value, title.value))
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value, fieldValues), requesterEmail.value))
@@ -183,80 +184,6 @@ async function loadWorkspace() {
   }
 }
 
-function initializeWorkspaceState() {
-  selectedTemplateKey.value = ''
-  selectedAssigneeId.value = ''
-  title.value = ''
-  selectedLabels.value = []
-
-  for (const key of Object.keys(fieldValues)) {
-    delete fieldValues[key]
-  }
-
-  for (const key of Object.keys(templateDrafts)) {
-    delete templateDrafts[key]
-  }
-
-  const firstTemplateKey = templates.value[0]?.key || ''
-  if (firstTemplateKey !== '') {
-    selectedTemplateKey.value = firstTemplateKey
-  }
-}
-
-function persistTemplateDraft(templateKey = selectedTemplateKey.value) {
-  const template = templates.value.find((item) => item.key === templateKey)
-  if (!template) {
-    return
-  }
-
-  templateDrafts[templateKey] = {
-    title: title.value,
-    labels: selectedLabels.value.map((label) => cloneSelectedLabel(label)),
-    fields: snapshotFieldValues(template, fieldValues),
-  }
-}
-
-function restoreTemplateDraft(templateKey) {
-  const template = templates.value.find((item) => item.key === templateKey)
-  if (!template) {
-    return
-  }
-
-  const existingDraft = templateDrafts[templateKey]
-  const restoredFields = buildInitialFieldState(template)
-  const draftFields = existingDraft?.fields || {}
-
-  for (const field of template.fields || []) {
-    const fieldKey = typeof field?.key === 'string' ? field.key : ''
-    if (fieldKey === '') {
-      continue
-    }
-
-    const candidateValue = typeof draftFields[fieldKey] === 'string' ? draftFields[fieldKey] : ''
-    restoredFields[fieldKey] = candidateValue
-  }
-
-  title.value = typeof existingDraft?.title === 'string' ? existingDraft.title : ''
-  selectedLabels.value = Array.isArray(existingDraft?.labels)
-    ? sanitizeSelectedLabels(existingDraft.labels)
-    : resolveDefaultLabels(template)
-
-  for (const key of Object.keys(fieldValues)) {
-    delete fieldValues[key]
-  }
-
-  Object.assign(fieldValues, restoredFields)
-}
-
-function resolveDefaultLabels(template) {
-  const defaultLabels = Array.isArray(template?.defaultLabels) ? template.defaultLabels : []
-  const defaultLabelSet = new Set(defaultLabels.map((labelName) => buildLabelNameKey(labelName)).filter(Boolean))
-
-  return labelOptions.value
-    .filter((label) => defaultLabelSet.has(buildLabelNameKey(label.name)))
-    .map((label) => cloneSelectedLabel(label))
-}
-
 function renderPreview(template, submissionFields, email) {
   if (!template) {
     return 'Selecione um template para ver o preview.'
@@ -299,29 +226,6 @@ function renderPreview(template, submissionFields, email) {
   return lines.join('\n').trim() || 'Preencha os campos para gerar o preview.'
 }
 
-function resetActiveTemplateInputs() {
-  const template = selectedTemplate.value
-  if (!template) {
-    return
-  }
-
-  title.value = ''
-  selectedLabels.value = resolveDefaultLabels(template)
-  const nextFieldState = buildInitialFieldState(template)
-
-  for (const key of Object.keys(fieldValues)) {
-    delete fieldValues[key]
-  }
-
-  Object.assign(fieldValues, nextFieldState)
-
-  templateDrafts[template.key] = {
-    title: '',
-    labels: selectedLabels.value.map((label) => cloneSelectedLabel(label)),
-    fields: snapshotFieldValues(template, fieldValues),
-  }
-}
-
 async function submitIssue() {
   if (!selectedTemplate.value) {
     submitError.value = 'Selecione um template antes de criar a issue.'
@@ -358,22 +262,10 @@ async function submitIssue() {
   }
 }
 
-function syncFieldValues(nextValues) {
-  for (const key of Object.keys(fieldValues)) {
-    delete fieldValues[key]
-  }
-
-  Object.assign(fieldValues, nextValues || {})
-}
-
 function normalizeLabelName(value) {
   return String(value || '')
     .trim()
     .replace(/\s+/g, ' ')
-}
-
-function buildLabelNameKey(value) {
-  return normalizeLabelName(value).toLocaleLowerCase()
 }
 
 function normalizeLabelColor(value) {
@@ -391,48 +283,6 @@ function normalizeLabelOption(label) {
       : null,
     isNew: String(label?.id || '').trim() === '',
   }
-}
-
-function cloneSelectedLabel(label) {
-  const normalizedLabel = normalizeLabelOption(label)
-
-  return {
-    ...normalizedLabel,
-    isNew: normalizedLabel.id === '',
-  }
-}
-
-function sanitizeSelectedLabels(rawLabels) {
-  if (!Array.isArray(rawLabels)) {
-    return []
-  }
-
-  const sanitizedLabels = []
-  const seenIds = new Set()
-  const seenNames = new Set()
-
-  for (const rawLabel of rawLabels) {
-    const normalizedLabel = cloneSelectedLabel(rawLabel)
-    const labelNameKey = buildLabelNameKey(normalizedLabel.name)
-
-    if (labelNameKey === '' || seenNames.has(labelNameKey)) {
-      continue
-    }
-
-    if (normalizedLabel.id !== '') {
-      if (seenIds.has(normalizedLabel.id)) {
-        continue
-      }
-
-      seenIds.add(normalizedLabel.id)
-      normalizedLabel.isNew = false
-    }
-
-    seenNames.add(labelNameKey)
-    sanitizedLabels.push(normalizedLabel)
-  }
-
-  return sanitizedLabels
 }
 </script>
 

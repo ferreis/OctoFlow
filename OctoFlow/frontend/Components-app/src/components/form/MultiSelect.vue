@@ -93,7 +93,8 @@ const dropdownOpen = ref(false)
 const highlightedOptionIndex = ref(-1)
 const fieldRef = ref(null)
 const inputRef = ref(null)
-const dropdownId = `multi-select-options-${++multiSelectIdSeed}`
+multiSelectIdSeed += 1
+const dropdownId = `multi-select-options-${multiSelectIdSeed}`
 
 const normalizedOptions = computed(() => props.options
   .map((option) => normalizeOption(option))

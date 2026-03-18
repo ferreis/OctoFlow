@@ -2,9 +2,11 @@
 
 namespace App\Tests\Unit\Github;
 
+use App\Entity\GithubAccount;
 use App\Entity\Github;
 use App\Entity\User;
 use App\Github\GithubRegistryService;
+use App\Repository\GithubAccountRepository;
 use App\Repository\GithubRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -14,15 +16,18 @@ final class GithubRegistryServiceTest extends TestCase
 {
     private EntityManagerInterface&MockObject $entityManager;
     private GithubRepository&MockObject $githubRepository;
+    private GithubAccountRepository&MockObject $githubAccountRepository;
     private GithubRegistryService $service;
 
     protected function setUp(): void
     {
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->githubRepository = $this->createMock(GithubRepository::class);
+        $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
         $this->service = new GithubRegistryService(
             $this->entityManager,
-            $this->githubRepository
+            $this->githubRepository,
+            $this->githubAccountRepository,
         );
     }
 
@@ -31,6 +36,15 @@ final class GithubRegistryServiceTest extends TestCase
         $user = (new User())
             ->setEmail('owner@example.com')
             ->setPassword('not-used');
+        $account = (new GithubAccount())
+            ->setOwner($user)
+            ->setAccountLogin('ferreis');
+
+        $this->githubAccountRepository
+            ->expects($this->once())
+            ->method('findAllByOwner')
+            ->with($user)
+            ->willReturn([$account]);
 
         $this->githubRepository
             ->expects($this->once())
