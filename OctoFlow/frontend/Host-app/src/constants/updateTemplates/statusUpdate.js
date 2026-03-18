@@ -1,5 +1,3 @@
-import { buildCurrentDateLabel } from './helpers'
-
 export const statusUpdateTemplate = {
   key: 'status-update',
   label: 'Atualizacao de status',
@@ -7,18 +5,11 @@ export const statusUpdateTemplate = {
   markdownTitle: 'Atualizacao de status',
   fields: [
     {
-      key: 'date',
-      label: 'Data',
-      type: 'text',
-      renderAs: 'bullet',
-      defaultValue: () => buildCurrentDateLabel(),
-    },
-    {
       key: 'owner',
       label: 'Responsavel',
-      type: 'text',
+      type: 'select',
       renderAs: 'bullet',
-      placeholder: 'Quem esta conduzindo o atendimento',
+      options: [],
     },
     {
       key: 'commitRef',

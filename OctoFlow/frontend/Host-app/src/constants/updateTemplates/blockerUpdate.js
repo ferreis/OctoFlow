@@ -1,5 +1,3 @@
-import { buildCurrentDateLabel } from './helpers'
-
 export const blockerUpdateTemplate = {
   key: 'blocker-update',
   label: 'Bloqueio',
@@ -7,18 +5,11 @@ export const blockerUpdateTemplate = {
   markdownTitle: 'Bloqueio',
   fields: [
     {
-      key: 'date',
-      label: 'Data',
-      type: 'text',
-      renderAs: 'bullet',
-      defaultValue: () => buildCurrentDateLabel(),
-    },
-    {
       key: 'owner',
       label: 'Responsavel',
-      type: 'text',
+      type: 'select',
       renderAs: 'bullet',
-      placeholder: 'Quem esta sinalizando o bloqueio',
+      options: [],
     },
     {
       key: 'commitRef',

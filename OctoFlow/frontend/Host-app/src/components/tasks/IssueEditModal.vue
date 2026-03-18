@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
+import { buildCurrentDateTimeLabel } from '../../constants/updateTemplates/helpers'
 import { RemoteMarkdownPreview as MarkdownPreview } from '../../federation/remoteComponents'
 import { fetchGithubIssueDetails, updateGithubIssue } from '../../services/tasks'
 import { formatDateTime } from '../../utils/date'
@@ -42,6 +43,7 @@ const selectedTemplateKey = ref('')
 const activePanel = ref('view')
 const templateFieldValues = reactive({})
 const templateDrafts = reactive({})
+const templateRenderTimestamp = ref(buildCurrentDateTimeLabel())
 const form = reactive({
   title: '',
   state: 'OPEN',
@@ -51,12 +53,21 @@ const form = reactive({
 const { notifyUser } = useNotification(props.notify)
 
 const canEdit = computed(() => Boolean(currentIssue.value?.viewerCanUpdate))
-const selectedTemplate = computed(() => props.updateTemplates.find((template) => template.key === selectedTemplateKey.value) || null)
 const repositoryName = computed(() => currentIssue.value?.repository?.nameWithOwner || 'Repositorio atual')
 const assignableUsers = computed(() => Array.isArray(currentIssue.value?.repository?.assignableUsers) ? currentIssue.value.repository.assignableUsers : [])
+const assignableUserOptions = computed(() => buildAssignableUserOptions(assignableUsers.value, currentIssue.value?.assignees))
+const selectedTemplate = computed(() => {
+  const template = props.updateTemplates.find((item) => item.key === selectedTemplateKey.value) || null
+  if (!template) {
+    return null
+  }
+
+  return enrichTemplateWithAssignableOptions(template, assignableUserOptions.value)
+})
+const selectedTemplateAssigneeFieldKey = computed(() => getTemplateAssigneeFieldKey(selectedTemplate.value))
 const historyEntries = computed(() => normalizeHistoryEntries(currentHistory.value, currentIssue.value))
 const statusLabel = computed(() => currentIssue.value?.state === 'CLOSED' ? 'Fechada' : 'Aberta')
-const generatedTemplateBlock = computed(() => renderUpdateTemplate(selectedTemplate.value, buildTemplateSubmissionFields(selectedTemplate.value)))
+const shouldShowStandaloneCollaboratorSelect = computed(() => selectedTemplateAssigneeFieldKey.value === '')
 const finalBody = computed(() => buildFinalBody())
 const assignablePlaceholderLabel = computed(() => {
   if (detailLoading.value && assignableUsers.value.length === 0) {
@@ -137,7 +148,7 @@ function syncFormFromIssue(issue) {
   form.title = issue?.title || ''
   form.state = issue?.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
   form.additionalNotes = ''
-  form.assignCollaboratorId = ''
+  form.assignCollaboratorId = resolvePrimaryAssigneeId(issue)
 }
 
 function resetTemplateCatalog() {
@@ -169,10 +180,14 @@ function persistTemplateDraft(templateKey = selectedTemplateKey.value) {
 }
 
 function restoreTemplateDraft(templateKey) {
-  const template = props.updateTemplates.find((item) => item.key === templateKey)
+  const template = selectedTemplate.value?.key === templateKey
+    ? selectedTemplate.value
+    : props.updateTemplates.find((item) => item.key === templateKey)
   if (!template) {
     return
   }
+
+  templateRenderTimestamp.value = buildCurrentDateTimeLabel()
 
   const restoredFields = buildInitialFieldState(template)
   const existingDraft = templateDrafts[templateKey]?.fields || {}
@@ -192,6 +207,7 @@ function restoreTemplateDraft(templateKey) {
     delete templateFieldValues[key]
   }
 
+  applyTemplateAutoValues(template, restoredFields)
   Object.assign(templateFieldValues, restoredFields)
 }
 
@@ -199,13 +215,18 @@ function buildTemplateSubmissionFields(template) {
   return buildSubmissionFields(template, templateFieldValues, { resolveSelectToLabel: true })
 }
 
-function renderUpdateTemplate(template, submissionFields) {
+function renderUpdateTemplate(template, submissionFields, timestampLabel = '') {
   if (!template) {
     return ''
   }
 
   const lines = [`## ${template.markdownTitle || template.label || 'Atualização'}`]
   let hasContent = false
+
+  if (timestampLabel !== '') {
+    lines.push(`- Data e hora: ${timestampLabel}`)
+    hasContent = true
+  }
 
   for (const field of template.fields || []) {
     const fieldKey = typeof field?.key === 'string' ? field.key.trim() : ''
@@ -330,20 +351,29 @@ function resetTemplateInputs() {
     return
   }
 
+  templateRenderTimestamp.value = buildCurrentDateTimeLabel()
+
   for (const key of Object.keys(templateFieldValues)) {
     delete templateFieldValues[key]
   }
 
-  Object.assign(templateFieldValues, buildInitialFieldState(selectedTemplate.value))
+  const initialFieldValues = buildInitialFieldState(selectedTemplate.value)
+  applyTemplateAutoValues(selectedTemplate.value, initialFieldValues)
+
+  Object.assign(templateFieldValues, initialFieldValues)
   templateDrafts[selectedTemplate.value.key] = {
     fields: snapshotFieldValues(selectedTemplate.value, templateFieldValues),
   }
 }
 
-function buildFinalBody() {
+function buildFinalBody(timestampLabel = templateRenderTimestamp.value) {
   const sections = []
   const currentBody = String(currentIssue.value?.body || '').trim()
-  const updateBlock = generatedTemplateBlock.value.trim()
+  const updateBlock = renderUpdateTemplate(
+    selectedTemplate.value,
+    buildTemplateSubmissionFields(selectedTemplate.value),
+    timestampLabel,
+  ).trim()
   const additionalNotes = String(form.additionalNotes || '').trim()
 
   if (currentBody !== '') {
@@ -376,11 +406,13 @@ async function saveIssue() {
   error.value = ''
 
   try {
+    templateRenderTimestamp.value = buildCurrentDateTimeLabel()
+    const assigneeId = resolveSelectedAssigneeId()
     const { data } = await updateGithubIssue(props.request, currentIssue.value.id, {
       title: form.title,
-      body: finalBody.value,
+      body: buildFinalBody(templateRenderTimestamp.value),
       state: form.state,
-      assigneeIds: form.assignCollaboratorId ? [form.assignCollaboratorId] : [],
+      assigneeIds: assigneeId ? [assigneeId] : [],
     })
 
     currentIssue.value = normalizeIssuePayload(data?.item || currentIssue.value)
@@ -415,6 +447,105 @@ function normalizeIssuePayload(issue) {
       ? issue.closedAt
       : null,
   }
+}
+
+function enrichTemplateWithAssignableOptions(template, collaboratorOptions) {
+  return {
+    ...template,
+    fields: Array.isArray(template?.fields)
+      ? template.fields.map((field) => {
+        if (!isTemplateAssigneeField(field)) {
+          return field
+        }
+
+        return {
+          ...field,
+          type: 'select',
+          options: collaboratorOptions,
+        }
+      })
+      : [],
+  }
+}
+
+function buildAssignableUserOptions(assignableCollaborators, currentAssignees) {
+  const normalizedOptions = []
+  const seenOptionValues = new Set()
+  const collaborators = [
+    ...(Array.isArray(currentAssignees) ? currentAssignees : []),
+    ...(Array.isArray(assignableCollaborators) ? assignableCollaborators : []),
+  ]
+
+  for (const collaborator of collaborators) {
+    const collaboratorValue = String(collaborator?.id || '').trim()
+    if (collaboratorValue === '' || seenOptionValues.has(collaboratorValue)) {
+      continue
+    }
+
+    seenOptionValues.add(collaboratorValue)
+    normalizedOptions.push({
+      value: collaboratorValue,
+      label: collaborator?.name
+        ? `${collaborator.name} (${collaborator.login})`
+        : collaborator?.login || collaboratorValue,
+    })
+  }
+
+  return normalizedOptions
+}
+
+function isTemplateAssigneeField(field) {
+  const fieldKey = String(field?.key || '').trim()
+  return fieldKey === 'owner' || fieldKey === 'nextOwner'
+}
+
+function getTemplateAssigneeFieldKey(template) {
+  if (!Array.isArray(template?.fields)) {
+    return ''
+  }
+
+  const assigneeField = template.fields.find((field) => isTemplateAssigneeField(field))
+  return String(assigneeField?.key || '').trim()
+}
+
+function resolvePrimaryAssigneeId(issue) {
+  const primaryAssignee = Array.isArray(issue?.assignees) ? issue.assignees[0] : null
+  return String(primaryAssignee?.id || '').trim()
+}
+
+function applyTemplateAutoValues(template, fieldValues) {
+  if (!fieldValues || typeof fieldValues !== 'object') {
+    return
+  }
+
+  const assigneeFieldKey = getTemplateAssigneeFieldKey(template)
+  if (assigneeFieldKey === '') {
+    return
+  }
+
+  const currentValue = String(fieldValues[assigneeFieldKey] || '').trim()
+  if (currentValue !== '') {
+    return
+  }
+
+  fieldValues[assigneeFieldKey] = String(form.assignCollaboratorId || resolvePrimaryAssigneeId(currentIssue.value) || '').trim()
+}
+
+function resolveSelectedAssigneeId() {
+  const assigneeFieldKey = selectedTemplateAssigneeFieldKey.value
+  if (assigneeFieldKey !== '') {
+    return String(templateFieldValues[assigneeFieldKey] || '').trim()
+  }
+
+  return String(form.assignCollaboratorId || '').trim()
+}
+
+function resolveTemplateSelectPlaceholder(field) {
+  if (isTemplateAssigneeField(field)) {
+    return assignablePlaceholderLabel.value
+  }
+
+  return 'Selecione'
 }
 
 function normalizeHistoryEntries(history, fallbackIssue = null) {
@@ -782,7 +913,7 @@ function historyBadgeClass(kind) {
                         v-model="templateFieldValues[field.key]"
                         class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
                       >
-                        <option value="">Selecione</option>
+                        <option value="">{{ resolveTemplateSelectPlaceholder(field) }}</option>
                         <option v-for="option in field.options || []" :key="option.value" :value="option.value">
                           {{ option.label }}
                         </option>
@@ -836,7 +967,7 @@ function historyBadgeClass(kind) {
                 </select>
               </label>
 
-              <label class="grid gap-2 sm:max-w-lg">
+              <label v-if="shouldShowStandaloneCollaboratorSelect" class="grid gap-2 sm:max-w-lg">
                 <span class="text-sm font-semibold text-slate-900">Atribuir colaborador</span>
                 <select
                   v-model="form.assignCollaboratorId"

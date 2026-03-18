@@ -1,5 +1,3 @@
-import { buildCurrentDateLabel } from './helpers'
-
 export const handoffUpdateTemplate = {
   key: 'handoff-update',
   label: 'Repasse',
@@ -7,18 +5,11 @@ export const handoffUpdateTemplate = {
   markdownTitle: 'Repasse de atendimento',
   fields: [
     {
-      key: 'date',
-      label: 'Data',
-      type: 'text',
-      renderAs: 'bullet',
-      defaultValue: () => buildCurrentDateLabel(),
-    },
-    {
       key: 'nextOwner',
       label: 'Proximo responsavel',
-      type: 'text',
+      type: 'select',
       renderAs: 'bullet',
-      placeholder: 'Pessoa ou time que assume a issue',
+      options: [],
     },
     {
       key: 'commitRef',

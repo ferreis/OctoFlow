@@ -1,5 +1,3 @@
-import { buildCurrentDateLabel } from './helpers'
-
 export const resolutionUpdateTemplate = {
   key: 'resolution-update',
   label: 'Resolucao',
@@ -7,18 +5,11 @@ export const resolutionUpdateTemplate = {
   markdownTitle: 'Resolucao do chamado',
   fields: [
     {
-      key: 'date',
-      label: 'Data',
-      type: 'text',
-      renderAs: 'bullet',
-      defaultValue: () => buildCurrentDateLabel(),
-    },
-    {
       key: 'owner',
       label: 'Responsavel',
-      type: 'text',
+      type: 'select',
       renderAs: 'bullet',
-      placeholder: 'Quem aplicou a correcao',
+      options: [],
     },
     {
       key: 'commitRef',
