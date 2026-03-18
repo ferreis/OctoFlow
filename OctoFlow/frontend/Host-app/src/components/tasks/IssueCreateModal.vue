@@ -6,7 +6,7 @@ import {
 } from '../../federation/remoteComponents'
 import { useIssueCreateComposer } from '../../composables/useIssueCreateComposer'
 import { fetchGithubWorkspace } from '../../services/githubWorkspace'
-import { createGithubIssue } from '../../services/tasks'
+import { createGithubIssue, createLocalTask, fetchTaskTemplates } from '../../services/tasks'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import {
@@ -37,13 +37,17 @@ const props = defineProps({
 const emit = defineEmits(['close', 'issue-created'])
 
 const loadingWorkspace = ref(false)
+const loadingTemplates = ref(false)
 const workspaceError = ref('')
+const templatesError = ref('')
 const workspace = ref(null)
+const localTemplates = ref([])
 const submitting = ref(false)
 const submitError = ref('')
 const selectedAssigneeId = ref('')
 const selectedRepositoryKey = ref('')
 const syncingRepositoryKey = ref(false)
+const creationMode = ref('github')
 
 const availableRepositories = computed(() => {
   const catalog = new Map()
@@ -63,7 +67,15 @@ const availableRepositories = computed(() => {
 
   return Array.from(catalog.values())
 })
-const templates = computed(() => Array.isArray(workspace.value?.templates) ? workspace.value.templates : [])
+const canUseGithubMode = computed(() => availableRepositories.value.length > 0)
+const isLocalMode = computed(() => creationMode.value === 'local')
+const templates = computed(() => {
+  if (isLocalMode.value) {
+    return Array.isArray(localTemplates.value) ? localTemplates.value : []
+  }
+
+  return Array.isArray(workspace.value?.templates) ? workspace.value.templates : []
+})
 const repository = computed(() => workspace.value?.repository || null)
 const labels = computed(() => Array.isArray(repository.value?.labels) ? repository.value.labels : [])
 const labelOptions = computed(() => labels.value
@@ -96,9 +108,11 @@ const requesterEmail = computed(() => {
   return primaryEmail || fallbackEmail || 'usuario autenticado'
 })
 const repositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value || repository.value?.nameWithOwner || ''))
+const localRepositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value))
 const previewTitle = computed(() => formatTemplateTitle(selectedTemplate.value, title.value))
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value, fieldValues), requesterEmail.value))
 const isFeatureRequestTemplate = computed(() => selectedTemplate.value?.key === 'feature-request')
+const activeError = computed(() => isLocalMode.value ? templatesError.value : workspaceError.value)
 const assignablePlaceholderLabel = computed(() => {
   if (loadingWorkspace.value && assignableUsers.value.length === 0) {
     return 'Carregando colaboradores...'
@@ -112,16 +126,41 @@ const assignablePlaceholderLabel = computed(() => {
 })
 
 onMounted(() => {
+  creationMode.value = canUseGithubMode.value ? 'github' : 'local'
   selectedRepositoryKey.value = resolveInitialRepositoryKey()
-  void loadWorkspace()
+  void Promise.all([
+    loadTemplates(),
+    canUseGithubMode.value ? loadWorkspace() : Promise.resolve(),
+  ])
 })
 
 watch(selectedRepositoryKey, async (newValue, previousValue) => {
-  if (syncingRepositoryKey.value || newValue === previousValue) {
+  if (isLocalMode.value || syncingRepositoryKey.value || newValue === previousValue) {
     return
   }
 
   await loadWorkspace()
+})
+
+watch(canUseGithubMode, (nextValue) => {
+  if (!nextValue && creationMode.value === 'github') {
+    creationMode.value = 'local'
+  }
+})
+
+watch(creationMode, async (nextMode, previousMode) => {
+  submitError.value = ''
+
+  if (nextMode === previousMode) {
+    return
+  }
+
+  if (nextMode === 'github' && canUseGithubMode.value && workspace.value === null) {
+    await loadWorkspace()
+    return
+  }
+
+  initializeWorkspaceState()
 })
 
 watch(selectedTemplateKey, (newKey, oldKey) => {
@@ -149,6 +188,22 @@ function resolveInitialRepositoryKey() {
 
   const firstRepository = props.repositories[0]
   return String(firstRepository?.nameWithOwner || '').trim()
+}
+
+async function loadTemplates() {
+  loadingTemplates.value = true
+  templatesError.value = ''
+
+  try {
+    const { data } = await fetchTaskTemplates(props.request)
+    localTemplates.value = Array.isArray(data?.items) ? data.items : []
+    initializeWorkspaceState()
+  } catch (error) {
+    localTemplates.value = []
+    templatesError.value = extractHttpMessage(error, 'Nao foi possivel carregar os templates de tarefa.')
+  } finally {
+    loadingTemplates.value = false
+  }
 }
 
 async function loadWorkspace() {
@@ -228,11 +283,13 @@ function renderPreview(template, submissionFields, email) {
 
 async function submitIssue() {
   if (!selectedTemplate.value) {
-    submitError.value = 'Selecione um template antes de criar a issue.'
+    submitError.value = isLocalMode.value
+      ? 'Selecione um template antes de criar a tarefa local.'
+      : 'Selecione um template antes de criar a issue.'
     return
   }
 
-  if (repositorySelection.value.owner === '' || repositorySelection.value.name === '') {
+  if (!isLocalMode.value && (repositorySelection.value.owner === '' || repositorySelection.value.name === '')) {
     submitError.value = 'Selecione um repositorio para criar a issue.'
     return
   }
@@ -242,21 +299,48 @@ async function submitIssue() {
   persistTemplateDraft()
 
   try {
-    const { data } = await createGithubIssue(props.request, {
-      template: selectedTemplate.value.key,
-      title: title.value,
-      fields: buildSubmissionFields(selectedTemplate.value, fieldValues),
-      labelIds: selectedLabelIds.value,
-      newLabelNames: newLabelNames.value,
-      assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
-      repositoryOwner: repositorySelection.value.owner,
-      repositoryName: repositorySelection.value.name,
-    })
+    let data
+
+    if (isLocalMode.value) {
+      const response = await createLocalTask(props.request, {
+        templateKey: selectedTemplate.value.key,
+        title: previewTitle.value,
+        body: previewBody.value,
+        repositoryOwner: localRepositorySelection.value.owner || null,
+        repositoryName: localRepositorySelection.value.name || null,
+      })
+
+      data = {
+        ...(response.data || {}),
+        mode: 'local',
+      }
+    } else {
+      const response = await createGithubIssue(props.request, {
+        template: selectedTemplate.value.key,
+        title: title.value,
+        fields: buildSubmissionFields(selectedTemplate.value, fieldValues),
+        labelIds: selectedLabelIds.value,
+        newLabelNames: newLabelNames.value,
+        assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
+        repositoryOwner: repositorySelection.value.owner,
+        repositoryName: repositorySelection.value.name,
+      })
+
+      data = {
+        ...(response.data || {}),
+        mode: 'github',
+      }
+    }
 
     emit('issue-created', data || null)
     emit('close')
   } catch (error) {
-    submitError.value = extractHttpMessage(error, 'Nao foi possivel criar a issue no GitHub.')
+    submitError.value = extractHttpMessage(
+      error,
+      isLocalMode.value
+        ? 'Nao foi possivel criar a tarefa local.'
+        : 'Nao foi possivel criar a issue no GitHub.',
+    )
   } finally {
     submitting.value = false
   }
@@ -291,10 +375,10 @@ function normalizeLabelOption(label) {
     <div class="themed-modal-surface mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
-          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Nova issue</p>
-          <h2 class="mt-1 text-2xl font-semibold text-slate-950 sm:text-3xl">Abrir issue por template</h2>
+          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Nova tarefa</p>
+          <h2 class="mt-1 text-2xl font-semibold text-slate-950 sm:text-3xl">Criar tarefa por template</h2>
           <p class="mt-2 text-sm leading-7 text-slate-600">
-            Escolha o repositorio, preencha o template e acompanhe o Markdown final antes de enviar.
+            Escolha se a tarefa nasce no GitHub ou localmente, preencha o template e acompanhe o Markdown final antes de enviar.
           </p>
         </div>
 
@@ -311,13 +395,59 @@ function normalizeLabelOption(label) {
 
       <div class="grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1.08fr),minmax(320px,0.92fr)]">
         <article class="grid gap-4">
-          <label class="grid gap-2">
-            <span class="text-sm font-semibold text-slate-900">Repositorio de destino</span>
+          <div class="grid gap-3 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+            <div>
+              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Destino</p>
+              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Onde a tarefa nasce</h3>
+              <p class="mt-2 text-sm leading-6 text-slate-500">
+                Tarefas locais ficam pendentes no sistema e podem ser enviadas ao GitHub depois.
+              </p>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                class="grid gap-2 rounded-2xl border p-4 text-left transition"
+                :class="!isLocalMode ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                :disabled="!canUseGithubMode"
+                @click="creationMode = 'github'"
+              >
+                <strong class="text-base font-semibold text-slate-950">Criar no GitHub</strong>
+                <small class="text-sm leading-6 text-slate-500">
+                  {{ canUseGithubMode
+                    ? 'Usa repositório, labels e colaboradores do GitHub imediatamente.'
+                    : 'Indisponível até existir pelo menos um repositório GitHub configurado.' }}
+                </small>
+              </button>
+
+              <button
+                type="button"
+                class="grid gap-2 rounded-2xl border p-4 text-left transition"
+                :class="isLocalMode ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                @click="creationMode = 'local'"
+              >
+                <strong class="text-base font-semibold text-slate-950">Criar localmente</strong>
+                <small class="text-sm leading-6 text-slate-500">
+                  A tarefa fica no sistema e entra na fila de sincronização quando o GitHub estiver disponível.
+                </small>
+              </button>
+            </div>
+          </div>
+
+          <label
+            v-if="!isLocalMode || availableRepositories.length > 0"
+            class="grid gap-2"
+          >
+            <span class="text-sm font-semibold text-slate-900">
+              {{ isLocalMode ? 'Repositório para sincronização futura (opcional)' : 'Repositório de destino' }}
+            </span>
             <select
               v-model="selectedRepositoryKey"
               class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
             >
-              <option value="">Repositorio padrao do perfil</option>
+              <option value="">
+                {{ isLocalMode ? 'Definir depois' : 'Repositório padrão do perfil' }}
+              </option>
               <option
                 v-for="availableRepository in availableRepositories"
                 :key="availableRepository.nameWithOwner"
@@ -329,24 +459,26 @@ function normalizeLabelOption(label) {
           </label>
 
           <p
-            v-if="workspaceError"
+            v-if="activeError"
             class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
           >
-            {{ workspaceError }}
+            {{ activeError }}
           </p>
 
           <article
-            v-if="loadingWorkspace"
+            v-if="loadingTemplates || (!isLocalMode && loadingWorkspace)"
             class="rounded-[28px] border border-white/60 bg-white/85 p-5 text-sm text-slate-500 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
           >
-            Carregando templates e configuracoes do repositorio...
+            {{ isLocalMode ? 'Carregando templates do sistema...' : 'Carregando templates e configuracoes do repositorio...' }}
           </article>
 
           <template v-else>
             <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Templates</p>
-                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Modelos disponiveis</h3>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">
+                  {{ isLocalMode ? 'Modelos para tarefa local' : 'Modelos disponiveis' }}
+                </h3>
               </div>
 
               <div v-if="templates.length" class="mt-4 grid gap-3 md:grid-cols-2">
@@ -368,7 +500,7 @@ function normalizeLabelOption(label) {
                 v-else
                 class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
               >
-                Esse repositorio nao retornou templates disponiveis.
+                {{ isLocalMode ? 'Nenhum template local foi carregado.' : 'Esse repositorio nao retornou templates disponiveis.' }}
               </p>
             </div>
 
@@ -385,11 +517,12 @@ function normalizeLabelOption(label) {
                 :field-values="fieldValues"
                 :selected-labels="selectedLabels"
                 :label-options="labelOptions"
-                :show-label-field="isFeatureRequestTemplate"
+                :show-assignee-field="!isLocalMode"
+                :show-label-field="!isLocalMode && isFeatureRequestTemplate"
                 :submit-error="submitError"
                 :submitting="submitting"
-                submit-label="Criar issue no GitHub"
-                submitting-label="Criando issue..."
+                :submit-label="isLocalMode ? 'Criar tarefa local' : 'Criar issue no GitHub'"
+                :submitting-label="isLocalMode ? 'Criando tarefa local...' : 'Criando issue...'"
                 @update:title="title = $event"
                 @update:assignee-id="selectedAssigneeId = $event"
                 @update:selected-labels="selectedLabels = sanitizeSelectedLabels($event)"
@@ -405,7 +538,7 @@ function normalizeLabelOption(label) {
           :title="previewTitle"
           :body="previewBody"
           kicker="Preview Markdown"
-          heading="Como a issue vai subir"
+          :heading="isLocalMode ? 'Como a tarefa sera salva localmente' : 'Como a issue vai subir'"
         />
       </div>
     </div>

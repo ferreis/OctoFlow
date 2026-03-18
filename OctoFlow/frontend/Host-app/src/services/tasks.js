@@ -38,3 +38,26 @@ export function updateGithubIssue(request, issueId, payload) {
     data: payload,
   })
 }
+
+export function fetchTaskTemplates(request) {
+  return request({
+    url: '/tasks/templates',
+    method: 'GET',
+  })
+}
+
+export function fetchLocalTasks(request) {
+  return request({
+    url: '/tasks/local-issues',
+    method: 'GET',
+  })
+}
+
+export function createLocalTask(request, payload) {
+  return request({
+    url: '/tasks/local-issues',
+    method: 'POST',
+    csrfActionId: 'task.local.create',
+    data: payload,
+  })
+}

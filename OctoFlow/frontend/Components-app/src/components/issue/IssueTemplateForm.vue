@@ -48,6 +48,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showAssigneeField: {
+    type: Boolean,
+    default: true,
+  },
   titleLabel: {
     type: String,
     default: 'Titulo',
@@ -107,7 +111,7 @@ function updateFieldValue(fieldKey, nextValue) {
 
 <template>
   <form v-if="template" class="issue-template-form" @submit.prevent="$emit('submit')">
-    <div class="field-grid field-grid-two">
+    <div class="field-grid" :class="props.showAssigneeField ? 'field-grid-two' : 'field-grid-one'">
       <label class="field">
         <span>{{ titleLabel }}</span>
         <input
@@ -119,7 +123,7 @@ function updateFieldValue(fieldKey, nextValue) {
         >
       </label>
 
-      <label class="field">
+      <label v-if="showAssigneeField" class="field">
         <span>{{ assigneeLabel }}</span>
         <select
           :value="assigneeId"
@@ -271,6 +275,10 @@ function updateFieldValue(fieldKey, nextValue) {
 
 .field-grid-two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field-grid-one {
+  grid-template-columns: 1fr;
 }
 
 .field {

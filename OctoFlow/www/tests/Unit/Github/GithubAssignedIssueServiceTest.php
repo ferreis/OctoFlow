@@ -10,6 +10,7 @@ use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
 use App\Github\GithubTokenCipher;
 use App\Repository\GithubAccountRepository;
+use App\Task\LocalTaskSyncInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -21,6 +22,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
     private GithubProfileService $profileService;
     private GithubRegistryService&MockObject $registryService;
     private GithubAccountRepository&MockObject $githubAccountRepository;
+    private LocalTaskSyncInterface&MockObject $localTaskSync;
 
     protected function setUp(): void
     {
@@ -28,6 +30,14 @@ final class GithubAssignedIssueServiceTest extends TestCase
         $this->cacheService = $this->createMock(GithubIssueCacheService::class);
         $this->registryService = $this->createMock(GithubRegistryService::class);
         $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
+        $this->localTaskSync = $this->createMock(LocalTaskSyncInterface::class);
+        $this->localTaskSync
+            ->method('syncPendingTasks')
+            ->willReturn([
+                'synced' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+            ]);
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
             new GithubTokenCipher('test-app-secret'),
@@ -212,7 +222,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->cacheService,
-            $this->registryService
+            $this->registryService,
+            $this->localTaskSync,
         );
 
         $issuesBoard = $service->fetchIssues($this->buildTokenOnlyUser());
@@ -327,7 +338,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->cacheService,
-            $this->registryService
+            $this->registryService,
+            $this->localTaskSync,
         );
 
         $payload = $service->fetchIssue($this->buildTokenOnlyUser(), 'issue-node-1');
@@ -477,7 +489,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->cacheService,
-            $this->registryService
+            $this->registryService,
+            $this->localTaskSync,
         );
 
         $result = $service->updateIssue($this->buildTokenOnlyUser(), 'issue-node-9', [

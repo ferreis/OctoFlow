@@ -18,6 +18,8 @@ services:
 
     App\Security\Google\GoogleTokenInfoClientInterface: '@App\Security\Google\GoogleTokenInfoClient'
     App\Github\GithubGraphQLClientInterface: '@App\Github\GithubGraphQLClient'
+    App\Github\GithubIssuePublisherInterface: '@App\Github\GithubIssueService'
+    App\Task\LocalTaskSyncInterface: '@App\Task\LocalTaskService'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

@@ -100,7 +100,7 @@ function handleMouseLeave() {
 
     <div
       class="min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-      <nav class="grid gap-2" aria-label="Navegação principal">
+      <nav class="grid gap-2" aria-label="Navegacao principal">
         <button v-for="item in primaryItems" :key="item.key" type="button" :disabled="!props.authenticated" :title="item.label"
           class="group min-w-0 rounded-2xl border text-left transition duration-200 disabled:cursor-not-allowed disabled:opacity-45"
           :class="[

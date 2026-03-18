@@ -5,7 +5,7 @@ namespace App\Github;
 use App\Entity\User;
 use App\Github\Exception\GithubGraphQLException;
 
-final class GithubIssueService
+final class GithubIssueService implements GithubIssuePublisherInterface
 {
     private const DEFAULT_LABEL_COLOR = '0EA5E9';
 
@@ -254,6 +254,69 @@ GRAPHQL;
             ],
             'item' => $cachedIssue,
             'project' => $projectResult,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function createDraftIssue(User $user, array $payload): array
+    {
+        $title = trim((string) ($payload['title'] ?? ''));
+        $body = trim((string) ($payload['body'] ?? ''));
+        if ($title === '') {
+            throw new \InvalidArgumentException('The GitHub issue title is required.');
+        }
+
+        if ($body === '') {
+            throw new \InvalidArgumentException('The GitHub issue body is required.');
+        }
+
+        $repositorySelection = $this->normalizeRepositorySelection($payload);
+        $token = $this->profileService->requireToken($user);
+        $repository = $this->workspaceService->fetchRepository(
+            $user,
+            $repositorySelection['repositoryOwner'],
+            $repositorySelection['repositoryName']
+        );
+
+        $issueData = $this->graphqlClient->query($token, self::CREATE_ISSUE_MUTATION, [
+            'repositoryId' => (string) ($repository['id'] ?? ''),
+            'title' => $title,
+            'body' => $body,
+            'labelIds' => [],
+        ]);
+
+        $issue = $issueData['createIssue']['issue'] ?? null;
+        if (!is_array($issue)) {
+            throw new GithubGraphQLException('GitHub did not return the created issue payload.');
+        }
+
+        $cachedIssue = $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
+
+        return [
+            'issue' => [
+                'id' => (string) ($issue['id'] ?? ''),
+                'number' => (int) ($issue['number'] ?? 0),
+                'title' => (string) ($issue['title'] ?? ''),
+                'url' => (string) ($issue['url'] ?? ''),
+                'createdAt' => (string) ($issue['createdAt'] ?? ''),
+            ],
+            'repository' => [
+                'id' => (string) ($repository['id'] ?? ''),
+                'name' => (string) ($repository['name'] ?? ''),
+                'nameWithOwner' => (string) ($repository['nameWithOwner'] ?? ''),
+                'url' => (string) ($repository['url'] ?? ''),
+            ],
+            'item' => $cachedIssue,
+            'project' => [
+                'projectId' => null,
+                'attached' => false,
+                'statusUpdated' => false,
+                'message' => null,
+            ],
         ];
     }
 

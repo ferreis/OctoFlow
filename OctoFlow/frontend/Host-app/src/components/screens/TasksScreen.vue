@@ -5,6 +5,7 @@ import { updateTemplates } from '../../constants/updateTemplates'
 import { formatDateTime } from '../../utils/date'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { fetchLocalTasks } from '../../services/tasks'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
 import IssueEditModal from '../tasks/IssueEditModal.vue'
 
@@ -26,7 +27,9 @@ const props = defineProps({
 const { notifyUser } = useNotification(props.notify)
 
 const issueBoard = ref(null)
+const localTaskBoard = ref(null)
 const loadingCache = ref(false)
+const loadingLocalTasks = ref(false)
 const syncing = ref(false)
 const error = ref('')
 const success = ref('')
@@ -52,6 +55,8 @@ const ITEMS_PER_PAGE = 10
 
 const repositories = computed(() => Array.isArray(issueBoard.value?.repositories) ? issueBoard.value.repositories : [])
 const issues = computed(() => Array.isArray(issueBoard.value?.items) ? issueBoard.value.items : [])
+const localTasks = computed(() => Array.isArray(localTaskBoard.value?.items) ? localTaskBoard.value.items : [])
+const localTaskStats = computed(() => localTaskBoard.value?.stats || { total: 0, pending: 0, failed: 0 })
 const editingIssue = computed(() => issues.value.find((issue) => issue.id === editingIssueId.value) || null)
 const activeRepository = computed(() => issueBoard.value?.repository || null)
 const cacheMeta = computed(() => issueBoard.value?.cache || null)
@@ -206,6 +211,7 @@ const lastSyncedLabel = computed(() => {
 
 onMounted(async () => {
   await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
+  await loadLocalTasks()
 })
 
 watch(
@@ -213,6 +219,24 @@ watch(
   () => {
     currentPage.value = 1
   }
+)
+
+watch(
+  () => props.currentUser?.id,
+  async (userId, previousUserId) => {
+    if (!userId) {
+      issueBoard.value = null
+      localTaskBoard.value = null
+      selectedIssueId.value = ''
+      editingIssueId.value = ''
+      return
+    }
+
+    if (userId !== previousUserId) {
+      await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
+      await loadLocalTasks()
+    }
+  },
 )
 
 watch(totalPages, (nextTotalPages) => {
@@ -303,6 +327,19 @@ async function loadCachedIssues(options = {}) {
   }
 }
 
+async function loadLocalTasks() {
+  loadingLocalTasks.value = true
+
+  try {
+    const { data } = await fetchLocalTasks(props.request)
+    localTaskBoard.value = data || null
+  } catch (requestError) {
+    error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar as tarefas locais pendentes.')
+  } finally {
+    loadingLocalTasks.value = false
+  }
+}
+
 async function syncIssues(options = {}) {
   const announceRefresh = Boolean(options.announceRefresh)
 
@@ -327,6 +364,7 @@ async function syncIssues(options = {}) {
     }
 
     alignSelection(false)
+    await loadLocalTasks()
     info.value = 'Listagem atualizada a partir do GitHub e persistida no banco local.'
   } catch (requestError) {
     error.value = extractHttpMessage(requestError, 'Nao foi possivel sincronizar as issues com o GitHub.')
@@ -401,6 +439,12 @@ function closeIssueModal() {
 
 async function handleIssueCreated(payload) {
   createModalOpen.value = false
+  if (payload?.mode === 'local') {
+    success.value = 'Tarefa local criada com sucesso e adicionada na fila de sincronização.'
+    await loadLocalTasks()
+    return
+  }
+
   selectedIssueId.value = payload?.issue?.id || selectedIssueId.value
   success.value = typeof payload?.issue?.number === 'number'
     ? `Issue #${payload.issue.number} criada com sucesso${payload?.repository?.nameWithOwner ? ` em ${payload.repository.nameWithOwner}` : ''}.`
@@ -534,6 +578,18 @@ function detectTicketType(issue) {
   return { key: rawKey, label: catalog[rawKey] }
 }
 
+function formatLocalTaskStatus(task) {
+  if (task?.syncState === 'FAILED') {
+    return 'Falhou ao sincronizar'
+  }
+
+  if (task?.syncState === 'PENDING') {
+    return 'Pendente de sincronização'
+  }
+
+  return 'Sincronizada'
+}
+
 </script>
 
 <template>
@@ -571,7 +627,7 @@ function detectTicketType(issue) {
           class="app-btn app-btn-primary"
           @click="openCreateModal"
         >
-          Nova issue
+          Nova tarefa
         </button>
         <button
           type="button"
@@ -581,6 +637,79 @@ function detectTicketType(issue) {
         >
           {{ syncing ? 'Sincronizando...' : 'Atualizar lista' }}
         </button>
+      </div>
+    </article>
+
+    <article
+      class="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Fila local</p>
+          <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tarefas locais pendentes</h3>
+          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Essas tarefas foram abertas no sistema e aguardam uma próxima sincronização com o GitHub.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+            Total: {{ localTaskStats.total }}
+          </span>
+          <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+            Pendentes: {{ localTaskStats.pending }}
+          </span>
+          <span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800">
+            Falhas: {{ localTaskStats.failed }}
+          </span>
+        </div>
+      </div>
+
+      <div v-if="loadingLocalTasks" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
+        Carregando tarefas locais...
+      </div>
+
+      <div v-else-if="localTasks.length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
+        Nenhuma tarefa local pendente. Se preferir, voce pode continuar criando tarefas locais mesmo sem usar o GitHub imediatamente.
+      </div>
+
+      <div v-else class="mt-4 grid gap-3">
+        <article
+          v-for="task in localTasks"
+          :key="task.id"
+          class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+        >
+          <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div class="min-w-0">
+              <strong class="block break-words text-base font-semibold text-slate-950">{{ task.title }}</strong>
+              <p class="mt-2 text-sm leading-6 text-slate-600">
+                {{ task.repositoryKey || 'Sem repositório definido ainda. O sistema tentará usar o repositório padrão quando houver sincronização.' }}
+              </p>
+            </div>
+
+            <span
+              class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
+              :class="task.syncState === 'FAILED'
+                ? 'border border-rose-200 bg-rose-50 text-rose-700'
+                : 'border border-amber-200 bg-amber-50 text-amber-700'"
+            >
+              {{ formatLocalTaskStatus(task) }}
+            </span>
+          </div>
+
+          <div class="grid gap-2 text-sm text-slate-600 md:grid-cols-3">
+            <span>Criada em: {{ formatDateTime(task.createdAt) }}</span>
+            <span>Atualizada em: {{ formatDateTime(task.updatedAt) }}</span>
+            <span>Template: {{ task.templateKey || 'personalizado' }}</span>
+          </div>
+
+          <p
+            v-if="task.syncError"
+            class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+          >
+            {{ task.syncError }}
+          </p>
+        </article>
       </div>
     </article>
 
