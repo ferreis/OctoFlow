@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: docker/nodejs/Dockerfile
     image: nodejs
-    restart: unless-stopped
+    restart: on-failure:5
     volumes:
       - ./frontend:/home/node/app
       - ../data/temp:/temp
@@ -38,7 +38,7 @@ services:
   nginx:
     container_name: octoflow-nginx
     hostname: octoflow-nginx
-    restart: always
+    restart: on-failure:5
     build:
       context: .
       dockerfile: ./docker/nginx/Dockerfile
@@ -75,7 +75,7 @@ services:
     container_name: octoflow-database
     hostname: octoflow-database
     image: postgres:16
-    restart: always
+    restart: on-failure:5
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: root
@@ -97,7 +97,7 @@ services:
     image: dockage/mailcatcher:latest
     container_name: octoflow-mailcatcher
     hostname: mailcatcher
-    restart: unless-stopped
+    restart: on-failure:5
     ports:
       - "11081:1080"
     networks:
