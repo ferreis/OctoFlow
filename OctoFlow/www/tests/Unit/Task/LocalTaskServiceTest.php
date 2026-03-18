@@ -106,4 +106,121 @@ final class LocalTaskServiceTest extends TestCase
         $this->assertSame('issue-node-id', $task->getGithubIssueId());
         $this->assertSame(42, $task->getGithubIssueNumber());
     }
+
+    public function testUpdateTaskChangesTitleBodyAndRepository(): void
+    {
+        $user = (new User())
+            ->setEmail('owner@example.com')
+            ->setPassword('not-used');
+
+        $task = (new LocalTask())
+            ->setOwner($user)
+            ->setTemplateKey('feature-request')
+            ->setTitle('[feat] Painel local')
+            ->setBody('Conteudo antigo')
+            ->markPending();
+
+        $this->localTaskRepository
+            ->expects($this->once())
+            ->method('findOneByIdAndOwner')
+            ->with(15, $user)
+            ->willReturn($task);
+
+        $this->entityManager
+            ->expects($this->once())
+            ->method('flush');
+
+        $updated = $this->service->updateTask($user, 15, [
+            'title' => '[feat] Painel local revisado',
+            'body' => 'Conteudo novo',
+            'templateKey' => 'feature-request',
+            'repositoryOwner' => 'acme',
+            'repositoryName' => 'delivery-desk',
+        ]);
+
+        $this->assertSame('[feat] Painel local revisado', $updated['title']);
+        $this->assertSame('Conteudo novo', $updated['body']);
+        $this->assertSame('acme/delivery-desk', $updated['repositoryKey']);
+        $this->assertSame(LocalTask::SYNC_STATE_PENDING, $updated['syncState']);
+    }
+
+    public function testSyncTaskToGithubRequiresRepositorySelection(): void
+    {
+        $user = (new User())
+            ->setEmail('owner@example.com')
+            ->setPassword('not-used');
+
+        $task = (new LocalTask())
+            ->setOwner($user)
+            ->setTemplateKey('feature-request')
+            ->setTitle('[feat] Painel local')
+            ->setBody('Conteudo da tarefa local')
+            ->markPending();
+
+        $this->localTaskRepository
+            ->expects($this->once())
+            ->method('findOneByIdAndOwner')
+            ->with(8, $user)
+            ->willReturn($task);
+
+        $this->issuePublisher
+            ->expects($this->never())
+            ->method('createDraftIssue');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Select the GitHub repository before synchronizing this local task.');
+
+        $this->service->syncTaskToGithub($user, 8, []);
+    }
+
+    public function testSyncTaskToGithubPublishesUsingExplicitRepository(): void
+    {
+        $user = (new User())
+            ->setEmail('owner@example.com')
+            ->setPassword('not-used')
+            ->setGithubTokenEncrypted('token-ja-configurado');
+
+        $task = (new LocalTask())
+            ->setOwner($user)
+            ->setTemplateKey('feature-request')
+            ->setTitle('[feat] Painel local')
+            ->setBody('Conteudo da tarefa local')
+            ->markPending();
+
+        $this->localTaskRepository
+            ->expects($this->once())
+            ->method('findOneByIdAndOwner')
+            ->with(9, $user)
+            ->willReturn($task);
+
+        $this->issuePublisher
+            ->expects($this->once())
+            ->method('createDraftIssue')
+            ->with($user, [
+                'title' => '[feat] Painel local',
+                'body' => 'Conteudo da tarefa local',
+                'repositoryOwner' => 'acme',
+                'repositoryName' => 'delivery-desk',
+            ])
+            ->willReturn([
+                'issue' => [
+                    'id' => 'issue-node-id',
+                    'number' => 77,
+                    'url' => 'https://github.com/acme/delivery-desk/issues/77',
+                ],
+            ]);
+
+        $this->entityManager
+            ->expects($this->once())
+            ->method('flush');
+
+        $result = $this->service->syncTaskToGithub($user, 9, [
+            'repositoryOwner' => 'acme',
+            'repositoryName' => 'delivery-desk',
+        ]);
+
+        $this->assertSame(LocalTask::SYNC_STATE_SYNCED, $result['item']['syncState']);
+        $this->assertSame(77, $result['github']['issue']['number']);
+        $this->assertSame('acme/delivery-desk', $result['item']['repositoryKey']);
+    }
 }

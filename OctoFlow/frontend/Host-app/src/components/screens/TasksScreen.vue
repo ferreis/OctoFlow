@@ -8,6 +8,7 @@ import { extractHttpMessage } from '../../utils/httpErrors'
 import { fetchLocalTasks } from '../../services/tasks'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
 import IssueEditModal from '../tasks/IssueEditModal.vue'
+import LocalTaskEditModal from '../tasks/LocalTaskEditModal.vue'
 
 const props = defineProps({
   request: {
@@ -37,6 +38,7 @@ const info = ref('')
 const filtersOpen = ref(false)
 const createModalOpen = ref(false)
 const editingIssueId = ref('')
+const editingLocalTaskId = ref(null)
 const selectedIssueId = ref('')
 const issueScope = ref('all')
 const sourceFilter = ref('all')
@@ -60,6 +62,7 @@ const issues = computed(() => Array.isArray(issueBoard.value?.items) ? issueBoar
 const localTasks = computed(() => Array.isArray(localTaskBoard.value?.items) ? localTaskBoard.value.items : [])
 const localTaskStats = computed(() => localTaskBoard.value?.stats || { total: 0, pending: 0, failed: 0 })
 const editingIssue = computed(() => issues.value.find((issue) => issue.id === editingIssueId.value) || null)
+const editingLocalTask = computed(() => localTasks.value.find((task) => task.id === editingLocalTaskId.value) || null)
 const activeRepository = computed(() => issueBoard.value?.repository || null)
 const cacheMeta = computed(() => issueBoard.value?.cache || null)
 const repositoriesCount = computed(() => repositories.value.length)
@@ -306,6 +309,7 @@ watch(
       localTaskBoard.value = null
       selectedIssueId.value = ''
       editingIssueId.value = ''
+      editingLocalTaskId.value = null
       return
     }
 
@@ -507,12 +511,25 @@ function openCreateModal() {
 function openIssueModal(issue) {
   selectedIssueId.value = issue.id
   editingIssueId.value = issue.id
+  editingLocalTaskId.value = null
   success.value = ''
   error.value = ''
 }
 
 function closeIssueModal() {
   editingIssueId.value = ''
+}
+
+function openLocalTaskModal(task) {
+  editingLocalTaskId.value = task.id
+  editingIssueId.value = ''
+  selectedIssueId.value = ''
+  success.value = ''
+  error.value = ''
+}
+
+function closeLocalTaskModal() {
+  editingLocalTaskId.value = null
 }
 
 async function handleIssueCreated(payload) {
@@ -541,6 +558,30 @@ function handleIssueUpdated(updatedIssue) {
     ? `Issue #${updatedIssue.number} atualizada com sucesso.`
     : 'Issue atualizada com sucesso.'
   info.value = 'A issue aberta foi atualizada no GitHub e no banco local.'
+}
+
+async function handleLocalTaskUpdated(payload) {
+  if (payload?.item?.id) {
+    editingLocalTaskId.value = payload.item.id
+  }
+
+  success.value = 'Tarefa local atualizada com sucesso.'
+  await loadLocalTasks()
+}
+
+async function handleLocalTaskSynced(payload) {
+  const githubIssue = payload?.github?.item || payload?.github?.issue || null
+  if (githubIssue?.id) {
+    selectedIssueId.value = githubIssue.id
+  }
+
+  editingLocalTaskId.value = null
+  success.value = payload?.github?.issue?.number
+    ? `Tarefa local enviada para a issue #${payload.github.issue.number} com sucesso.`
+    : 'Tarefa local enviada ao GitHub com sucesso.'
+
+  await loadLocalTasks()
+  await loadCachedIssues({ resetSelection: false, syncStrategy: 'force' })
 }
 
 function mergeIssueIntoBoard(updatedIssue) {
@@ -675,11 +716,12 @@ function isGithubEntry(entry) {
 }
 
 function openTaskEntry(entry) {
-  if (!isGithubEntry(entry)) {
+  if (isGithubEntry(entry)) {
+    openIssueModal(entry.issue)
     return
   }
 
-  openIssueModal(entry.issue)
+  openLocalTaskModal(entry.localTask)
 }
 
 function resolveEntryTitle(entry) {
@@ -1092,6 +1134,18 @@ function resolveEntryLabels(entry) {
       :update-templates="updateTemplates"
       @close="closeIssueModal"
       @issue-updated="handleIssueUpdated"
+    />
+
+    <LocalTaskEditModal
+      v-if="editingLocalTask"
+      :key="editingLocalTask.id"
+      :request="props.request"
+      :notify="props.notify"
+      :task="editingLocalTask"
+      :repositories="repositories"
+      @close="closeLocalTaskModal"
+      @task-updated="handleLocalTaskUpdated"
+      @task-synced="handleLocalTaskSynced"
     />
   </section>
 </template>

@@ -48,4 +48,16 @@ class LocalTaskRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    public function findOneByIdAndOwner(int $taskId, User $owner): ?LocalTask
+    {
+        return $this->createQueryBuilder('task')
+            ->andWhere('task.id = :taskId')
+            ->andWhere('task.owner = :owner')
+            ->setParameter('taskId', $taskId)
+            ->setParameter('owner', $owner)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
 }

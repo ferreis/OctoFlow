@@ -61,3 +61,28 @@ export function createLocalTask(request, payload) {
     data: payload,
   })
 }
+
+export function fetchLocalTask(request, taskId) {
+  return request({
+    url: `/tasks/local-issues/${encodeURIComponent(taskId)}`,
+    method: 'GET',
+  })
+}
+
+export function updateLocalTask(request, taskId, payload) {
+  return request({
+    url: `/tasks/local-issues/${encodeURIComponent(taskId)}`,
+    method: 'PATCH',
+    csrfActionId: 'task.local.update',
+    data: payload,
+  })
+}
+
+export function syncLocalTaskToGithub(request, taskId, payload) {
+  return request({
+    url: `/tasks/local-issues/${encodeURIComponent(taskId)}/sync`,
+    method: 'POST',
+    csrfActionId: 'task.local.sync',
+    data: payload,
+  })
+}

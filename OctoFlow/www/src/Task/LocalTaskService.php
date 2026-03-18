@@ -95,6 +95,107 @@ final class LocalTaskService implements LocalTaskSyncInterface
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function getTask(User $user, int $taskId): array
+    {
+        return $this->normalizeTask($this->requireTask($user, $taskId));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function updateTask(User $user, int $taskId, array $payload): array
+    {
+        $task = $this->requireTask($user, $taskId);
+        if ($task->getSyncState() === LocalTask::SYNC_STATE_SYNCED) {
+            throw new \InvalidArgumentException('This local task has already been synchronized with GitHub.');
+        }
+
+        $title = trim((string) ($payload['title'] ?? ''));
+        $body = trim((string) ($payload['body'] ?? ''));
+        $templateKey = trim((string) ($payload['templateKey'] ?? ''));
+        $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
+        $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
+
+        if ($title === '') {
+            throw new \InvalidArgumentException('The local task title is required.');
+        }
+
+        if ($body === '') {
+            throw new \InvalidArgumentException('The local task body is required.');
+        }
+
+        if (($repositoryOwner === '') xor ($repositoryName === '')) {
+            throw new \InvalidArgumentException('Inform the synchronization repository owner and name together.');
+        }
+
+        if ($templateKey !== '' && $this->templateCatalog->find($templateKey) === null) {
+            throw new \InvalidArgumentException('Unknown task template.');
+        }
+
+        $task
+            ->setTemplateKey($templateKey !== '' ? $templateKey : null)
+            ->setTitle($title)
+            ->setBody($body)
+            ->setRepositoryOwner($repositoryOwner !== '' ? $repositoryOwner : null)
+            ->setRepositoryName($repositoryName !== '' ? $repositoryName : null)
+            ->markPending();
+
+        $this->entityManager->flush();
+
+        return $this->normalizeTask($task);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array{item: array<string, mixed>, github: array<string, mixed>}
+     */
+    public function syncTaskToGithub(User $user, int $taskId, array $payload): array
+    {
+        $task = $this->requireTask($user, $taskId);
+        if ($task->getSyncState() === LocalTask::SYNC_STATE_SYNCED) {
+            throw new \InvalidArgumentException('This local task has already been synchronized with GitHub.');
+        }
+
+        $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
+        $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
+        if ($repositoryOwner === '' || $repositoryName === '') {
+            throw new \InvalidArgumentException('Select the GitHub repository before synchronizing this local task.');
+        }
+
+        $task
+            ->setRepositoryOwner($repositoryOwner)
+            ->setRepositoryName($repositoryName)
+            ->markPending();
+
+        try {
+            $result = $this->issuePublisher->createDraftIssue($user, [
+                'title' => $task->getTitle(),
+                'body' => $task->getBody(),
+                'repositoryOwner' => $repositoryOwner,
+                'repositoryName' => $repositoryName,
+            ]);
+
+            $task->markSynced($result['issue'] ?? []);
+            $this->entityManager->flush();
+
+            return [
+                'item' => $this->normalizeTask($task),
+                'github' => $result,
+            ];
+        } catch (GithubConfigurationException | GithubGraphQLException | \InvalidArgumentException $exception) {
+            $task->markFailed($exception->getMessage());
+            $this->entityManager->flush();
+
+            throw $exception;
+        }
+    }
+
+    /**
      * @return array{synced: int, failed: int, skipped: int}
      */
     public function syncPendingTasks(User $user): array
@@ -170,5 +271,15 @@ final class LocalTaskService implements LocalTaskSyncInterface
             'updatedAt' => $task->getUpdatedAt()->format(DATE_ATOM),
             'syncedAt' => $task->getSyncedAt()?->format(DATE_ATOM),
         ];
+    }
+
+    private function requireTask(User $user, int $taskId): LocalTask
+    {
+        $task = $this->localTaskRepository->findOneByIdAndOwner($taskId, $user);
+        if ($task === null) {
+            throw new \InvalidArgumentException('Local task not found.');
+        }
+
+        return $task;
     }
 }

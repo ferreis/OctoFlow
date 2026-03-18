@@ -4,7 +4,6 @@ namespace App\Github;
 
 use App\Entity\User;
 use App\Github\Exception\GithubGraphQLException;
-use App\Task\LocalTaskSyncInterface;
 
 final class GithubAssignedIssueService
 {
@@ -316,7 +315,6 @@ GRAPHQL;
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueCacheService $cacheService,
         private readonly GithubRegistryService $registryService,
-        private readonly LocalTaskSyncInterface $localTaskService,
     ) {
     }
 
@@ -331,7 +329,6 @@ GRAPHQL;
     ): array
     {
         $normalizedScope = $this->normalizeScope($scope);
-        $this->localTaskService->syncPendingTasks($user);
         $token = $this->profileService->requireToken($user);
         $viewerLogin = $this->fetchViewerLogin($token);
         $activeRepositories = $this->registryService->buildCatalog($user, false);
@@ -367,8 +364,6 @@ GRAPHQL;
         ?string $repositoryName = null,
         string $scope = self::ISSUE_SCOPE_ALL,
     ): array {
-        $this->localTaskService->syncPendingTasks($user);
-
         return $this->cacheService->buildCachedBoard($user, $scope, $repositoryOwner, $repositoryName);
     }
 

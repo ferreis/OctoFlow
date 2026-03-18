@@ -67,6 +67,79 @@ final class TaskController
         }
     }
 
+    #[Route('/local-issues/{taskId<\d+>}', name: 'local_task_show', methods: ['GET'])]
+    public function showLocalIssue(int $taskId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->localTaskService->getTask($user, $taskId),
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_NOT_FOUND);
+        }
+    }
+
+    #[Route('/local-issues/{taskId<\d+>}', name: 'local_task_update', methods: ['PATCH'])]
+    public function updateLocalIssue(int $taskId, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->localTaskService->updateTask($user, $taskId, $payload),
+                'board' => $this->localTaskService->buildBoard($user),
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            $status = $exception->getMessage() === 'Local task not found.'
+                ? JsonResponse::HTTP_NOT_FOUND
+                : JsonResponse::HTTP_BAD_REQUEST;
+
+            return new JsonResponse(['message' => $exception->getMessage()], $status);
+        }
+    }
+
+    #[Route('/local-issues/{taskId<\d+>}/sync', name: 'local_task_sync', methods: ['POST'])]
+    public function syncLocalIssue(int $taskId, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $result = $this->localTaskService->syncTaskToGithub($user, $taskId, $payload);
+
+            return new JsonResponse([
+                'item' => $result['item'],
+                'github' => $result['github'],
+                'board' => $this->localTaskService->buildBoard($user),
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            $status = $exception->getMessage() === 'Local task not found.'
+                ? JsonResponse::HTTP_NOT_FOUND
+                : JsonResponse::HTTP_BAD_REQUEST;
+
+            return new JsonResponse(['message' => $exception->getMessage()], $status);
+        } catch (\Throwable $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+    }
+
     /**
      * @return array<string, mixed>|null
      */
