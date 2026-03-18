@@ -224,8 +224,8 @@ function renderPreview(template, submissionFields) {
   }
 
   const lines = [
-    `> Template: ${template.name || 'Issue'}`,
     `> Solicitante: ${requesterEmail.value}`,
+    `> Data da solicitação: ${new Date().toLocaleString()}`,
     '> Origem: OctoFlow',
     '',
   ]

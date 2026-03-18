@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import MarkdownPreview from '../shared/MarkdownPreview.vue'
+import MultiSelect from '../shared/MultiSelect.vue'
 
 const props = defineProps({
   request: {
@@ -32,7 +33,7 @@ const selectedTemplateKey = ref('')
 const selectedAssigneeId = ref('')
 const selectedRepositoryKey = ref('')
 const title = ref('')
-const selectedLabelIds = ref([])
+const selectedLabels = ref([])
 const syncingRepositoryKey = ref(false)
 const fieldValues = reactive({})
 const templateDrafts = reactive({})
@@ -58,6 +59,20 @@ const availableRepositories = computed(() => {
 const templates = computed(() => Array.isArray(workspace.value?.templates) ? workspace.value.templates : [])
 const repository = computed(() => workspace.value?.repository || null)
 const labels = computed(() => Array.isArray(repository.value?.labels) ? repository.value.labels : [])
+const labelOptions = computed(() => labels.value
+  .map((label) => normalizeLabelOption(label))
+  .filter((label) => label.id !== '' && label.name !== '')
+  .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' }))
+)
+const selectedLabelIds = computed(() => selectedLabels.value
+  .map((label) => String(label?.id || '').trim())
+  .filter(Boolean)
+)
+const newLabelNames = computed(() => selectedLabels.value
+  .filter((label) => String(label?.id || '').trim() === '')
+  .map((label) => normalizeLabelName(label?.name))
+  .filter(Boolean)
+)
 const assignableUsers = computed(() => Array.isArray(repository.value?.assignableUsers) ? repository.value.assignableUsers : [])
 const requesterEmail = computed(() => {
   const primaryEmail = typeof props.currentUser?.defaultEmail === 'string' ? props.currentUser.defaultEmail.trim() : ''
@@ -179,7 +194,7 @@ function initializeWorkspaceState() {
   selectedTemplateKey.value = ''
   selectedAssigneeId.value = ''
   title.value = ''
-  selectedLabelIds.value = []
+  selectedLabels.value = []
 
   for (const key of Object.keys(fieldValues)) {
     delete fieldValues[key]
@@ -203,7 +218,7 @@ function persistTemplateDraft(templateKey = selectedTemplateKey.value) {
 
   templateDrafts[templateKey] = {
     title: title.value,
-    labelIds: [...selectedLabelIds.value],
+    labels: selectedLabels.value.map((label) => cloneSelectedLabel(label)),
     fields: snapshotFieldValues(template),
   }
 }
@@ -229,9 +244,9 @@ function restoreTemplateDraft(templateKey) {
   }
 
   title.value = typeof existingDraft?.title === 'string' ? existingDraft.title : ''
-  selectedLabelIds.value = Array.isArray(existingDraft?.labelIds)
-    ? existingDraft.labelIds.filter((labelId) => typeof labelId === 'string' && labelId.trim() !== '')
-    : resolveDefaultLabelIds(template)
+  selectedLabels.value = Array.isArray(existingDraft?.labels)
+    ? sanitizeSelectedLabels(existingDraft.labels)
+    : resolveDefaultLabels(template)
 
   for (const key of Object.keys(fieldValues)) {
     delete fieldValues[key]
@@ -268,13 +283,13 @@ function snapshotFieldValues(template) {
   return snapshot
 }
 
-function resolveDefaultLabelIds(template) {
+function resolveDefaultLabels(template) {
   const defaultLabels = Array.isArray(template?.defaultLabels) ? template.defaultLabels : []
-  const defaultLabelSet = new Set(defaultLabels.map((labelName) => String(labelName).trim()).filter(Boolean))
+  const defaultLabelSet = new Set(defaultLabels.map((labelName) => buildLabelNameKey(labelName)).filter(Boolean))
 
-  return labels.value
-    .filter((label) => defaultLabelSet.has(label.name))
-    .map((label) => label.id)
+  return labelOptions.value
+    .filter((label) => defaultLabelSet.has(buildLabelNameKey(label.name)))
+    .map((label) => cloneSelectedLabel(label))
 }
 
 function splitMultilineItems(rawValue) {
@@ -310,8 +325,8 @@ function renderPreview(template, submissionFields, email) {
   }
 
   const lines = [
-    `> Template: ${template.name || 'Issue'}`,
     `> Solicitante: ${email}`,
+    '> Data da solicitação: ' + new Date().toLocaleString(),
     '> Origem: OctoFlow',
     '',
   ]
@@ -385,7 +400,7 @@ function resetActiveTemplateInputs() {
   }
 
   title.value = ''
-  selectedLabelIds.value = resolveDefaultLabelIds(template)
+  selectedLabels.value = resolveDefaultLabels(template)
 
   for (const key of Object.keys(fieldValues)) {
     fieldValues[key] = ''
@@ -401,7 +416,7 @@ function resetActiveTemplateInputs() {
 
   templateDrafts[template.key] = {
     title: '',
-    labelIds: [...selectedLabelIds.value],
+    labels: selectedLabels.value.map((label) => cloneSelectedLabel(label)),
     fields: snapshotFieldValues(template),
   }
 }
@@ -431,6 +446,7 @@ async function submitIssue() {
         title: title.value,
         fields: buildSubmissionFields(selectedTemplate.value),
         labelIds: selectedLabelIds.value,
+        newLabelNames: newLabelNames.value,
         assigneeIds: selectedAssigneeId.value ? [selectedAssigneeId.value] : [],
         repositoryOwner: repositorySelection.value.owner,
         repositoryName: repositorySelection.value.name,
@@ -471,6 +487,75 @@ function extractHttpMessage(error, fallback) {
   }
 
   return fallback
+}
+
+function normalizeLabelName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function buildLabelNameKey(value) {
+  return normalizeLabelName(value).toLocaleLowerCase()
+}
+
+function normalizeLabelColor(value) {
+  const normalizedValue = String(value || '').trim().replace(/^#/, '')
+  return /^[0-9a-fA-F]{6}$/.test(normalizedValue) ? normalizedValue.toUpperCase() : '94A3B8'
+}
+
+function normalizeLabelOption(label) {
+  return {
+    id: String(label?.id || '').trim(),
+    name: normalizeLabelName(label?.name),
+    color: normalizeLabelColor(label?.color),
+    description: typeof label?.description === 'string' && label.description.trim() !== ''
+      ? label.description.trim()
+      : null,
+    isNew: String(label?.id || '').trim() === '',
+  }
+}
+
+function cloneSelectedLabel(label) {
+  const normalizedLabel = normalizeLabelOption(label)
+
+  return {
+    ...normalizedLabel,
+    isNew: normalizedLabel.id === '',
+  }
+}
+
+function sanitizeSelectedLabels(rawLabels) {
+  if (!Array.isArray(rawLabels)) {
+    return []
+  }
+
+  const sanitizedLabels = []
+  const seenIds = new Set()
+  const seenNames = new Set()
+
+  for (const rawLabel of rawLabels) {
+    const normalizedLabel = cloneSelectedLabel(rawLabel)
+    const labelNameKey = buildLabelNameKey(normalizedLabel.name)
+
+    if (labelNameKey === '' || seenNames.has(labelNameKey)) {
+      continue
+    }
+
+    if (normalizedLabel.id !== '') {
+      if (seenIds.has(normalizedLabel.id)) {
+        continue
+      }
+
+      seenIds.add(normalizedLabel.id)
+      normalizedLabel.isNew = false
+    }
+
+    seenNames.add(labelNameKey)
+    sanitizedLabels.push(normalizedLabel)
+  }
+
+  return sanitizedLabels
 }
 </script>
 
@@ -627,17 +712,20 @@ function extractHttpMessage(error, fallback) {
 
                 <label class="grid gap-2">
                   <span class="text-sm font-semibold text-slate-900">Tags</span>
-                  <select
-                    v-model="selectedLabelIds"
-                    multiple
-                    :disabled="labels.length === 0"
-                    class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
-                  >
-                    <option v-if="labels.length === 0" disabled value="">Nenhuma tag disponivel</option>
-                    <option v-for="label in labels" :key="label.id" :value="label.id">
-                      {{ label.name }}
-                    </option>
-                  </select>
+                  <MultiSelect
+                    v-model="selectedLabels"
+                    :options="labelOptions"
+                    search-placeholder="Pesquisar ou criar tag"
+                    helper-text="Pesquise tags existentes ou crie uma nova no proprio campo."
+                    selected-count-suffix="selecionada(s)"
+                    create-label-prefix="Criar tag"
+                    create-helper-text="A tag sera criada no GitHub ao enviar a issue."
+                    existing-option-helper-text="Tag existente no repositorio"
+                    empty-options-text="Nenhuma tag cadastrada. Digite para criar a primeira."
+                    empty-search-text="Nenhuma tag encontrada para essa busca."
+                    empty-idle-text="Digite para pesquisar tags existentes."
+                    new-option-badge="Nova"
+                  />
                 </label>
               </template>
 

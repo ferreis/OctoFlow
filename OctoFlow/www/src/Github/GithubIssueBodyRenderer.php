@@ -20,8 +20,8 @@ final class GithubIssueBodyRenderer
         $templateName = trim((string) ($template['name'] ?? 'Issue'));
         $formattedTitle = $this->formatTitle($template, $normalizedTitle);
         $lines = [
-            '> Template: ' . $templateName,
             '> Solicitante: ' . $this->normalizePlainValue($requesterEmail),
+            '> Data da solicitação: ' . date('Y-m-d H:i:s'),
             '> Origem: OctoFlow',
             '',
         ];

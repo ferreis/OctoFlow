@@ -436,6 +436,187 @@ final class GithubIssueServiceTest extends TestCase
         $this->assertSame('ana', $result['item']['assignees'][0]['login']);
     }
 
+    public function testCreateIssueCanCreateMissingLabelsBeforeCreation(): void
+    {
+        $call = 0;
+
+        $this->cacheService
+            ->expects($this->once())
+            ->method('upsertIssue')
+            ->with(
+                $this->isInstanceOf(User::class),
+                $this->callback(function (array $issue): bool {
+                    $this->assertCount(2, $issue['labels']);
+                    $this->assertSame('Priority', $issue['labels'][0]['name']);
+                    $this->assertSame('Nova tag', $issue['labels'][1]['name']);
+
+                    return true;
+                })
+            )
+            ->willReturn([
+                'id' => 'issue-node-id',
+                'number' => 77,
+                'title' => '[feat] Melhorar busca por tags',
+                'body' => 'Body salvo no cache',
+                'state' => 'OPEN',
+                'url' => 'https://github.com/acme/delivery-desk/issues/77',
+                'createdAt' => '2026-03-18T16:00:00Z',
+                'updatedAt' => '2026-03-18T16:00:00Z',
+                'labels' => [
+                    [
+                        'id' => 'label-priority',
+                        'name' => 'Priority',
+                        'color' => 'D73A4A',
+                        'description' => null,
+                    ],
+                    [
+                        'id' => 'label-nova-tag',
+                        'name' => 'Nova tag',
+                        'color' => '0EA5E9',
+                        'description' => null,
+                    ],
+                ],
+                'repository' => [
+                    'nameWithOwner' => 'acme/delivery-desk',
+                    'url' => 'https://github.com/acme/delivery-desk',
+                ],
+            ]);
+
+        $this->graphqlClient
+            ->expects($this->exactly(3))
+            ->method('query')
+            ->willReturnCallback(function (string $token, string $query, array $variables) use (&$call): array {
+                ++$call;
+                $this->assertSame('ghp_test_token', $token);
+
+                if ($call === 1) {
+                    return [
+                        'repository' => [
+                            'id' => 'repo-id',
+                            'name' => 'delivery-desk',
+                            'nameWithOwner' => 'acme/delivery-desk',
+                            'description' => 'Workspace',
+                            'url' => 'https://github.com/acme/delivery-desk',
+                            'owner' => [
+                                'login' => 'acme',
+                            ],
+                            'labels' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'label-priority',
+                                        'name' => 'Priority',
+                                        'color' => 'D73A4A',
+                                        'description' => null,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                if ($call === 2) {
+                    $this->assertStringContainsString('createLabel', $query);
+                    $this->assertSame('repo-id', $variables['repositoryId']);
+                    $this->assertSame('Nova tag', $variables['name']);
+                    $this->assertSame('0EA5E9', $variables['color']);
+
+                    return [
+                        'createLabel' => [
+                            'label' => [
+                                'id' => 'label-nova-tag',
+                                'name' => 'Nova tag',
+                                'color' => '0EA5E9',
+                                'description' => null,
+                            ],
+                        ],
+                    ];
+                }
+
+                $this->assertStringContainsString('createIssue', $query);
+                $this->assertSame('repo-id', $variables['repositoryId']);
+                $this->assertSame('[feat] Melhorar busca por tags', $variables['title']);
+                $this->assertSame(['label-priority', 'label-nova-tag'], $variables['labelIds']);
+                $this->assertStringContainsString('## Descri', $variables['body']);
+
+                return [
+                    'createIssue' => [
+                        'issue' => [
+                            'id' => 'issue-node-id',
+                            'number' => 77,
+                            'title' => '[feat] Melhorar busca por tags',
+                            'body' => '## Problema ou oportunidade',
+                            'state' => 'OPEN',
+                            'url' => 'https://github.com/acme/delivery-desk/issues/77',
+                            'createdAt' => '2026-03-18T16:00:00Z',
+                            'updatedAt' => '2026-03-18T16:00:00Z',
+                            'viewerCanUpdate' => true,
+                            'viewerCanClose' => true,
+                            'viewerCanReopen' => false,
+                            'author' => [
+                                'login' => 'owner',
+                            ],
+                            'assignees' => [
+                                'nodes' => [],
+                            ],
+                            'labels' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'label-priority',
+                                        'name' => 'Priority',
+                                        'color' => 'D73A4A',
+                                        'description' => null,
+                                    ],
+                                    [
+                                        'id' => 'label-nova-tag',
+                                        'name' => 'Nova tag',
+                                        'color' => '0EA5E9',
+                                        'description' => null,
+                                    ],
+                                ],
+                            ],
+                            'repository' => [
+                                'nameWithOwner' => 'acme/delivery-desk',
+                                'url' => 'https://github.com/acme/delivery-desk',
+                            ],
+                        ],
+                    ],
+                ];
+            });
+
+        $workspaceService = new GithubWorkspaceService(
+            $this->profileService,
+            $this->graphqlClient,
+            $this->templateCatalog
+        );
+
+        $service = new GithubIssueService(
+            $workspaceService,
+            $this->profileService,
+            $this->graphqlClient,
+            $this->templateCatalog,
+            $this->renderer,
+            $this->cacheService
+        );
+
+        $result = $service->createIssue($this->buildConfiguredUser(), [
+            'template' => 'feature-request',
+            'title' => 'Melhorar busca por tags',
+            'repositoryOwner' => 'acme',
+            'repositoryName' => 'delivery-desk',
+            'fields' => [
+                'description' => 'O formulario precisa permitir criar tags sem sair do campo.',
+                'businessRule' => 'Tags duplicadas devem ser evitadas mesmo com diferenca apenas de maiusculas e minusculas.',
+                'acceptanceCriteria' => "Selecionar tags existentes\nCriar tags novas no envio",
+            ],
+            'newLabelNames' => [' priority ', ' Nova tag ', 'nova TAG', '   '],
+        ]);
+
+        $this->assertSame(77, $result['issue']['number']);
+        $this->assertCount(2, $result['item']['labels']);
+        $this->assertSame('Priority', $result['item']['labels'][0]['name']);
+        $this->assertSame('Nova tag', $result['item']['labels'][1]['name']);
+    }
+
     private function buildConfiguredUser(): User
     {
         $cipher = new GithubTokenCipher('test-app-secret');
