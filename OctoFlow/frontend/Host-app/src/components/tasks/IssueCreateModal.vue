@@ -48,6 +48,7 @@ const selectedAssigneeId = ref('')
 const selectedRepositoryKey = ref('')
 const syncingRepositoryKey = ref(false)
 const creationMode = ref('github')
+const templatePickerMode = ref('select')
 
 const availableRepositories = computed(() => {
   const catalog = new Map()
@@ -474,14 +475,51 @@ function normalizeLabelOption(label) {
 
           <template v-else>
             <div class="app-panel-standard rounded-[28px] p-5">
-              <div>
-                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Templates</p>
-                <h3 class="mt-1 text-2xl font-semibold text-slate-950">
-                  {{ isLocalMode ? 'Modelos para tarefa local' : 'Modelos disponiveis' }}
-                </h3>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Templates</p>
+                  <h3 class="mt-1 text-2xl font-semibold text-slate-950">
+                    {{ isLocalMode ? 'Modelos para tarefa local' : 'Modelos disponiveis' }}
+                  </h3>
+                </div>
+
+                <div class="inline-flex rounded-2xl border border-slate-200 bg-slate-50/80 p-1">
+                  <button
+                    type="button"
+                    class="app-btn app-btn-sm"
+                    :class="templatePickerMode === 'select' ? 'app-btn-tab-active' : 'app-btn-secondary'"
+                    @click="templatePickerMode = 'select'"
+                  >
+                    Select
+                  </button>
+                  <button
+                    type="button"
+                    class="app-btn app-btn-sm"
+                    :class="templatePickerMode === 'cards' ? 'app-btn-tab-active' : 'app-btn-secondary'"
+                    @click="templatePickerMode = 'cards'"
+                  >
+                    Cards
+                  </button>
+                </div>
               </div>
 
-              <div v-if="templates.length" class="mt-4 grid gap-3 md:grid-cols-2">
+              <div v-if="templates.length && templatePickerMode === 'select'" class="mt-4 grid gap-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Template selecionado</span>
+                  <select v-model="selectedTemplateKey" class="app-field-control h-11 appearance-none px-3 text-sm text-slate-900">
+                    <option value="">Selecionar template</option>
+                    <option v-for="template in templates" :key="template.key" :value="template.key">
+                      {{ template.name }}
+                    </option>
+                  </select>
+                </label>
+
+                <p v-if="selectedTemplate" class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+                  {{ selectedTemplate.description }}
+                </p>
+              </div>
+
+              <div v-else-if="templates.length" class="mt-4 grid gap-3 md:grid-cols-2">
                 <button
                   v-for="template in templates"
                   :key="template.key"

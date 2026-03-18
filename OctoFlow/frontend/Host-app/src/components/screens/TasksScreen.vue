@@ -259,17 +259,6 @@ const scopeTitle = computed(() => {
 
   return 'Todas as issues dos seus repositorios'
 })
-const scopeDescription = computed(() => {
-  if (issueScope.value === 'repository') {
-    return 'O sistema preenche a lista primeiro com o cache local do repositorio e depois sincroniza com o GitHub quando o TTL expira ou quando voce pedir atualização.'
-  }
-
-  if (issueScope.value === 'assigned') {
-    return 'As issues atribuidas tambem aproveitam o banco local primeiro, sem depender de uma consulta completa ao GitHub em toda abertura da tela.'
-  }
-
-  return 'Na primeira entrada o sistema salva as issues do usuario no banco. Nas proximas, a tela preenche pelo banco e so volta ao GitHub de tempos em tempos.'
-})
 const createRepositoryKey = computed(() => {
   if (selectedRepositoryKey.value !== 'all') {
     return selectedRepositoryKey.value

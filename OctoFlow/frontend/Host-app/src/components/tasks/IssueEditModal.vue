@@ -713,99 +713,95 @@ function historyBadgeClass(kind) {
           class="grid gap-5 xl:grid-cols-[minmax(0,1.08fr),minmax(320px,0.92fr)]"
         >
           <article class="grid gap-4">
-            <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+            <form class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]" @submit.prevent="saveIssue">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Modelos de atualização</p>
-                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Escolha o formato da atualização</h3>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Escolha o template da atualização</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-500">
+                  O sistema carrega o template selecionado e monta a atualização no preview ao lado.
+                </p>
               </div>
 
-              <div v-if="updateTemplates.length" class="mt-4 grid gap-3 md:grid-cols-2">
-                <button
-                  v-for="template in updateTemplates"
-                  :key="template.key"
-                  type="button"
-                  class="grid min-w-0 gap-2 rounded-2xl border p-4 text-left transition"
-                  :class="template.key === selectedTemplateKey ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_14px_28px_rgba(14,165,233,0.12)]' : 'border-slate-200 bg-white hover:bg-slate-50'"
-                  @click="selectedTemplateKey = template.key"
-                >
-                  <span class="text-xs font-black uppercase tracking-[0.18em] text-orange-600">
-                    {{ template.markdownTitle || template.label }}
-                  </span>
-                  <strong class="break-words text-base font-semibold text-slate-950">{{ template.label }}</strong>
-                  <small class="break-words text-sm leading-6 text-slate-500">{{ template.description }}</small>
-                </button>
-              </div>
-            </div>
+              <div v-if="updateTemplates.length" class="grid gap-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Template selecionado</span>
+                  <select v-model="selectedTemplateKey" class="app-field-control h-11 appearance-none px-3 text-sm text-slate-900">
+                    <option value="">Selecionar template</option>
+                    <option v-for="template in updateTemplates" :key="template.key" :value="template.key">
+                      {{ template.label }}
+                    </option>
+                  </select>
+                </label>
 
-            <div
-              v-if="selectedTemplate"
-              class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]"
-            >
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <p v-if="selectedTemplate" class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+                  {{ selectedTemplate.description }}
+                </p>
+              </div>
+              <p
+                v-else
+                class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
+              >
+                Nenhum template de atualização foi configurado.
+              </p>
+
+              <div
+                v-if="selectedTemplate"
+                class="grid gap-4 rounded-[24px] border border-slate-200/80 bg-white/80 p-5"
+              >
                 <div>
-                  <p class="text-sm font-semibold text-slate-900">Campos do modelo</p>
+                  <p class="text-sm font-semibold text-slate-900">Campos do template</p>
                   <p class="text-sm text-slate-500">{{ selectedTemplate.description }}</p>
                 </div>
 
-                <button
-                  type="button"
-                  class="app-btn app-btn-secondary"
-                  @click="resetTemplateInputs"
-                >
-                  Limpar modelo
-                </button>
+                <div class="grid gap-4 md:grid-cols-2">
+                  <template v-for="field in selectedTemplate.fields || []" :key="field.key">
+                    <label v-if="field.type === 'textarea'" class="grid gap-2 md:col-span-2">
+                      <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                      <textarea
+                        v-model="templateFieldValues[field.key]"
+                        rows="5"
+                        :placeholder="field.placeholder || ''"
+                        class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                      />
+                    </label>
+
+                    <label v-else-if="field.type === 'list'" class="grid gap-2 md:col-span-2">
+                      <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                      <textarea
+                        v-model="templateFieldValues[field.key]"
+                        rows="4"
+                        :placeholder="field.placeholder || 'Um item por linha.'"
+                        class="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                      />
+                      <small class="text-sm text-slate-500">Use uma linha por item. O preview vira lista automaticamente.</small>
+                    </label>
+
+                    <label v-else-if="field.type === 'select'" class="grid gap-2">
+                      <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                      <select
+                        v-model="templateFieldValues[field.key]"
+                        class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                      >
+                        <option value="">Selecione</option>
+                        <option v-for="option in field.options || []" :key="option.value" :value="option.value">
+                          {{ option.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label v-else class="grid gap-2">
+                      <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                      <input
+                        v-model="templateFieldValues[field.key]"
+                        type="text"
+                        :placeholder="field.placeholder || ''"
+                        class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                      >
+                    </label>
+                  </template>
+                </div>
               </div>
 
-              <div class="grid gap-4 md:grid-cols-2">
-                <template v-for="field in selectedTemplate.fields || []" :key="field.key">
-                  <label v-if="field.type === 'textarea'" class="grid gap-2 md:col-span-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <textarea
-                      v-model="templateFieldValues[field.key]"
-                      rows="5"
-                      :placeholder="field.placeholder || ''"
-                      class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    />
-                  </label>
-
-                  <label v-else-if="field.type === 'list'" class="grid gap-2 md:col-span-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <textarea
-                      v-model="templateFieldValues[field.key]"
-                      rows="4"
-                      :placeholder="field.placeholder || 'Um item por linha.'"
-                      class="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    />
-                    <small class="text-sm text-slate-500">Use uma linha por item. O preview vira lista automaticamente.</small>
-                  </label>
-
-                  <label v-else-if="field.type === 'select'" class="grid gap-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <select
-                      v-model="templateFieldValues[field.key]"
-                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    >
-                      <option value="">Selecione</option>
-                      <option v-for="option in field.options || []" :key="option.value" :value="option.value">
-                        {{ option.label }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label v-else class="grid gap-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
-                    <input
-                      v-model="templateFieldValues[field.key]"
-                      type="text"
-                      :placeholder="field.placeholder || ''"
-                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
-                    >
-                  </label>
-                </template>
-              </div>
-            </div>
-
-            <form class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]" @submit.prevent="saveIssue">
               <label class="grid gap-2">
                 <span class="text-sm font-semibold text-slate-900">Titulo</span>
                 <input
@@ -879,7 +875,7 @@ function historyBadgeClass(kind) {
                   class="app-btn app-btn-secondary"
                   @click="resetForm"
                 >
-                  Limpar Formulario
+                  Limpar formulario
                 </button>
               </div>
             </form>

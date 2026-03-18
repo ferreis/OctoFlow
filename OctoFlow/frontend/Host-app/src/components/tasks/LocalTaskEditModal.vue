@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
+import { RemoteMarkdownPreview as MarkdownPreview } from '../../federation/remoteComponents'
 import { fetchLocalTask, syncLocalTaskToGithub, updateLocalTask } from '../../services/tasks'
 import { formatDateTime } from '../../utils/date'
 import { splitRepositoryKey } from '../../utils/githubRepository'
@@ -60,6 +61,8 @@ const syncStatusLabel = computed(() => {
 
   return 'Sincronizada'
 })
+const previewTitle = computed(() => String(form.title || '').trim() || 'Titulo da tarefa local')
+const previewBody = computed(() => String(form.body || '').trim() || 'Sem conteudo para visualizar.')
 
 watch(
   () => props.task,
@@ -193,6 +196,17 @@ async function syncTask() {
             </div>
           </div>
 
+          <div class="grid gap-3 md:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Template</span>
+              <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ currentTask?.templateKey || 'personalizado' }}</strong>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Repositorio sugerido</span>
+              <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ currentTask?.repositoryKey || 'Definir depois' }}</strong>
+            </div>
+          </div>
+
           <div v-if="loading" class="app-empty-panel rounded-2xl px-4 py-6 text-sm text-slate-500">
             Carregando detalhes da tarefa local...
           </div>
@@ -234,38 +248,55 @@ async function syncTask() {
           </template>
         </article>
 
-        <aside class="app-panel-standard grid gap-4 rounded-[28px] p-5">
-          <div>
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Sincronizacao</p>
-            <h3 class="mt-1 text-2xl font-semibold text-slate-950">Enviar ao GitHub</h3>
-            <p class="mt-2 text-sm leading-6 text-slate-500">
-              A sincronizacao manual sempre pede o repositorio de destino. Nada e publicado automaticamente.
-            </p>
-          </div>
+        <div class="grid gap-4">
+          <article class="app-panel-standard grid gap-4 rounded-[28px] p-5">
+            <div>
+              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Conteudo formatado</p>
+              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Preview da tarefa local</h3>
+            </div>
 
-          <label class="grid gap-2">
-            <span class="text-sm font-semibold text-slate-900">Repositorio para publicar agora</span>
-            <select v-model="syncRepositoryKey" class="app-field-control h-11 appearance-none px-3 text-sm text-slate-900">
-              <option value="">Selecionar repositorio</option>
-              <option v-for="repositoryKey in availableRepositories" :key="repositoryKey" :value="repositoryKey">
-                {{ repositoryKey }}
-              </option>
-            </select>
-          </label>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm font-semibold text-slate-900">
+              {{ previewTitle }}
+            </div>
 
-          <div v-if="availableRepositories.length === 0" class="app-empty-panel rounded-2xl px-4 py-6 text-sm text-slate-500">
-            Nenhum repositorio GitHub disponivel para sincronizacao no momento.
-          </div>
+            <div class="min-h-[360px] overflow-auto rounded-[24px] border border-slate-200 bg-white px-5 py-4">
+              <MarkdownPreview :content="previewBody" />
+            </div>
+          </article>
 
-          <button
-            type="button"
-            class="app-btn app-btn-secondary"
-            :disabled="syncing || saving || availableRepositories.length === 0"
-            @click="syncTask"
-          >
-            {{ syncing ? 'Enviando ao GitHub...' : 'Enviar ao GitHub' }}
-          </button>
-        </aside>
+          <aside class="app-panel-standard grid gap-4 rounded-[28px] p-5">
+            <div>
+              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Sincronizacao</p>
+              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Enviar ao GitHub</h3>
+              <p class="mt-2 text-sm leading-6 text-slate-500">
+                A sincronizacao manual sempre pede o repositorio de destino. Nada e publicado automaticamente.
+              </p>
+            </div>
+
+            <label class="grid gap-2">
+              <span class="text-sm font-semibold text-slate-900">Repositorio para publicar agora</span>
+              <select v-model="syncRepositoryKey" class="app-field-control h-11 appearance-none px-3 text-sm text-slate-900">
+                <option value="">Selecionar repositorio</option>
+                <option v-for="repositoryKey in availableRepositories" :key="repositoryKey" :value="repositoryKey">
+                  {{ repositoryKey }}
+                </option>
+              </select>
+            </label>
+
+            <div v-if="availableRepositories.length === 0" class="app-empty-panel rounded-2xl px-4 py-6 text-sm text-slate-500">
+              Nenhum repositorio GitHub disponivel para sincronizacao no momento.
+            </div>
+
+            <button
+              type="button"
+              class="app-btn app-btn-secondary"
+              :disabled="syncing || saving || availableRepositories.length === 0"
+              @click="syncTask"
+            >
+              {{ syncing ? 'Enviando ao GitHub...' : 'Enviar ao GitHub' }}
+            </button>
+          </aside>
+        </div>
       </div>
     </div>
   </div>
