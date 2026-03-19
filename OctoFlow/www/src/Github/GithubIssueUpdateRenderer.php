@@ -110,7 +110,8 @@ final class GithubIssueUpdateRenderer
         $fieldType = trim((string) ($fieldDefinition['type'] ?? 'text'));
 
         if ($fieldType === 'list') {
-            $rawItems = is_array($value) ? $value : preg_split('/\R+/', is_string($value) ? $value : '') ?: [];
+            $rawTextValue = is_string($value) ? $value : '';
+            $rawItems = is_array($value) ? $value : (preg_split('/\R+/', $rawTextValue) ?: []);
             $normalizedItems = [];
 
             foreach ($rawItems as $item) {
