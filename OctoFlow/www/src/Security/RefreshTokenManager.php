@@ -2,6 +2,7 @@
 
 namespace App\Security;
 
+use App\Entity\RefreshToken;
 use App\Entity\User;
 use App\Repository\RefreshTokenRepository;
 use Doctrine\ORM\EntityManagerInterface;
