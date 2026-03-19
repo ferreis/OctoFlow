@@ -36,8 +36,8 @@ Este e o indice oficial da pasta `Docs` para autenticacao e tokens.
 ## 5. Status da arquitetura atual
 
 - CSRF: challenge por acao, token one-time, validacao por sujeito/metodo/path.
-- Access Token: JWT curto, validacao com regra JWT + cookie refresh.
-- Refresh Token: token opaco com rotacao e deteccao de reuso por familia.
+- Access Token: JWT curto enviado no header `Authorization`.
+- Refresh Token: token opaco em cookie HttpOnly, usado para renovar sessao e logout.
 
 ## 6. Sobre documentos legados
 

@@ -10,13 +10,11 @@ Caracteristicas principais:
 - curto prazo: `JWT_TOKEN_TTL=600` (10 minutos)
 - transporte: `Authorization: Bearer <jwt>`
 - nao e persistido em texto no banco
-- pode ser invalidado via blacklist por hash SHA-256
+- nao depende mais de validacao conjunta com refresh token em toda rota protegida
 
 Fonte no codigo:
 - `src/Controller/AuthController.php`
-- `src/EventListener/JwtHttpOnlyGuardListener.php`
-- `src/Security/AccessTokenBlacklistManager.php`
-- `src/Entity/AccessTokenBlacklist.php`
+- `config/packages/security.yaml`
 
 ## 2. Emissao
 
@@ -68,44 +66,36 @@ sequenceDiagram
     API-->>Browser: 200 {user}
 ```
 
-## 5. Regra de Vinculo JWT + Cookie Refresh
+## 5. Regra atual de uso com Refresh Token
 
-O listener `JwtHttpOnlyGuardListener` aplica uma regra critica em rotas protegidas:
-- se houver `Authorization: Bearer`, o backend exige que o cookie refresh correspondente tambem seja valido para o mesmo usuario
-- se falhar, o JWT e colocado em blacklist
+O fluxo atual funciona assim:
+- o frontend usa `Authorization: Bearer <JWT>` nas rotas protegidas
+- o refresh token fica em cookie HttpOnly
+- o refresh token so e usado nos endpoints de autenticacao, principalmente `POST /auth/refresh`
+- se o access token expirar e o refresh token nao existir ou estiver invalido, o usuario perde a sessao
 
-Rotas publicas de auth sao excecao (`/auth/login`, `/auth/google`, `/auth/refresh`, `/auth/logout`, `/auth/csrf/challenge`, etc.).
+Isso remove a exigencia anterior de enviar `JWT + refresh cookie` em toda request autenticada.
 
-## 6. Diagrama de Sequencia (Blacklist por Mismatch)
+## 6. Diagrama de Sequencia (Uso normal + Renovacao)
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant Guard as JwtHttpOnlyGuardListener
-    participant Refresh as RefreshTokenManager
-    participant Blacklist as AccessTokenBlacklistManager
+    participant Browser
+    participant API as Symfony API
 
-    Client->>Guard: GET /api/...\nAuthorization: Bearer <JWT>\n(refresh cookie ausente/invalido)
-    Guard->>Refresh: isValidForUser(refreshCookie, jwtUser)
-    Refresh-->>Guard: false
-    Guard->>Blacklist: blacklist(jwt, exp, reason)
-    Blacklist-->>Guard: persisted hash SHA-256
-    Guard-->>Client: 401 token blacklisted
+    Browser->>API: GET /auth/me\nAuthorization: Bearer <JWT>
+    API-->>Browser: 200 {user}
+
+    Browser->>API: POST /auth/refresh\nCookie: refresh_token=<plain>
+    API-->>Browser: 200 {token, expires_in, user} + novo cookie
 ```
 
-## 7. Blacklist
+## 7. Cookie de Refresh
 
-Tabela: `access_token_blacklist`
-
-Campos principais:
-- `token_hash` (SHA-256 do JWT)
-- `reason`
-- `created_at`
-- `expires_at`
-
-Comportamento:
-- `isBlacklisted(jwt)` consulta hash ativo
-- `blacklist(jwt, exp, reason)` evita duplicidade e estende expiracao quando necessario
+- salvo como `HttpOnly`
+- emitido no login, login Google e refresh
+- escopo de path restrito a `/auth`
+- nao precisa acompanhar as rotas protegidas comuns
 
 ## 8. Configuração
 
@@ -126,4 +116,11 @@ curl -k -i 'https://localhost/ModFederation/api/auth/login' \
 # Uso em rota protegida
 curl -k -i 'https://localhost/ModFederation/api/auth/me' \
   -H 'Authorization: Bearer <JWT>'
+
+# Renovacao de sessao quando o JWT expirar
+curl -k -i -b cookies.txt -c cookies.txt \
+  -X POST \
+  -H 'X-CSRF-Token: <TOKEN_COMPOSTO>' \
+  -H 'X-CSRF-Action: auth.refresh' \
+  'https://localhost/ModFederation/api/auth/refresh'
 ```

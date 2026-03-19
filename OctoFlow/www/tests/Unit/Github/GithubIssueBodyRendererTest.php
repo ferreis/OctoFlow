@@ -52,4 +52,26 @@ final class GithubIssueBodyRendererTest extends TestCase
             'actualBehavior' => 'Retorna 500 ao carregar.',
         ], 'owner@example.com');
     }
+
+    public function testRenderRuleQuestionAddsQuestionPrefixAndComparisonSections(): void
+    {
+        $template = $this->templateCatalog->find('rule-question');
+        self::assertIsArray($template);
+
+        $renderedIssue = $this->renderer->render($template, 'Campo status diverge entre frontend e backend', [
+            'moduleOrScreen' => 'Tela de cadastro',
+            'fieldOrRule' => 'Campo status',
+            'frontendBehavior' => 'O frontend aceita salvar com status vazio.',
+            'backendBehavior' => 'A API retorna erro informando que o campo e obrigatorio.',
+            'expectedRule' => 'Confirmar se o campo deve ser obrigatorio nos dois lados.',
+            'evidence' => "POST /customers\n422 campo status obrigatorio",
+        ], 'owner@example.com');
+
+        $this->assertSame('[question] Campo status diverge entre frontend e backend', $renderedIssue['title']);
+        $this->assertStringContainsString('## Modulo ou tela', $renderedIssue['body']);
+        $this->assertStringContainsString('## Campo ou regra em duvida', $renderedIssue['body']);
+        $this->assertStringContainsString('## Comportamento observado no frontend', $renderedIssue['body']);
+        $this->assertStringContainsString('## Comportamento observado no backend', $renderedIssue['body']);
+        $this->assertStringContainsString('## Regra que precisa ser confirmada', $renderedIssue['body']);
+    }
 }

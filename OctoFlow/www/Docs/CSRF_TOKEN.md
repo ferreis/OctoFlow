@@ -90,13 +90,10 @@ sequenceDiagram
     participant Browser
     participant HostApp as Vue Host App
     participant API as Symfony API
-    participant Guard as JwtHttpOnlyGuardListener
     participant Csrf as CsrfTokenManager
 
     Browser->>HostApp: criar tarefa (POST /tasks)
     HostApp->>API: POST /csrf/challenge\nAuthorization: Bearer <JWT>
-    API->>Guard: valida JWT + cookie refresh
-    Guard-->>API: autorizado
     API->>Csrf: issueChallenge(...)
     Csrf-->>API: token one-time
     API-->>HostApp: 200 challenge
@@ -126,7 +123,7 @@ No `CsrfTokenManager`:
 
 O challenge e vinculado ao sujeito da requisicao:
 - `user:<identifier>` se houver bearer JWT valido no header
-- `refresh:<sha256(cookie_refresh)>` se houver cookie refresh
+- `refresh:<sha256(cookie_refresh)>` se houver cookie refresh em endpoints de auth
 - `anon:<visitorId>` para usuario anonimo em sessao
 
 Isso evita replay do token CSRF por outro contexto.

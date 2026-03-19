@@ -23,11 +23,9 @@ Requisitos obrigatorios:
   }
 - aceitar envio via header Authorization: Bearer <>
 - nao persistir o token em texto puro no banco
-- implementar blacklist de access token usando hash SHA-256
-- criar entidade/tabela access_token_blacklist com os campos principais: token_hash, reason, created_at e expires_at
-- criar um servico para verificar se o Access Token esta blacklistado e outro para inserir o hash na blacklist
-- em rotas protegidas, validar o vinculo entre o Access Token enviado no header e o refresh token do cookie do mesmo usuario
-- se houver mismatch entre Access Token e refresh token, colocar o Access Token em blacklist e retornar 401
+- usar o access token isoladamente nas rotas protegidas
+- usar o refresh token apenas para renovar sessao no endpoint /auth/refresh
+- deslogar o usuario somente quando o access token expirar e nao houver refresh token valido para emitir um novo access token
 
 Arquivos de referencia esperados:
 - AuthController
@@ -103,8 +101,8 @@ Tambem inclua no resultado:
 Implemente um modulo de autenticação completo em Symfony/PHP com frontend Vite contendo:
 
 1. Access Token com TTL de 600 segundos, retorno em JSON e suporte a Authorization: Bearer.
-2. Blacklist de access token com hash SHA-256 e invalidação em caso de mismatch com refresh token.
-3. Refresh Token opaco salvo apenas em cookie HttpOnly, com hash SHA-256 no banco, rotação obrigatoria e deteccao de reuso por familia.
+2. Refresh Token opaco salvo apenas em cookie HttpOnly, com hash SHA-256 no banco, rotação obrigatoria e deteccao de reuso por familia.
+3. Uso do refresh token apenas no endpoint /auth/refresh e no logout.
 4. Login tradicional, login com Google e endpoint de refresh.
 5. Login Google usando Google Identity Services no frontend e validação da credencial recebida no backend.
 6. Cookie refresh_token com Secure=true, HttpOnly=true e SameSite=none.
@@ -113,4 +111,4 @@ Implemente um modulo de autenticação completo em Symfony/PHP com frontend Vite
 9. Protecao CSRF no fluxo de refresh.
 10. Documentação tecnica e exemplos cURL para todos os fluxos principais.
 
-Estruture a solucao com controllers, services, entities, repositories e listeners, seguindo boas praticas de seguranca e mantendo separação clara entre emissao de token, validação, blacklist, rotação de refresh e autenticação federada com Google.
+Estruture a solucao com controllers, services, entities, repositories e listeners, seguindo boas praticas de seguranca e mantendo separação clara entre emissao de token, validação JWT, rotação de refresh e autenticação federada com Google.
