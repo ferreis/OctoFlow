@@ -1,11 +1,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
-import { updateTemplates } from '../../constants/updateTemplates'
 import { formatDateTime } from '../../utils/date'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
-import { fetchLocalTasks } from '../../services/tasks'
+import { fetchLocalTasks, fetchTaskUpdateTemplates } from '../../services/tasks'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
 import IssueEditModal from '../tasks/IssueEditModal.vue'
 import LocalTaskEditModal from '../tasks/LocalTaskEditModal.vue'
@@ -39,6 +38,7 @@ const filtersOpen = ref(false)
 const createModalOpen = ref(false)
 const editingIssueId = ref('')
 const editingLocalTaskId = ref(null)
+const issueUpdateTemplates = ref([])
 const selectedIssueId = ref('')
 const issueScope = ref('all')
 const sourceFilter = ref('all')
@@ -279,8 +279,11 @@ const lastSyncedLabel = computed(() => {
 })
 
 onMounted(async () => {
-  await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
-  await loadLocalTasks()
+  await Promise.all([
+    loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' }),
+    loadLocalTasks(),
+    loadIssueUpdateTemplates(),
+  ])
 })
 
 watch(
@@ -296,6 +299,7 @@ watch(
     if (!userId) {
       issueBoard.value = null
       localTaskBoard.value = null
+      issueUpdateTemplates.value = []
       selectedIssueId.value = ''
       editingIssueId.value = ''
       editingLocalTaskId.value = null
@@ -303,8 +307,11 @@ watch(
     }
 
     if (userId !== previousUserId) {
-      await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
-      await loadLocalTasks()
+      await Promise.all([
+        loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' }),
+        loadLocalTasks(),
+        loadIssueUpdateTemplates(),
+      ])
     }
   },
 )
@@ -408,6 +415,16 @@ async function loadLocalTasks() {
     error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar as tarefas locais pendentes.')
   } finally {
     loadingLocalTasks.value = false
+  }
+}
+
+async function loadIssueUpdateTemplates() {
+  try {
+    const { data } = await fetchTaskUpdateTemplates(props.request)
+    issueUpdateTemplates.value = Array.isArray(data?.items) ? data.items : []
+  } catch (requestError) {
+    issueUpdateTemplates.value = []
+    error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar os templates de atualizacao.')
   }
 }
 
@@ -1120,7 +1137,7 @@ function resolveEntryLabels(entry) {
       :request="props.request"
       :notify="props.notify"
       :issue="editingIssue"
-      :update-templates="updateTemplates"
+      :update-templates="issueUpdateTemplates"
       @close="closeIssueModal"
       @issue-updated="handleIssueUpdated"
     />

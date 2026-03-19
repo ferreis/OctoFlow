@@ -1,10 +1,9 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
-import { buildCurrentDateTimeLabel } from '../../constants/updateTemplates/helpers'
 import { RemoteMarkdownPreview as MarkdownPreview } from '../../federation/remoteComponents'
 import { fetchGithubIssueDetails, updateGithubIssue } from '../../services/tasks'
-import { formatDateTime } from '../../utils/date'
+import { buildCurrentDateTimeLabel, formatDateTime } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import {
   buildInitialFieldState,
@@ -108,6 +107,22 @@ watch(selectedTemplateKey, (newKey, oldKey) => {
     restoreTemplateDraft(newKey)
   }
 })
+
+watch(
+  () => props.updateTemplates,
+  (templates) => {
+    if (!Array.isArray(templates) || templates.length === 0) {
+      selectedTemplateKey.value = ''
+      return
+    }
+
+    const selectedTemplateExists = templates.some((template) => template?.key === selectedTemplateKey.value)
+    if (!selectedTemplateExists) {
+      resetTemplateCatalog()
+    }
+  },
+  { immediate: true },
+)
 
 async function loadLatestIssue(issueId) {
   detailLoading.value = true

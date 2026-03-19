@@ -23,7 +23,7 @@ return [
         ],
         [
             'key' => 'currentSituation',
-            'label' => 'Situação atual',
+            'label' => 'Situacao atual',
             'type' => 'textarea',
             'required' => true,
             'placeholder' => 'O que o usuario ou time esta vendo agora?',

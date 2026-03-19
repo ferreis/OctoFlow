@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Entity\User;
 use App\Github\GithubIssueTemplateCatalog;
+use App\Github\GithubIssueUpdateTemplateCatalog;
 use App\Task\LocalTaskService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -18,7 +19,8 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 final class TaskController
 {
     public function __construct(
-        private readonly GithubIssueTemplateCatalog $templateCatalog,
+        private readonly GithubIssueTemplateCatalog $createTemplateCatalog,
+        private readonly GithubIssueUpdateTemplateCatalog $updateTemplateCatalog,
         private readonly LocalTaskService $localTaskService,
     ) {
     }
@@ -31,7 +33,19 @@ final class TaskController
         }
 
         return new JsonResponse([
-            'items' => $this->templateCatalog->all(),
+            'items' => $this->createTemplateCatalog->all(),
+        ]);
+    }
+
+    #[Route('/update-templates', name: 'task_update_template_list', methods: ['GET'])]
+    public function updateTemplates(#[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        return new JsonResponse([
+            'items' => $this->updateTemplateCatalog->all(),
         ]);
     }
 

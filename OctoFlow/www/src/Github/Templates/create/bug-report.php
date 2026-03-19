@@ -3,7 +3,7 @@
 return [
     'key' => 'bug-report',
     'name' => 'Bug report',
-    'description' => 'Modelo para falhas com contexto, reprodução e severidade.',
+    'description' => 'Modelo para falhas com contexto, reproducao e severidade.',
     'titlePrefix' => 'bug',
     'defaultLabels' => ['bug'],
     'fields' => [
@@ -12,7 +12,7 @@ return [
             'label' => 'Ambiente',
             'type' => 'text',
             'required' => true,
-            'placeholder' => 'Ex.: produção, staging, localhost, branch x.',
+            'placeholder' => 'Ex.: producao, staging, localhost, branch x.',
         ],
         [
             'key' => 'severity',

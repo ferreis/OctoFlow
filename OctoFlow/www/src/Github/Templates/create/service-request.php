@@ -2,14 +2,14 @@
 
 return [
     'key' => 'service-request',
-    'name' => 'Solicitação de servico',
+    'name' => 'Solicitacao de servico',
     'description' => 'Template para ajustes operacionais, acessos e demandas recorrentes.',
     'titlePrefix' => 'service',
     'defaultLabels' => [],
     'fields' => [
         [
             'key' => 'requestType',
-            'label' => 'Tipo da solicitação',
+            'label' => 'Tipo da solicitacao',
             'type' => 'select',
             'required' => true,
             'defaultValue' => 'operacional',
@@ -17,7 +17,7 @@ return [
                 ['value' => 'operacional', 'label' => 'Operacional'],
                 ['value' => 'acesso', 'label' => 'Acesso'],
                 ['value' => 'dados', 'label' => 'Dados'],
-                ['value' => 'configuração', 'label' => 'Configuração'],
+                ['value' => 'configuracao', 'label' => 'Configuracao'],
             ],
         ],
         [
@@ -25,14 +25,14 @@ return [
             'label' => 'Contexto de negocio',
             'type' => 'textarea',
             'required' => true,
-            'placeholder' => 'Explique por que essa solicitação foi aberta.',
+            'placeholder' => 'Explique por que essa solicitacao foi aberta.',
         ],
         [
             'key' => 'requestedAction',
-            'label' => 'Ação solicitada',
+            'label' => 'Acao solicitada',
             'type' => 'textarea',
             'required' => true,
-            'placeholder' => 'Descreva a alteração ou entrega esperada.',
+            'placeholder' => 'Descreva a alteracao ou entrega esperada.',
         ],
         [
             'key' => 'dueDate',
@@ -47,7 +47,7 @@ return [
             'type' => 'list',
             'style' => 'bullets',
             'required' => false,
-            'placeholder' => 'Uma aprovação ou responsavel por linha.',
+            'placeholder' => 'Uma aprovacao ou responsavel por linha.',
         ],
         [
             'key' => 'completionCriteria',

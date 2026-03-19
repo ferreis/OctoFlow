@@ -3,7 +3,7 @@
 return [
     'key' => 'incident-report',
     'name' => 'Incidente operacional',
-    'description' => 'Template para indisponibilidade, degradação ou falha critica em produção.',
+    'description' => 'Template para indisponibilidade, degradacao ou falha critica em producao.',
     'titlePrefix' => 'incident',
     'defaultLabels' => ['bug'],
     'fields' => [
@@ -30,7 +30,7 @@ return [
         ],
         [
             'key' => 'mitigation',
-            'label' => 'Mitigação imediata',
+            'label' => 'Mitigacao imediata',
             'type' => 'textarea',
             'required' => false,
             'placeholder' => 'Acoes ja executadas para reduzir impacto.',
@@ -41,11 +41,11 @@ return [
             'type' => 'list',
             'style' => 'checklist',
             'required' => true,
-            'placeholder' => 'Uma ação por linha.',
+            'placeholder' => 'Uma acao por linha.',
         ],
         [
             'key' => 'communication',
-            'label' => 'Plano de comunicação',
+            'label' => 'Plano de comunicacao',
             'type' => 'textarea',
             'required' => false,
             'placeholder' => 'Como esse incidente precisa ser comunicado para o time ou clientes?',

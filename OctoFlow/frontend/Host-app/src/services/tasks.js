@@ -46,6 +46,13 @@ export function fetchTaskTemplates(request) {
   })
 }
 
+export function fetchTaskUpdateTemplates(request) {
+  return request({
+    url: '/tasks/update-templates',
+    method: 'GET',
+  })
+}
+
 export function fetchLocalTasks(request) {
   return request({
     url: '/tasks/local-issues',

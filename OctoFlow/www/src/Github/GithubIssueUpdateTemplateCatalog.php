@@ -2,7 +2,7 @@
 
 namespace App\Github;
 
-final class GithubIssueTemplateCatalog
+final class GithubIssueUpdateTemplateCatalog
 {
     /**
      * @return list<array<string, mixed>>
@@ -12,7 +12,7 @@ final class GithubIssueTemplateCatalog
         $templates = $this->loadTemplates();
         usort(
             $templates,
-            static fn (array $left, array $right): int => strcmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''))
+            static fn (array $left, array $right): int => strcmp((string) ($left['label'] ?? ''), (string) ($right['label'] ?? ''))
         );
 
         return $templates;
@@ -43,7 +43,7 @@ final class GithubIssueTemplateCatalog
     private function loadTemplates(): array
     {
         $templates = [];
-        $templateFiles = glob(__DIR__ . '/Templates/create/*.php') ?: [];
+        $templateFiles = glob(__DIR__ . '/Templates/update/*.php') ?: [];
         sort($templateFiles);
 
         foreach ($templateFiles as $templateFile) {
@@ -53,8 +53,8 @@ final class GithubIssueTemplateCatalog
             }
 
             $templateKey = trim((string) ($template['key'] ?? ''));
-            $templateName = trim((string) ($template['name'] ?? ''));
-            if ($templateKey === '' || $templateName === '') {
+            $templateLabel = trim((string) ($template['label'] ?? ''));
+            if ($templateKey === '' || $templateLabel === '') {
                 continue;
             }
 

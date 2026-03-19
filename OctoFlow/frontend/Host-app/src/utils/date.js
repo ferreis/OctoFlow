@@ -8,3 +8,10 @@ export function formatDateTime(value, emptyLabel = 'sem data') {
     timeStyle: 'short',
   }).format(new Date(value))
 }
+
+export function buildCurrentDateTimeLabel(value = new Date()) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(value)
+}
