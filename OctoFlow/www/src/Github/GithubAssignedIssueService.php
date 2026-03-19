@@ -7,6 +7,8 @@ use App\Github\Exception\GithubGraphQLException;
 
 final class GithubAssignedIssueService
 {
+    private const UPDATE_COMMENT_TIMEZONE = 'America/Sao_Paulo';
+
     private const ISSUE_SCOPE_ALL = 'all';
     private const ISSUE_SCOPE_ASSIGNED = 'assigned';
     private const ISSUE_SCOPE_REPOSITORY = 'repository';
@@ -310,6 +312,18 @@ mutation AddAssigneesToIssue($issueId: ID!, $assigneeIds: [ID!]!) {
 }
 GRAPHQL;
 
+    private const ADD_COMMENT_MUTATION = <<<'GRAPHQL'
+mutation AddCommentToIssue($issueId: ID!, $body: String!) {
+  addComment(input: {subjectId: $issueId, body: $body}) {
+    commentEdge {
+      node {
+        id
+      }
+    }
+  }
+}
+GRAPHQL;
+
     public function __construct(
         private readonly GithubProfileService $profileService,
         private readonly GithubGraphQLClientInterface $graphqlClient,
@@ -471,6 +485,8 @@ GRAPHQL;
         }
 
         $issue = $this->assignIssueToCollaborators($token, $issue, $assigneeIds);
+        $this->registerIssueUpdateComment($token, $normalizedIssueId, $user);
+
         return $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
     }
 
@@ -996,6 +1012,32 @@ GRAPHQL;
         }
 
         return $updatedIssue;
+    }
+
+    private function registerIssueUpdateComment(string $token, string $issueId, User $user): void
+    {
+        $data = $this->graphqlClient->query($token, self::ADD_COMMENT_MUTATION, [
+            'issueId' => $issueId,
+            'body' => $this->buildIssueUpdateCommentBody($user),
+        ]);
+
+        $commentNode = $data['addComment']['commentEdge']['node'] ?? null;
+        if (!is_array($commentNode) || trim((string) ($commentNode['id'] ?? '')) === '') {
+            throw new GithubGraphQLException('GitHub did not return the update comment payload.');
+        }
+    }
+
+    private function buildIssueUpdateCommentBody(User $user): string
+    {
+        $timestamp = new \DateTimeImmutable('now', new \DateTimeZone(self::UPDATE_COMMENT_TIMEZONE));
+
+        return sprintf(
+            "Atualizacao registrada automaticamente pelo OctoFlow.\n\n- Data: %s\n- Hora: %s\n- Fuso: %s\n- Usuario: %s",
+            $timestamp->format('d/m/Y'),
+            $timestamp->format('H:i:s'),
+            self::UPDATE_COMMENT_TIMEZONE,
+            trim($user->getEmail())
+        );
     }
 
     /**

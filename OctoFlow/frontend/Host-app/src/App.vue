@@ -91,8 +91,8 @@ onMounted(async () => {
   }
 
   const refreshed = await refreshToken(false)
-  if (refreshed) {
-    await loadCurrentUser(false)
+  if (!refreshed) {
+    currentUser.value = null
   }
 })
 
@@ -272,8 +272,11 @@ async function refreshToken(useLoading = true) {
     setAccessToken(data.token)
     currentUser.value = data.user || currentUser.value
     return true
-  } catch {
-    clearAuth()
+  } catch (error) {
+    if (shouldClearAuthAfterRefreshFailure(error)) {
+      clearAuth()
+    }
+
     return false
   } finally {
     if (useLoading) {
@@ -369,6 +372,14 @@ function isPublicCsrfAction(actionId, method, path) {
   const definition = PUBLIC_CSRF_ACTIONS[actionId]
 
   return Boolean(definition && definition.method === method && definition.path === path)
+}
+
+function shouldClearAuthAfterRefreshFailure(error) {
+  if (!axios.isAxiosError(error)) {
+    return false
+  }
+
+  return error.response?.status === 401
 }
 
 function buildAuthorizedHeaders(headers = {}) {

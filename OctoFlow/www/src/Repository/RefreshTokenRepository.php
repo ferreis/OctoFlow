@@ -3,7 +3,6 @@
 namespace App\Repository;
 
 use App\Entity\RefreshToken;
-use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -63,35 +62,6 @@ class RefreshTokenRepository extends ServiceEntityRepository
             ->getResult();
     }
 
-    public function revokeAllForUser(User $user): int
-    {
-        return $this->createQueryBuilder('rt')
-            ->update()
-            ->set('rt.revokedAt', ':now')
-            ->where('rt.user = :user')
-            ->andWhere('rt.revokedAt IS NULL')
-            ->setParameter('user', $user)
-            ->setParameter('now', new \DateTimeImmutable())
-            ->getQuery()
-            ->execute();
-    }
-
-    public function revokeExpiredTokens(): int
-    {
-        return $this->createQueryBuilder('rt')
-            ->update()
-            ->set('rt.revokedAt', ':now')
-            ->where('rt.expiresAt <= :now')
-            ->andWhere('rt.revokedAt IS NULL')
-            ->setParameter('now', new \DateTimeImmutable())
-            ->getQuery()
-            ->execute();
-    }
-
-    /**
-     * Deleta tokens que já expiram há mais de 24 horas.
-     * Garbage collection para evitar acúmulo no banco.
-     */
     public function deleteExpiredTokens(): int
     {
         $cutoffDate = new \DateTimeImmutable('-24 hours');

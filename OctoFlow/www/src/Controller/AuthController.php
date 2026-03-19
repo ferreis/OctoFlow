@@ -115,7 +115,7 @@ class AuthController
             return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
         }
 
-        return $this->createAuthenticatedResponse($user, $request);
+        return $this->createAuthenticatedResponse($user);
     }
 
     #[Route('/register', name: 'auth_register', methods: ['POST'])]
@@ -165,7 +165,7 @@ class AuthController
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
         }
 
-        return $this->createAuthenticatedResponse($user, $request);
+        return $this->createAuthenticatedResponse($user);
     }
 
     #[Route('/google', name: 'auth_google', methods: ['POST'])]
@@ -196,13 +196,13 @@ class AuthController
             return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
         }
 
-        return $this->createAuthenticatedResponse($user, $request);
+        return $this->createAuthenticatedResponse($user);
     }
 
-    private function createAuthenticatedResponse(User $user, Request $request): JsonResponse
+    private function createAuthenticatedResponse(User $user): JsonResponse
     {
         $accessToken = $this->jwtTokenManager->create($user);
-        $issuedRefreshToken = $this->refreshTokenManager->issue($user, $request);
+        $issuedRefreshToken = $this->refreshTokenManager->issue($user);
 
         $response = new JsonResponse([
             'token' => $accessToken,
@@ -259,7 +259,7 @@ class AuthController
             return new JsonResponse(['message' => 'Refresh token cookie is missing.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
-        $issuedRefreshToken = $this->refreshTokenManager->rotate($refreshToken, $request);
+        $issuedRefreshToken = $this->refreshTokenManager->rotate($refreshToken);
         if ($issuedRefreshToken === null) {
             $response = new JsonResponse(['message' => 'Invalid or expired refresh token.'], JsonResponse::HTTP_UNAUTHORIZED);
             $response->headers->setCookie($this->buildClearRefreshCookie());

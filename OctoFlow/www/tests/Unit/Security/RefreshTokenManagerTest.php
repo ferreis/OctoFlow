@@ -6,7 +6,6 @@ use App\Entity\RefreshToken;
 use App\Entity\User;
 use App\Entity\UserEmail;
 use App\Repository\RefreshTokenRepository;
-use App\Security\FingerprintService;
 use App\Security\RefreshTokenManager;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -16,19 +15,16 @@ class RefreshTokenManagerTest extends TestCase
 {
     private EntityManagerInterface&MockObject $entityManager;
     private RefreshTokenRepository&MockObject $refreshTokenRepository;
-    private FingerprintService&MockObject $fingerprintService;
     private RefreshTokenManager $manager;
 
     protected function setUp(): void
     {
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->refreshTokenRepository = $this->createMock(RefreshTokenRepository::class);
-        $this->fingerprintService = $this->createMock(FingerprintService::class);
 
         $this->manager = new RefreshTokenManager(
             $this->entityManager,
             $this->refreshTokenRepository,
-            $this->fingerprintService,
             1209600,
         );
     }
@@ -90,5 +86,30 @@ class RefreshTokenManagerTest extends TestCase
             ->willReturn($refreshToken);
 
         $this->assertFalse($this->manager->isValidForUser('plain-refresh-token', 'other@example.com'));
+    }
+
+    public function testRotateRejectsExpiredToken(): void
+    {
+        $user = (new User())
+            ->setEmail('owner@example.com')
+            ->setPassword('hashed-password');
+
+        $expiredToken = (new RefreshToken())
+            ->setUser($user)
+            ->setTokenHash(hash('sha256', 'plain-refresh-token'))
+            ->setExpiresAt(new \DateTimeImmutable('-1 hour'))
+            ->setRevokedAt(null);
+
+        $this->refreshTokenRepository
+            ->expects($this->once())
+            ->method('findByHash')
+            ->with(hash('sha256', 'plain-refresh-token'))
+            ->willReturn($expiredToken);
+
+        $this->entityManager
+            ->expects($this->never())
+            ->method('persist');
+
+        $this->assertNull($this->manager->rotate('plain-refresh-token'));
     }
 }

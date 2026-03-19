@@ -348,7 +348,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
     public function testUpdateIssueCanAddCollaboratorWithoutReplacingCurrentAssignees(): void
     {
         $this->graphqlClient
-            ->expects($this->exactly(2))
+            ->expects($this->exactly(3))
             ->method('query')
             ->willReturnCallback(function (string $token, string $query, array $variables): array {
                 $this->assertSame('ghp_test_token', $token);
@@ -401,51 +401,67 @@ final class GithubAssignedIssueServiceTest extends TestCase
                     ];
                 }
 
-                $this->assertStringContainsString('addAssigneesToAssignable', $query);
-                $this->assertSame('issue-node-9', $variables['issueId']);
-                $this->assertSame(['user-new'], $variables['assigneeIds']);
+                if (str_contains($query, 'addAssigneesToAssignable')) {
+                    $this->assertSame('issue-node-9', $variables['issueId']);
+                    $this->assertSame(['user-new'], $variables['assigneeIds']);
 
-                return [
-                    'addAssigneesToAssignable' => [
-                        'assignable' => [
-                            'id' => 'issue-node-9',
-                            'number' => 9,
-                            'title' => '[feat] Ajustar automação',
-                            'body' => 'Corpo atualizado',
-                            'state' => 'OPEN',
-                            'url' => 'https://github.com/acme/alpha/issues/9',
-                            'createdAt' => '2026-03-15T08:00:00Z',
-                            'updatedAt' => '2026-03-18T09:00:00Z',
-                            'viewerCanUpdate' => true,
-                            'viewerCanClose' => true,
-                            'viewerCanReopen' => true,
-                            'author' => [
-                                'login' => 'alice',
-                            ],
-                            'assignees' => [
-                                'nodes' => [
-                                    [
-                                        'id' => 'user-old',
-                                        'login' => 'bruno',
-                                        'name' => 'Bruno Lima',
-                                        'avatarUrl' => 'https://avatars.example/bruno',
-                                        'url' => 'https://github.com/bruno',
-                                    ],
-                                    [
-                                        'id' => 'user-new',
-                                        'login' => 'ana',
-                                        'name' => 'Ana Silva',
-                                        'avatarUrl' => 'https://avatars.example/ana',
-                                        'url' => 'https://github.com/ana',
+                    return [
+                        'addAssigneesToAssignable' => [
+                            'assignable' => [
+                                'id' => 'issue-node-9',
+                                'number' => 9,
+                                'title' => '[feat] Ajustar automação',
+                                'body' => 'Corpo atualizado',
+                                'state' => 'OPEN',
+                                'url' => 'https://github.com/acme/alpha/issues/9',
+                                'createdAt' => '2026-03-15T08:00:00Z',
+                                'updatedAt' => '2026-03-18T09:00:00Z',
+                                'viewerCanUpdate' => true,
+                                'viewerCanClose' => true,
+                                'viewerCanReopen' => true,
+                                'author' => [
+                                    'login' => 'alice',
+                                ],
+                                'assignees' => [
+                                    'nodes' => [
+                                        [
+                                            'id' => 'user-old',
+                                            'login' => 'bruno',
+                                            'name' => 'Bruno Lima',
+                                            'avatarUrl' => 'https://avatars.example/bruno',
+                                            'url' => 'https://github.com/bruno',
+                                        ],
+                                        [
+                                            'id' => 'user-new',
+                                            'login' => 'ana',
+                                            'name' => 'Ana Silva',
+                                            'avatarUrl' => 'https://avatars.example/ana',
+                                            'url' => 'https://github.com/ana',
+                                        ],
                                     ],
                                 ],
+                                'labels' => [
+                                    'nodes' => [],
+                                ],
+                                'repository' => [
+                                    'nameWithOwner' => 'acme/alpha',
+                                    'url' => 'https://github.com/acme/alpha',
+                                ],
                             ],
-                            'labels' => [
-                                'nodes' => [],
-                            ],
-                            'repository' => [
-                                'nameWithOwner' => 'acme/alpha',
-                                'url' => 'https://github.com/acme/alpha',
+                        ],
+                    ];
+                }
+
+                $this->assertStringContainsString('addComment', $query);
+                $this->assertSame('issue-node-9', $variables['issueId']);
+                $this->assertStringContainsString('Atualizacao registrada automaticamente pelo OctoFlow.', $variables['body']);
+                $this->assertStringContainsString('Usuario: owner@example.com', $variables['body']);
+
+                return [
+                    'addComment' => [
+                        'commentEdge' => [
+                            'node' => [
+                                'id' => 'comment-node-1',
                             ],
                         ],
                     ],
