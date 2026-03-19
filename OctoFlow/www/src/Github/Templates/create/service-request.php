@@ -4,6 +4,7 @@ return [
     'key' => 'service-request',
     'name' => 'Solicitacao de servico',
     'description' => 'Template para ajustes operacionais, acessos e demandas recorrentes.',
+    'access' => [],
     'titlePrefix' => 'service',
     'defaultLabels' => [],
     'fields' => [

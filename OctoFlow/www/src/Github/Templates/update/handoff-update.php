@@ -4,6 +4,7 @@ return [
     'key' => 'handoff-update',
     'label' => 'Repasse',
     'description' => 'Contexto pronto para troca de responsavel.',
+    'access' => [],
     'markdownTitle' => 'Repasse de atendimento',
     'fields' => [
         [

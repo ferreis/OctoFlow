@@ -4,6 +4,7 @@ return [
     'key' => 'support-request',
     'name' => 'Chamado de suporte',
     'description' => 'Template para atendimento, duvidas operacionais e apoio funcional.',
+    'access' => [],
     'titlePrefix' => 'support',
     'defaultLabels' => ['question'],
     'fields' => [

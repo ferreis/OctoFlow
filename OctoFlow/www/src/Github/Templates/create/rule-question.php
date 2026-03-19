@@ -4,6 +4,7 @@ return [
     'key' => 'rule-question',
     'name' => 'Duvida de regra',
     'description' => 'Template para validar divergencias entre frontend, backend e regra esperada.',
+    'access' => [],
     'titlePrefix' => 'question',
     'defaultLabels' => ['question'],
     'fields' => [

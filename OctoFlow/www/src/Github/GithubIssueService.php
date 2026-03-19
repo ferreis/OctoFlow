@@ -144,6 +144,7 @@ GRAPHQL;
         private readonly GithubProfileService $profileService,
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueTemplateCatalog $templateCatalog,
+        private readonly TemplateAccessService $templateAccessService,
         private readonly GithubIssueBodyRenderer $bodyRenderer,
         private readonly GithubIssueCacheService $cacheService,
     ) {
@@ -160,6 +161,10 @@ GRAPHQL;
         $template = $this->templateCatalog->find($templateKey);
         if ($template === null) {
             throw new \InvalidArgumentException('Unknown GitHub issue template.');
+        }
+
+        if (!$this->templateAccessService->canUseTemplate($user, $template)) {
+            throw new \InvalidArgumentException('The selected GitHub issue template is not available for your profile.');
         }
 
         $repositorySelection = $this->normalizeRepositorySelection($payload);

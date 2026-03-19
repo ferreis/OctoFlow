@@ -8,6 +8,7 @@ use App\Github\Exception\GithubConfigurationException;
 use App\Github\Exception\GithubGraphQLException;
 use App\Github\GithubIssuePublisherInterface;
 use App\Github\GithubIssueTemplateCatalog;
+use App\Github\TemplateAccessService;
 use App\Repository\LocalTaskRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -18,6 +19,7 @@ final class LocalTaskService implements LocalTaskSyncInterface
         private readonly LocalTaskRepository $localTaskRepository,
         private readonly GithubIssuePublisherInterface $issuePublisher,
         private readonly GithubIssueTemplateCatalog $templateCatalog,
+        private readonly TemplateAccessService $templateAccessService,
     ) {
     }
 
@@ -75,8 +77,15 @@ final class LocalTaskService implements LocalTaskSyncInterface
             throw new \InvalidArgumentException('Inform the synchronization repository owner and name together.');
         }
 
-        if ($templateKey !== '' && $this->templateCatalog->find($templateKey) === null) {
-            throw new \InvalidArgumentException('Unknown task template.');
+        if ($templateKey !== '') {
+            $template = $this->templateCatalog->find($templateKey);
+            if ($template === null) {
+                throw new \InvalidArgumentException('Unknown task template.');
+            }
+
+            if (!$this->templateAccessService->canUseTemplate($user, $template)) {
+                throw new \InvalidArgumentException('The selected task template is not available for your profile.');
+            }
         }
 
         $task = (new LocalTask())
@@ -132,8 +141,15 @@ final class LocalTaskService implements LocalTaskSyncInterface
             throw new \InvalidArgumentException('Inform the synchronization repository owner and name together.');
         }
 
-        if ($templateKey !== '' && $this->templateCatalog->find($templateKey) === null) {
-            throw new \InvalidArgumentException('Unknown task template.');
+        if ($templateKey !== '') {
+            $template = $this->templateCatalog->find($templateKey);
+            if ($template === null) {
+                throw new \InvalidArgumentException('Unknown task template.');
+            }
+
+            if (!$this->templateAccessService->canUseTemplate($user, $template)) {
+                throw new \InvalidArgumentException('The selected task template is not available for your profile.');
+            }
         }
 
         $task

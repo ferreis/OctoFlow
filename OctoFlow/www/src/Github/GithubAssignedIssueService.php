@@ -21,6 +21,40 @@ query GithubViewerLogin {
 }
 GRAPHQL;
 
+    private const ISSUE_UPDATE_CONTEXT_QUERY = <<<'GRAPHQL'
+query GithubIssueUpdateContext($issueId: ID!) {
+  node(id: $issueId) {
+    __typename
+    ... on Issue {
+      id
+      body
+      assignees(first: 10) {
+        nodes {
+          id
+          login
+          name
+          avatarUrl
+          url
+        }
+      }
+      repository {
+        nameWithOwner
+        url
+        assignableUsers(first: 50) {
+          nodes {
+            id
+            login
+            name
+            avatarUrl
+            url
+          }
+        }
+      }
+    }
+  }
+}
+GRAPHQL;
+
     private const ISSUE_DETAIL_QUERY = <<<'GRAPHQL'
 query GithubIssueDetail($issueId: ID!) {
   viewer {
@@ -329,6 +363,9 @@ GRAPHQL;
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueCacheService $cacheService,
         private readonly GithubRegistryService $registryService,
+        private readonly GithubIssueUpdateTemplateCatalog $updateTemplateCatalog,
+        private readonly TemplateAccessService $templateAccessService,
+        private readonly GithubIssueUpdateRenderer $updateRenderer,
     ) {
     }
 
@@ -468,9 +505,43 @@ GRAPHQL;
             throw new \InvalidArgumentException('The GitHub issue state must be OPEN or CLOSED.');
         }
 
-        $body = trim((string) ($payload['body'] ?? ''));
         $assigneeIds = $this->normalizeIdList($payload['assigneeIds'] ?? []);
         $token = $this->profileService->requireToken($user);
+        $templateKey = trim((string) ($payload['templateKey'] ?? ''));
+        $additionalNotes = trim((string) ($payload['additionalNotes'] ?? ''));
+        $legacyBody = trim((string) ($payload['body'] ?? ''));
+        $templateFields = $payload['templateFields'] ?? [];
+        if (!is_array($templateFields)) {
+            throw new \InvalidArgumentException('The issue update template fields payload is invalid.');
+        }
+
+        $issueUpdateContext = $this->fetchIssueUpdateContext($token, $normalizedIssueId);
+        $body = $legacyBody;
+
+        if ($templateKey !== '' || $additionalNotes !== '' || $legacyBody === '') {
+            $template = null;
+
+            if ($templateKey !== '') {
+                $template = $this->updateTemplateCatalog->find($templateKey);
+                if ($template === null) {
+                    throw new \InvalidArgumentException('Unknown GitHub issue update template.');
+                }
+
+                if (!$this->templateAccessService->canUseTemplate($user, $template)) {
+                    throw new \InvalidArgumentException('The selected GitHub issue update template is not available for your profile.');
+                }
+
+                $template = $this->enrichUpdateTemplateWithAssignableOptions($template, $issueUpdateContext);
+            }
+
+            $body = $this->updateRenderer->render(
+                $template,
+                $templateFields,
+                (string) ($issueUpdateContext['body'] ?? ''),
+                $additionalNotes,
+                (string) ($issueUpdateContext['repository']['nameWithOwner'] ?? ''),
+            );
+        }
 
         $data = $this->graphqlClient->query($token, self::UPDATE_ISSUE_MUTATION, [
             'issueId' => $normalizedIssueId,
@@ -493,6 +564,38 @@ GRAPHQL;
     private function normalizeScope(string $scope): string
     {
         return $this->cacheService->normalizeScope($scope);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchIssueUpdateContext(string $token, string $issueId): array
+    {
+        $data = $this->graphqlClient->query($token, self::ISSUE_UPDATE_CONTEXT_QUERY, [
+            'issueId' => $issueId,
+        ]);
+
+        $node = $data['node'] ?? null;
+        if (!is_array($node) || ($node['__typename'] ?? null) !== 'Issue') {
+            throw new GithubGraphQLException('GitHub did not return the selected issue update context.');
+        }
+
+        return [
+            'id' => trim((string) ($node['id'] ?? '')),
+            'body' => (string) ($node['body'] ?? ''),
+            'assignees' => $this->normalizeGithubUsers($node['assignees']['nodes'] ?? []),
+            'repository' => [
+                'nameWithOwner' => is_array($node['repository'] ?? null)
+                    ? trim((string) (($node['repository']['nameWithOwner'] ?? '')))
+                    : '',
+                'url' => is_array($node['repository'] ?? null)
+                    ? trim((string) (($node['repository']['url'] ?? '')))
+                    : '',
+                'assignableUsers' => is_array($node['repository'] ?? null)
+                    ? $this->normalizeGithubUsers($node['repository']['assignableUsers']['nodes'] ?? [])
+                    : [],
+            ],
+        ];
     }
 
     private function fetchViewerLogin(string $token): string
@@ -972,6 +1075,80 @@ GRAPHQL;
         }
 
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param array<string, mixed> $template
+     * @param array<string, mixed> $issueUpdateContext
+     *
+     * @return array<string, mixed>
+     */
+    private function enrichUpdateTemplateWithAssignableOptions(array $template, array $issueUpdateContext): array
+    {
+        $assignableUsers = $issueUpdateContext['repository']['assignableUsers'] ?? [];
+        $currentAssignees = $issueUpdateContext['assignees'] ?? [];
+        $collaboratorOptions = $this->buildAssignableUserOptions(
+            is_array($assignableUsers) ? $assignableUsers : [],
+            is_array($currentAssignees) ? $currentAssignees : [],
+        );
+
+        return [
+            ...$template,
+            'fields' => array_map(function (mixed $field) use ($collaboratorOptions): mixed {
+                if (!is_array($field) || !$this->isTemplateAssigneeField($field)) {
+                    return $field;
+                }
+
+                return [
+                    ...$field,
+                    'type' => 'select',
+                    'options' => $collaboratorOptions,
+                ];
+            }, is_array($template['fields'] ?? null) ? $template['fields'] : []),
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $assignableUsers
+     * @param list<array<string, mixed>> $currentAssignees
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private function buildAssignableUserOptions(array $assignableUsers, array $currentAssignees): array
+    {
+        $normalizedOptions = [];
+        $seenOptionValues = [];
+        $collaborators = [...$currentAssignees, ...$assignableUsers];
+
+        foreach ($collaborators as $collaborator) {
+            $collaboratorValue = trim((string) ($collaborator['id'] ?? ''));
+            if ($collaboratorValue === '' || in_array($collaboratorValue, $seenOptionValues, true)) {
+                continue;
+            }
+
+            $seenOptionValues[] = $collaboratorValue;
+            $collaboratorName = trim((string) ($collaborator['name'] ?? ''));
+            $collaboratorLogin = trim((string) ($collaborator['login'] ?? ''));
+
+            $normalizedOptions[] = [
+                'value' => $collaboratorValue,
+                'label' => $collaboratorName !== ''
+                    ? sprintf('%s (%s)', $collaboratorName, $collaboratorLogin)
+                    : $collaboratorLogin,
+            ];
+        }
+
+        return array_values($normalizedOptions);
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     */
+    private function isTemplateAssigneeField(array $field): bool
+    {
+        $fieldKey = trim((string) ($field['key'] ?? ''));
+
+        return $fieldKey === 'owner' || $fieldKey === 'nextOwner';
     }
 
     /**

@@ -4,6 +4,7 @@ return [
     'key' => 'status-update',
     'label' => 'Atualizacao de status',
     'description' => 'Resumo rapido do andamento atual do chamado.',
+    'access' => [],
     'markdownTitle' => 'Atualizacao de status',
     'fields' => [
         [

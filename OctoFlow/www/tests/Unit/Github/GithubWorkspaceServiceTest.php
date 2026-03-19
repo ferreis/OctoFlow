@@ -8,7 +8,9 @@ use App\Github\GithubGraphQLClientInterface;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
+use App\Github\TemplateAccessService;
 use App\Github\GithubTokenCipher;
+use App\Github\UserCapabilityResolver;
 use App\Github\GithubWorkspaceService;
 use App\Repository\GithubAccountRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -22,11 +24,13 @@ final class GithubWorkspaceServiceTest extends TestCase
     private GithubProfileService $profileService;
     private GithubRegistryService&MockObject $registryService;
     private GithubAccountRepository&MockObject $githubAccountRepository;
+    private TemplateAccessService $templateAccessService;
 
     protected function setUp(): void
     {
         $this->graphqlClient = $this->createMock(GithubGraphQLClientInterface::class);
         $this->templateCatalog = new GithubIssueTemplateCatalog();
+        $this->templateAccessService = new TemplateAccessService(new UserCapabilityResolver());
         $this->registryService = $this->createMock(GithubRegistryService::class);
         $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
         $this->registryService
@@ -151,7 +155,8 @@ final class GithubWorkspaceServiceTest extends TestCase
         $service = new GithubWorkspaceService(
             $this->profileService,
             $this->graphqlClient,
-            $this->templateCatalog
+            $this->templateCatalog,
+            $this->templateAccessService,
         );
 
         $workspace = $service->fetchWorkspace($this->buildConfiguredUser(), 'acme', 'delivery-desk');
@@ -204,7 +209,8 @@ final class GithubWorkspaceServiceTest extends TestCase
         $service = new GithubWorkspaceService(
             $this->profileService,
             $this->graphqlClient,
-            $this->templateCatalog
+            $this->templateCatalog,
+            $this->templateAccessService,
         );
 
         $workspace = $service->fetchWorkspace($this->buildConfiguredUser(), 'acme', 'delivery-desk');

@@ -6,6 +6,8 @@ use App\Entity\LocalTask;
 use App\Entity\User;
 use App\Github\GithubIssuePublisherInterface;
 use App\Github\GithubIssueTemplateCatalog;
+use App\Github\TemplateAccessService;
+use App\Github\UserCapabilityResolver;
 use App\Repository\LocalTaskRepository;
 use App\Task\LocalTaskService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,6 +31,7 @@ final class LocalTaskServiceTest extends TestCase
             $this->localTaskRepository,
             $this->issuePublisher,
             new GithubIssueTemplateCatalog(),
+            new TemplateAccessService(new UserCapabilityResolver()),
         );
     }
 

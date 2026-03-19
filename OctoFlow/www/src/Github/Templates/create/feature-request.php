@@ -4,6 +4,7 @@ return [
     'key' => 'feature-request',
     'name' => 'Feat - Nova Funcionalidade',
     'description' => 'Estrutura para novas funcionalidades com descricao, regra de negocio e criterios de aceitacao.',
+    'access' => [],
     'titlePrefix' => 'feat',
     'defaultLabels' => ['enhancement'],
     'fields' => [

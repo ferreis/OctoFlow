@@ -739,7 +739,7 @@ function resolveEntryNumberLabel(entry) {
     return `#${entry.issue.number}`
   }
 
-  return `LOCAL-${entry.localTask?.id || ''}`
+  return '-'
 }
 
 function resolveEntryStatusLabel(entry) {
@@ -767,7 +767,7 @@ function resolveEntryAssignees(entry) {
     return formatAssignees(entry.issue)
   }
 
-  return 'Tarefa local'
+  return 'Nao atribuido'
 }
 
 function resolveEntryRepository(entry) {
@@ -784,6 +784,10 @@ function resolveEntryLabels(entry) {
   }
 
   return entry.localTask?.templateKey || 'personalizado'
+}
+
+function resolveEntryOriginLabel(entry) {
+  return isGithubEntry(entry) ? 'GitHub' : 'Local'
 }
 
 </script>
@@ -987,7 +991,7 @@ function resolveEntryLabels(entry) {
               : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
             " @click="openTaskEntry(entry)">
           <div class="space-y-3">
-            <div class="grid grid-cols-[10%_65%_25%] gap-x-4 items-start">
+            <div class="grid grid-cols-[10%_52%_18%_20%] gap-x-4 items-start">
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                   Número
@@ -1014,6 +1018,15 @@ function resolveEntryLabels(entry) {
                   {{ resolveEntryStatusLabel(entry) }}
                 </span>
               </div>
+
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Origem
+                </p>
+                <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
+                  {{ resolveEntryOriginLabel(entry) }}
+                </strong>
+              </div>
             </div>
 
             <div class="grid grid-cols-[35%_35%_30%] gap-x-4 gap-y-2 items-start">
@@ -1037,7 +1050,7 @@ function resolveEntryLabels(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  {{ isGithubEntry(entry) ? 'Responsável' : 'Origem' }}
+                  Responsável
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ resolveEntryAssignees(entry) }}

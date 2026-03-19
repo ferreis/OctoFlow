@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubIssueUpdateTemplateCatalog;
+use App\Github\TemplateAccessService;
 use App\Task\LocalTaskService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,6 +22,7 @@ final class TaskController
     public function __construct(
         private readonly GithubIssueTemplateCatalog $createTemplateCatalog,
         private readonly GithubIssueUpdateTemplateCatalog $updateTemplateCatalog,
+        private readonly TemplateAccessService $templateAccessService,
         private readonly LocalTaskService $localTaskService,
     ) {
     }
@@ -33,7 +35,7 @@ final class TaskController
         }
 
         return new JsonResponse([
-            'items' => $this->createTemplateCatalog->all(),
+            'items' => $this->templateAccessService->filterVisibleTemplates($user, $this->createTemplateCatalog->all()),
         ]);
     }
 
@@ -45,7 +47,7 @@ final class TaskController
         }
 
         return new JsonResponse([
-            'items' => $this->updateTemplateCatalog->all(),
+            'items' => $this->templateAccessService->filterVisibleTemplates($user, $this->updateTemplateCatalog->all()),
         ]);
     }
 

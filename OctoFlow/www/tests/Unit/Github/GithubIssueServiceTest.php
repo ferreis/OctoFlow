@@ -10,6 +10,8 @@ use App\Github\GithubIssueService;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
+use App\Github\TemplateAccessService;
+use App\Github\UserCapabilityResolver;
 use App\Github\GithubTokenCipher;
 use App\Github\GithubWorkspaceService;
 use App\Repository\GithubAccountRepository;
@@ -26,6 +28,7 @@ final class GithubIssueServiceTest extends TestCase
     private GithubIssueCacheService&MockObject $cacheService;
     private GithubRegistryService&MockObject $registryService;
     private GithubAccountRepository&MockObject $githubAccountRepository;
+    private TemplateAccessService $templateAccessService;
 
     protected function setUp(): void
     {
@@ -35,6 +38,7 @@ final class GithubIssueServiceTest extends TestCase
         $this->cacheService = $this->createMock(GithubIssueCacheService::class);
         $this->registryService = $this->createMock(GithubRegistryService::class);
         $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
+        $this->templateAccessService = new TemplateAccessService(new UserCapabilityResolver());
         $this->registryService
             ->method('buildCatalog')
             ->willReturn([$this->buildRegisteredRepository()]);
@@ -228,7 +232,8 @@ final class GithubIssueServiceTest extends TestCase
         $workspaceService = new GithubWorkspaceService(
             $this->profileService,
             $this->graphqlClient,
-            $this->templateCatalog
+            $this->templateCatalog,
+            $this->templateAccessService,
         );
 
         $service = new GithubIssueService(
@@ -236,6 +241,7 @@ final class GithubIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->templateCatalog,
+            $this->templateAccessService,
             $this->renderer,
             $this->cacheService
         );
@@ -422,7 +428,8 @@ final class GithubIssueServiceTest extends TestCase
         $workspaceService = new GithubWorkspaceService(
             $this->profileService,
             $this->graphqlClient,
-            $this->templateCatalog
+            $this->templateCatalog,
+            $this->templateAccessService,
         );
 
         $service = new GithubIssueService(
@@ -430,6 +437,7 @@ final class GithubIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->templateCatalog,
+            $this->templateAccessService,
             $this->renderer,
             $this->cacheService
         );
@@ -602,7 +610,8 @@ final class GithubIssueServiceTest extends TestCase
         $workspaceService = new GithubWorkspaceService(
             $this->profileService,
             $this->graphqlClient,
-            $this->templateCatalog
+            $this->templateCatalog,
+            $this->templateAccessService,
         );
 
         $service = new GithubIssueService(
@@ -610,6 +619,7 @@ final class GithubIssueServiceTest extends TestCase
             $this->profileService,
             $this->graphqlClient,
             $this->templateCatalog,
+            $this->templateAccessService,
             $this->renderer,
             $this->cacheService
         );

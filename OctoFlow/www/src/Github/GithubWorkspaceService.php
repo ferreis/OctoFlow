@@ -95,6 +95,7 @@ GRAPHQL;
         private readonly GithubProfileService $profileService,
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueTemplateCatalog $templateCatalog,
+        private readonly TemplateAccessService $templateAccessService,
     ) {
     }
 
@@ -121,7 +122,7 @@ GRAPHQL;
 
         return [
             'repository' => $repository,
-            'templates' => $this->templateCatalog->all(),
+            'templates' => $this->templateAccessService->filterVisibleTemplates($user, $this->templateCatalog->all()),
             'projects' => $projects,
             'projectsMeta' => $projectsMeta,
             'profile' => $this->profileService->buildProfilePayload($user),

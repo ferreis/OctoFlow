@@ -4,6 +4,7 @@ return [
     'key' => 'blocker-update',
     'label' => 'Bloqueio',
     'description' => 'Padrao para registrar impedimento e acao necessaria.',
+    'access' => [],
     'markdownTitle' => 'Bloqueio',
     'fields' => [
         [

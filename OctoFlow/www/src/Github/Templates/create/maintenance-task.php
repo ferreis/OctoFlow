@@ -4,6 +4,7 @@ return [
     'key' => 'maintenance-task',
     'name' => 'Tarefa de manutencao',
     'description' => 'Template para rotinas tecnicas, ajustes internos e manutencoes planejadas.',
+    'access' => [],
     'titlePrefix' => 'chore',
     'defaultLabels' => [],
     'fields' => [

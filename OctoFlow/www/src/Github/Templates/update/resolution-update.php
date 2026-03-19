@@ -4,6 +4,7 @@ return [
     'key' => 'resolution-update',
     'label' => 'Resolucao',
     'description' => 'Fechamento estruturado do chamado.',
+    'access' => [],
     'markdownTitle' => 'Resolucao do chamado',
     'fields' => [
         [

@@ -230,6 +230,10 @@ function buildTemplateSubmissionFields(template) {
   return buildSubmissionFields(template, templateFieldValues, { resolveSelectToLabel: true })
 }
 
+function buildTemplatePayloadFields(template) {
+  return buildSubmissionFields(template, templateFieldValues)
+}
+
 function renderUpdateTemplate(template, submissionFields, timestampLabel = '') {
   if (!template) {
     return ''
@@ -425,8 +429,10 @@ async function saveIssue() {
     const assigneeId = resolveSelectedAssigneeId()
     const { data } = await updateGithubIssue(props.request, currentIssue.value.id, {
       title: form.title,
-      body: buildFinalBody(templateRenderTimestamp.value),
       state: form.state,
+      templateKey: selectedTemplate.value?.key || '',
+      templateFields: buildTemplatePayloadFields(selectedTemplate.value),
+      additionalNotes: form.additionalNotes,
       assigneeIds: assigneeId ? [assigneeId] : [],
     })
 

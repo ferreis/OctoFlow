@@ -8,7 +8,11 @@ use App\Github\GithubGraphQLClientInterface;
 use App\Github\GithubIssueCacheService;
 use App\Github\GithubProfileService;
 use App\Github\GithubRegistryService;
+use App\Github\GithubIssueUpdateRenderer;
+use App\Github\GithubIssueUpdateTemplateCatalog;
+use App\Github\TemplateAccessService;
 use App\Github\GithubTokenCipher;
+use App\Github\UserCapabilityResolver;
 use App\Repository\GithubAccountRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -21,6 +25,9 @@ final class GithubAssignedIssueServiceTest extends TestCase
     private GithubProfileService $profileService;
     private GithubRegistryService&MockObject $registryService;
     private GithubAccountRepository&MockObject $githubAccountRepository;
+    private GithubIssueUpdateTemplateCatalog $updateTemplateCatalog;
+    private TemplateAccessService $templateAccessService;
+    private GithubIssueUpdateRenderer $updateRenderer;
 
     protected function setUp(): void
     {
@@ -28,6 +35,9 @@ final class GithubAssignedIssueServiceTest extends TestCase
         $this->cacheService = $this->createMock(GithubIssueCacheService::class);
         $this->registryService = $this->createMock(GithubRegistryService::class);
         $this->githubAccountRepository = $this->createMock(GithubAccountRepository::class);
+        $this->updateTemplateCatalog = new GithubIssueUpdateTemplateCatalog();
+        $this->templateAccessService = new TemplateAccessService(new UserCapabilityResolver());
+        $this->updateRenderer = new GithubIssueUpdateRenderer();
         $this->profileService = new GithubProfileService(
             $this->createMock(EntityManagerInterface::class),
             new GithubTokenCipher('test-app-secret'),
@@ -213,6 +223,9 @@ final class GithubAssignedIssueServiceTest extends TestCase
             $this->graphqlClient,
             $this->cacheService,
             $this->registryService,
+            $this->updateTemplateCatalog,
+            $this->templateAccessService,
+            $this->updateRenderer,
         );
 
         $issuesBoard = $service->fetchIssues($this->buildTokenOnlyUser());
@@ -328,6 +341,9 @@ final class GithubAssignedIssueServiceTest extends TestCase
             $this->graphqlClient,
             $this->cacheService,
             $this->registryService,
+            $this->updateTemplateCatalog,
+            $this->templateAccessService,
+            $this->updateRenderer,
         );
 
         $payload = $service->fetchIssue($this->buildTokenOnlyUser(), 'issue-node-1');
@@ -348,18 +364,68 @@ final class GithubAssignedIssueServiceTest extends TestCase
     public function testUpdateIssueCanAddCollaboratorWithoutReplacingCurrentAssignees(): void
     {
         $this->graphqlClient
-            ->expects($this->exactly(3))
+            ->expects($this->exactly(4))
             ->method('query')
             ->willReturnCallback(function (string $token, string $query, array $variables): array {
                 $this->assertSame('ghp_test_token', $token);
 
-                if (str_contains($query, 'updateIssue')) {
+                if (str_contains($query, 'GithubIssueUpdateContext')) {
                     $this->assertSame([
                         'issueId' => 'issue-node-9',
-                        'title' => '[feat] Ajustar automação',
-                        'body' => 'Corpo atualizado',
-                        'state' => 'OPEN',
                     ], $variables);
+
+                    return [
+                        'node' => [
+                            '__typename' => 'Issue',
+                            'id' => 'issue-node-9',
+                            'body' => "## Contexto atual\nCorpo anterior",
+                            'assignees' => [
+                                'nodes' => [
+                                    [
+                                        'id' => 'user-old',
+                                        'login' => 'bruno',
+                                        'name' => 'Bruno Lima',
+                                        'avatarUrl' => 'https://avatars.example/bruno',
+                                        'url' => 'https://github.com/bruno',
+                                    ],
+                                ],
+                            ],
+                            'repository' => [
+                                'nameWithOwner' => 'acme/alpha',
+                                'url' => 'https://github.com/acme/alpha',
+                                'assignableUsers' => [
+                                    'nodes' => [
+                                        [
+                                            'id' => 'user-old',
+                                            'login' => 'bruno',
+                                            'name' => 'Bruno Lima',
+                                            'avatarUrl' => 'https://avatars.example/bruno',
+                                            'url' => 'https://github.com/bruno',
+                                        ],
+                                        [
+                                            'id' => 'user-new',
+                                            'login' => 'ana',
+                                            'name' => 'Ana Silva',
+                                            'avatarUrl' => 'https://avatars.example/ana',
+                                            'url' => 'https://github.com/ana',
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                if (str_contains($query, 'updateIssue')) {
+                    $this->assertSame('issue-node-9', $variables['issueId']);
+                    $this->assertSame('[feat] Ajustar automação', $variables['title']);
+                    $this->assertSame('OPEN', $variables['state']);
+                    $this->assertStringContainsString("## Contexto atual\nCorpo anterior", $variables['body']);
+                    $this->assertStringContainsString('## Atualizacao de status', $variables['body']);
+                    $this->assertStringContainsString('- Responsavel: Ana Silva (ana)', $variables['body']);
+                    $this->assertStringContainsString('- Commit relacionado: [abc1234](https://github.com/acme/alpha/commit/abc1234)', $variables['body']);
+                    $this->assertStringContainsString("### Situacao atual\nCorpo atualizado", $variables['body']);
+                    $this->assertStringContainsString('Observacao complementar', $variables['body']);
 
                     return [
                         'updateIssue' => [
@@ -367,7 +433,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                                 'id' => 'issue-node-9',
                                 'number' => 9,
                                 'title' => '[feat] Ajustar automação',
-                                'body' => 'Corpo atualizado',
+                                'body' => "## Contexto atual\nCorpo anterior\n\n## Atualizacao de status",
                                 'state' => 'OPEN',
                                 'url' => 'https://github.com/acme/alpha/issues/9',
                                 'createdAt' => '2026-03-15T08:00:00Z',
@@ -494,12 +560,23 @@ final class GithubAssignedIssueServiceTest extends TestCase
             $this->graphqlClient,
             $this->cacheService,
             $this->registryService,
+            $this->updateTemplateCatalog,
+            $this->templateAccessService,
+            $this->updateRenderer,
         );
 
         $result = $service->updateIssue($this->buildTokenOnlyUser(), 'issue-node-9', [
             'title' => '[feat] Ajustar automação',
-            'body' => 'Corpo atualizado',
             'state' => 'OPEN',
+            'templateKey' => 'status-update',
+            'templateFields' => [
+                'owner' => 'user-new',
+                'commitRef' => 'abc1234',
+                'currentStatus' => 'Corpo atualizado',
+                'nextStep' => 'Validar com atendimento',
+                'notes' => 'Notas finais',
+            ],
+            'additionalNotes' => 'Observacao complementar',
             'assigneeIds' => ['user-new'],
         ]);
 

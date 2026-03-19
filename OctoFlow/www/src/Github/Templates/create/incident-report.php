@@ -4,6 +4,7 @@ return [
     'key' => 'incident-report',
     'name' => 'Incidente operacional',
     'description' => 'Template para indisponibilidade, degradacao ou falha critica em producao.',
+    'access' => [],
     'titlePrefix' => 'incident',
     'defaultLabels' => ['bug'],
     'fields' => [
