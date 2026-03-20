@@ -10,16 +10,18 @@ Caracteristicas principais:
 - curto prazo: `JWT_TOKEN_TTL=600` (10 minutos)
 - transporte: `Authorization: Bearer <jwt>`
 - nao e persistido em texto no banco
-- nao depende mais de validacao conjunta com refresh token em toda rota protegida
+- nao depende de validacao conjunta com refresh token em rotas protegidas
 
 Fonte no codigo:
 - `src/Controller/AuthController.php`
 - `config/packages/security.yaml`
+- `config/packages/lexik_jwt_authentication.yaml`
 
 ## 2. Emissao
 
 O token e emitido em:
 - `POST /auth/login`
+- `POST /auth/register`
 - `POST /auth/google`
 - `POST /auth/refresh`
 
@@ -70,11 +72,9 @@ sequenceDiagram
 
 O fluxo atual funciona assim:
 - o frontend usa `Authorization: Bearer <JWT>` nas rotas protegidas
-- o refresh token fica em cookie HttpOnly
+- o refresh token fica em cookie HttpOnly com path `/`
 - o refresh token so e usado nos endpoints de autenticacao, principalmente `POST /auth/refresh`
 - se o access token expirar e o refresh token nao existir ou estiver invalido, o usuario perde a sessao
-
-Isso remove a exigencia anterior de enviar `JWT + refresh cookie` em toda request autenticada.
 
 ## 6. Diagrama de Sequencia (Uso normal + Renovacao)
 
@@ -93,11 +93,11 @@ sequenceDiagram
 ## 7. Cookie de Refresh
 
 - salvo como `HttpOnly`
-- emitido no login, login Google e refresh
-- escopo de path restrito a `/auth`
-- nao precisa acompanhar as rotas protegidas comuns
+- emitido no login, registro, login Google e refresh
+- path do cookie: `/`
+- `Secure` e `SameSite` configurados via `.env`
 
-## 8. Configuração
+## 8. Configuracao
 
 Arquivo: `www/.env`
 
@@ -105,16 +105,26 @@ Arquivo: `www/.env`
 JWT_TOKEN_TTL=600
 ```
 
+Arquivo: `www/config/packages/lexik_jwt_authentication.yaml`
+
+```yaml
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+    token_ttl: '%env(int:JWT_TOKEN_TTL)%'
+```
+
 ## 9. Exemplo cURL
 
 ```bash
 # Login para obter Access Token
-curl -k -i 'https://localhost/ModFederation/api/auth/login' \
+curl -k -i 'https://localhost:4481/OctoFlow/api/auth/login' \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@example.com","password":"Senha@123"}'
 
 # Uso em rota protegida
-curl -k -i 'https://localhost/ModFederation/api/auth/me' \
+curl -k -i 'https://localhost:4481/OctoFlow/api/auth/me' \
   -H 'Authorization: Bearer <JWT>'
 
 # Renovacao de sessao quando o JWT expirar
@@ -122,5 +132,5 @@ curl -k -i -b cookies.txt -c cookies.txt \
   -X POST \
   -H 'X-CSRF-Token: <TOKEN_COMPOSTO>' \
   -H 'X-CSRF-Action: auth.refresh' \
-  'https://localhost/ModFederation/api/auth/refresh'
+  'https://localhost:4481/OctoFlow/api/auth/refresh'
 ```

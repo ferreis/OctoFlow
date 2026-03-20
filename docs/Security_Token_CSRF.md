@@ -1,5 +1,7 @@
 # CSRF Token (Modelo Atual)
 
+> **Nota:** Este documento consolida todo o conteudo sobre CSRF do projeto, incluindo o antigo `CSRF_FORMS.md` que foi descontinuado.
+
 Este documento descreve o fluxo CSRF atual em producao do projeto `www`.
 
 ## 1. Resumo
@@ -15,9 +17,8 @@ O modelo atual e:
 Fonte no codigo:
 - `src/Security/CsrfTokenManager.php`
 - `src/EventListener/CsrfProtectionListener.php`
-- `src/Controller/AuthController.php`
-- `src/Controller/CsrfChallengeController.php`
-- `frontend/Host-app/src/App.vue`
+- `src/Controller/AuthController.php` (challenges publicos de auth)
+- `src/Controller/CsrfChallengeController.php` (challenges autenticados)
 
 ## 2. Endpoints de Challenge
 
@@ -27,6 +28,7 @@ Fonte no codigo:
 
 Usado para:
 - `auth.login` -> `POST /auth/login`
+- `auth.register` -> `POST /auth/register`
 - `auth.google` -> `POST /auth/google`
 - `auth.refresh` -> `POST /auth/refresh`
 - `auth.logout` -> `POST /auth/logout`
@@ -41,13 +43,22 @@ Body esperado:
 }
 ```
 
+Observacao: o AuthController valida que o `method` e `path` enviados no body correspondem exatamente ao que esta definido na constante `PUBLIC_CSRF_ACTIONS`.
+
 ## 2.2 Acoes autenticadas
 
 `POST /csrf/challenge`
 
-Usado para chamadas mutaveis em `/tasks/*` e `/api/*`.
+Usado para chamadas mutaveis em:
+- `/tasks/*` (tarefas locais)
+- `/api/*` (recursos API Platform)
+- `/github/*` (workspace, issues, contas, repositorios)
+- `/ui/*` (configuracoes de interface)
+- `/auth/emails/*` e `/auth/google/link` (gestao de emails e vinculacao Google)
 
 Observacao: este endpoint exige autenticacao (`IS_AUTHENTICATED_FULLY`).
+
+O `CsrfChallengeController` aceita metodos `POST`, `PUT`, `PATCH` e `DELETE`.
 
 ## 3. Headers exigidos na requisicao protegida
 
@@ -92,39 +103,45 @@ sequenceDiagram
     participant API as Symfony API
     participant Csrf as CsrfTokenManager
 
-    Browser->>HostApp: criar tarefa (POST /tasks)
+    Browser->>HostApp: criar tarefa (POST /tasks/local-issues)
     HostApp->>API: POST /csrf/challenge\nAuthorization: Bearer <JWT>
     API->>Csrf: issueChallenge(...)
     Csrf-->>API: token one-time
     API-->>HostApp: 200 challenge
 
-    HostApp->>API: POST /tasks\nAuthorization + X-CSRF-Token + X-CSRF-Action
+    HostApp->>API: POST /tasks/local-issues\nAuthorization + X-CSRF-Token + X-CSRF-Action
     API->>Csrf: isValidRequest(request)
     Csrf-->>API: true
-    API-->>HostApp: 2xx sucesso
+    API-->>HostApp: 201 sucesso
 ```
 
 ## 6. Regras de Validacao no Backend
 
 No `CsrfProtectionListener` (priority 25):
 - ignora metodos seguros (`GET`, `HEAD`, `OPTIONS`)
-- protege paths `^/(auth|tasks|api)`
-- exclui `^/(auth/csrf/challenge|csrf/challenge)`
+- protege paths `^/(auth|tasks|api|github)(?:/|$)`
+- exclui `^/(auth/csrf/challenge|csrf/challenge)(?:/|$)`
 - quando invalido retorna `403` com payload CSRF
+
+No `CsrfChallengeController`:
+- aceita apenas metodos mutaveis: `POST`, `PUT`, `PATCH`, `DELETE`
+- protege paths: `/api`, `/github`, `/tasks`, `/ui`, `/auth/emails` e `/auth/google/link`
 
 No `CsrfTokenManager`:
 - challenge salvo em sessao (`_custom_csrf_challenges`)
 - formato obrigatorio: `^[a-f0-9]{32}\.[a-f0-9]{64}$`
 - challenge e removido antes da validacao final (uso unico)
+- challenges anteriores para a mesma acao e sujeito sao invalidados ao emitir novo
 - valida hash do token, sujeito, metodo, path e actionId
-- TTL normalizado para no maximo 600s
+- TTL normalizado para no maximo 600s (`MAX_TOKEN_TTL_SECONDS`)
+- actionId deve conter 3-120 caracteres alfanumericos, pontos, hifens ou underscores
 
 ## 7. Vinculacao de Sujeito (Subject Binding)
 
 O challenge e vinculado ao sujeito da requisicao:
-- `user:<identifier>` se houver bearer JWT valido no header
+- `user:<identifier>` se houver bearer JWT valido no header (extraido do payload JWT)
 - `refresh:<sha256(cookie_refresh)>` se houver cookie refresh em endpoints de auth
-- `anon:<visitorId>` para usuario anonimo em sessao
+- `anon:<visitorId>` para usuario anonimo em sessao (gerado com `bin2hex(random_bytes(16))`)
 
 Isso evita replay do token CSRF por outro contexto.
 
@@ -142,7 +159,7 @@ Em `frontend/Host-app/src/App.vue`:
 curl -k -c cookies.txt \
   -H 'Content-Type: application/json' \
   -d '{"method":"POST","path":"/auth/login","actionId":"auth.login"}' \
-  https://localhost/ModFederation/api/auth/csrf/challenge
+  https://localhost:4481/OctoFlow/api/auth/csrf/challenge
 
 # 2) Enviar login com os dois headers CSRF
 # Substitua <TOKEN_COMPOSTO> pelo valor csrfToken retornado no passo anterior.
@@ -151,7 +168,7 @@ curl -k -b cookies.txt -c cookies.txt \
   -H 'X-CSRF-Token: <TOKEN_COMPOSTO>' \
   -H 'X-CSRF-Action: auth.login' \
   -d '{"email":"admin@example.com","password":"Senha@123"}' \
-  https://localhost/ModFederation/api/auth/login
+  https://localhost:4481/OctoFlow/api/auth/login
 ```
 
 ## 10. Erro esperado quando invalido
