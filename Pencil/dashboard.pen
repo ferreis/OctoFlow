@@ -1,0 +1,565 @@
+{
+  "version": "2.9",
+  "children": [
+    {
+      "type": "frame",
+      "id": "abiUO",
+      "x": 1450,
+      "y": 0,
+      "name": "Screen/Dashboard",
+      "clip": true,
+      "width": 1360,
+      "height": 860,
+      "fill": "#F8FAFC",
+      "layout": "vertical",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "ugbZ9",
+          "name": "Dashboard/Header",
+          "width": "fill_container",
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "qig9G",
+              "name": "dashboardHeaderTitleStack",
+              "width": 760,
+              "layout": "vertical",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "rAjoN",
+                  "name": "dashboardEyebrow",
+                  "fill": "#0EA5E9",
+                  "content": "Issues do GitHub",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "yoMAn",
+                  "name": "dashboardTitle",
+                  "fill": "#0F172A",
+                  "content": "Inbox operacional do OctoFlow",
+                  "fontFamily": "Poppins",
+                  "fontSize": 30,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "qdhm1",
+                  "name": "dashboardDescription",
+                  "fill": "#475569",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Acompanhe volume, taxa de fechamento e saúde das issues com visão contínua por repositório.",
+                  "lineHeight": 1.35,
+                  "fontFamily": "Inter",
+                  "fontSize": 15,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Y9F9o",
+              "name": "dashboardHeaderActions",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "FmKXZ",
+                  "name": "refreshDataButton",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#CBD5E1"
+                  },
+                  "padding": [
+                    10,
+                    16
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vCVjr",
+                      "name": "refreshDataButtonLabel",
+                      "fill": "#0F172A",
+                      "content": "Atualizar",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "57EjU",
+                  "name": "syncIssuesButton",
+                  "fill": "#0F172A",
+                  "cornerRadius": 12,
+                  "padding": [
+                    10,
+                    16
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "tLjJP",
+                      "name": "syncIssuesButtonLabel",
+                      "fill": "#F8FAFC",
+                      "content": "Sincronizar issues",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "tD5R4",
+          "name": "Dashboard/Metrics",
+          "width": "fill_container",
+          "gap": 12,
+          "children": [
+            {
+              "type": "frame",
+              "id": "11qNG",
+              "name": "totalIssuesCard",
+              "width": "fill_container",
+              "fill": "#FFFFFF",
+              "cornerRadius": 14,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#E2E8F0"
+              },
+              "layout": "vertical",
+              "gap": 6,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "6Ykle",
+                  "name": "totalIssuesLabel",
+                  "fill": "#64748B",
+                  "content": "Issues totais",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "f5yaK",
+                  "name": "totalIssuesValue",
+                  "fill": "#0F172A",
+                  "content": "184",
+                  "fontFamily": "Poppins",
+                  "fontSize": 28,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "MAOD6",
+              "name": "openIssuesCard",
+              "width": "fill_container",
+              "fill": "#ECFDF5",
+              "cornerRadius": 14,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#6EE7B7"
+              },
+              "layout": "vertical",
+              "gap": 6,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "SrY3w",
+                  "name": "openIssuesLabel",
+                  "fill": "#047857",
+                  "content": "Abertas",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "I745M",
+                  "name": "openIssuesValue",
+                  "fill": "#065F46",
+                  "content": "84",
+                  "fontFamily": "Poppins",
+                  "fontSize": 28,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "d85v7",
+              "name": "closedIssuesCard",
+              "width": "fill_container",
+              "fill": "#F1F5F9",
+              "cornerRadius": 14,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#CBD5E1"
+              },
+              "layout": "vertical",
+              "gap": 6,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "P3bpz",
+                  "name": "closedIssuesLabel",
+                  "fill": "#475569",
+                  "content": "Fechadas",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "XJhcA",
+                  "name": "closedIssuesValue",
+                  "fill": "#0F172A",
+                  "content": "100",
+                  "fontFamily": "Poppins",
+                  "fontSize": 28,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "vaZSF",
+              "name": "repositoriesCard",
+              "width": "fill_container",
+              "fill": "#ECFEFF",
+              "cornerRadius": 14,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#67E8F9"
+              },
+              "layout": "vertical",
+              "gap": 6,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "AGKGY",
+                  "name": "repositoriesLabel",
+                  "fill": "#0E7490",
+                  "content": "Repositorios",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "iD3aZ",
+                  "name": "repositoriesValue",
+                  "fill": "#155E75",
+                  "content": "12",
+                  "fontFamily": "Poppins",
+                  "fontSize": 28,
+                  "fontWeight": "700"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "X5Mzb",
+          "name": "Dashboard/Analytics",
+          "width": "fill_container",
+          "height": "fill_container",
+          "gap": 12,
+          "children": [
+            {
+              "type": "frame",
+              "id": "IoaWl",
+              "name": "Analytics/Left",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "IxTba",
+                  "name": "statusDistributionCard",
+                  "width": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "etVNp",
+                      "name": "statusDistributionTitle",
+                      "fill": "#0F172A",
+                      "content": "Distribuicao por status",
+                      "fontFamily": "Poppins",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "AmzNH",
+                      "name": "openProgressTrack",
+                      "width": "fill_container",
+                      "fill": "#ECFDF5",
+                      "cornerRadius": 999,
+                      "padding": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Invb5",
+                          "name": "openProgressFill",
+                          "width": 720,
+                          "height": 12,
+                          "fill": "#10B981",
+                          "cornerRadius": 999
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "BVqY5",
+                      "name": "closedProgressTrack",
+                      "width": "fill_container",
+                      "fill": "#E2E8F0",
+                      "cornerRadius": 999,
+                      "padding": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "fExAH",
+                          "name": "closedProgressFill",
+                          "width": 520,
+                          "height": 12,
+                          "fill": "#475569",
+                          "cornerRadius": 999
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "7XtZM",
+                  "name": "freshnessCard",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "cmWs1",
+                      "name": "freshnessTitle",
+                      "fill": "#0F172A",
+                      "content": "Atualizacao das issues abertas",
+                      "fontFamily": "Poppins",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ewMzl",
+                      "name": "freshnessBarOne",
+                      "width": "fill_container",
+                      "fill": "#DCFCE7",
+                      "cornerRadius": 999,
+                      "padding": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Xa57T",
+                          "name": "freshnessBarOneFill",
+                          "width": 500,
+                          "height": 12,
+                          "fill": "#22C55E",
+                          "cornerRadius": 999
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NWMkZ",
+                      "name": "freshnessBarTwo",
+                      "width": "fill_container",
+                      "fill": "#DBEAFE",
+                      "cornerRadius": 999,
+                      "padding": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "rPb45",
+                          "name": "freshnessBarTwoFill",
+                          "width": 260,
+                          "height": 12,
+                          "fill": "#3B82F6",
+                          "cornerRadius": 999
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "otQWa",
+              "name": "Analytics/Right",
+              "width": 360,
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "BcAjc",
+                  "name": "cycleTimeCard",
+                  "width": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "GvnFQ",
+                      "name": "cycleTimeTitle",
+                      "fill": "#0F172A",
+                      "content": "Tempo de ciclo",
+                      "fontFamily": "Poppins",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "vwcgY",
+                      "name": "cycleTimePrimary",
+                      "fill": "#0F172A",
+                      "content": "Media para finalizar: 2d 14h",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "text",
+                      "id": "eqczo",
+                      "name": "cycleTimeSecondary",
+                      "fill": "#334155",
+                      "content": "Tempo medio sem update: 18h",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "5nR64",
+                  "name": "repositoryHeatmapCard",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "jVfq7",
+                      "name": "repositoryHeatmapTitle",
+                      "fill": "#0F172A",
+                      "content": "Top repositorios com backlog",
+                      "fontFamily": "Poppins",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "bsrDg",
+                      "name": "repositoryHeatmapLineOne",
+                      "fill": "#0F172A",
+                      "content": "octoflow/host-app - 44 issues",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "text",
+                      "id": "HN2vi",
+                      "name": "repositoryHeatmapLineTwo",
+                      "fill": "#0F172A",
+                      "content": "octoflow/components-app - 28 issues",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Rh1YC",
+                      "name": "repositoryHeatmapLineThree",
+                      "fill": "#0F172A",
+                      "content": "octoflow/backend-api - 12 issues",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

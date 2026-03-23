@@ -1,0 +1,384 @@
+{
+  "version": "2.9",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "Screen/Login",
+      "width": 1360,
+      "height": 860,
+      "fill": {
+        "type": "gradient",
+        "gradientType": "linear",
+        "enabled": true,
+        "rotation": 130,
+        "size": {
+          "height": 1
+        },
+        "colors": [
+          {
+            "color": "#E2E8F0",
+            "position": 0
+          },
+          {
+            "color": "#F8FAFC",
+            "position": 1
+          }
+        ]
+      },
+      "gap": 32,
+      "padding": 40,
+      "children": [
+        {
+          "type": "frame",
+          "id": "K3L3d",
+          "name": "Login/FormArea",
+          "width": 520,
+          "height": "fill_container",
+          "fill": "#FFFFFF",
+          "cornerRadius": 20,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#0F172A1A",
+            "offset": {
+              "x": 0,
+              "y": 16
+            },
+            "blur": 40
+          },
+          "layout": "vertical",
+          "gap": 28,
+          "padding": 24,
+          "justifyContent": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "zrKL5",
+              "name": "Branding",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "jzUZL",
+                  "name": "brandTitle",
+                  "fill": "#0F172A",
+                  "content": "OctoFlow",
+                  "fontFamily": "Poppins",
+                  "fontSize": 34,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "Cxfov",
+                  "name": "brandSubtitle",
+                  "fill": "#475569",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Operação de issues e tarefas em um painel único",
+                  "lineHeight": 1.35,
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "x1Ua2",
+              "name": "AuthCard",
+              "width": "fill_container",
+              "fill": "#F8FAFC",
+              "cornerRadius": 16,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#E2E8F0"
+              },
+              "layout": "vertical",
+              "gap": 14,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "RRFld",
+                  "name": "authTitle",
+                  "fill": "#0F172A",
+                  "content": "Entrar na plataforma",
+                  "fontFamily": "Poppins",
+                  "fontSize": 22,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "AohHw",
+                  "name": "authDescription",
+                  "fill": "#64748B",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Use seu email, senha ou login Google para acessar seu workspace.",
+                  "lineHeight": 1.4,
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "Wmy3O",
+                  "name": "emailField",
+                  "width": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#CBD5E1"
+                  },
+                  "layout": "vertical",
+                  "padding": [
+                    14,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "NAzts",
+                      "name": "emailFieldText",
+                      "fill": "#334155",
+                      "content": "Email corporativo",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "YKoXj",
+                  "name": "passwordField",
+                  "width": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#CBD5E1"
+                  },
+                  "layout": "vertical",
+                  "padding": [
+                    14,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ivOKp",
+                      "name": "passwordFieldText",
+                      "fill": "#334155",
+                      "content": "Senha",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "8XwwO",
+                  "name": "actionButtons",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "HIwr2",
+                      "name": "loginButton",
+                      "width": "fill_container",
+                      "fill": "#2563EB",
+                      "cornerRadius": 12,
+                      "padding": [
+                        12,
+                        16
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "UL7oH",
+                          "name": "loginButtonLabel",
+                          "fill": "#F8FAFC",
+                          "content": "Entrar",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "InEuJ",
+                      "name": "googleButton",
+                      "width": "fill_container",
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 12,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#CBD5E1"
+                      },
+                      "padding": [
+                        12,
+                        16
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "tGcQL",
+                          "name": "googleButtonLabel",
+                          "fill": "#0F172A",
+                          "content": "Google",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "PQkyx",
+          "name": "Login/PreviewArea",
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "enabled": true,
+            "rotation": 145,
+            "size": {
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#0F172A",
+                "position": 0
+              },
+              {
+                "color": "#1E293B",
+                "position": 1
+              }
+            ]
+          },
+          "cornerRadius": 20,
+          "layout": "vertical",
+          "padding": 20,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "0J98t",
+              "name": "PreviewCard",
+              "width": 560,
+              "fill": "#FFFFFF14",
+              "cornerRadius": 18,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#E2E8F033"
+              },
+              "effect": {
+                "type": "background_blur",
+                "radius": 14
+              },
+              "layout": "vertical",
+              "gap": 18,
+              "padding": 32,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "15Pdu",
+                  "name": "previewTitle",
+                  "fill": "#F8FAFC",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Monitoramento operacional em tempo real",
+                  "lineHeight": 1.15,
+                  "fontFamily": "Poppins",
+                  "fontSize": 30,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "pyQVD",
+                  "name": "previewDescription",
+                  "fill": "#CBD5E1",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Consolide backlog local e issues GitHub com filtros de contexto, analytics de ciclo e ações rápidas para atualização de status.",
+                  "lineHeight": 1.4,
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "NUrlJ",
+                  "name": "previewMetricRow",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "MNAcL",
+                      "name": "metricPrimary",
+                      "width": "fill_container",
+                      "fill": "#22C55E1A",
+                      "cornerRadius": 12,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#22C55E40"
+                      },
+                      "layout": "vertical",
+                      "gap": 6,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "DzAYT",
+                          "name": "metricPrimaryTitle",
+                          "fill": "#DCFCE7",
+                          "content": "Issues abertas",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ydeal",
+                          "name": "metricPrimaryValue",
+                          "fill": "#F0FDF4",
+                          "content": "84",
+                          "fontFamily": "Poppins",
+                          "fontSize": 26,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
