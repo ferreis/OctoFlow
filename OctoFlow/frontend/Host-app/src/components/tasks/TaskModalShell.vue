@@ -1,14 +1,22 @@
 <script setup>
-const { maxWidthClass } = defineProps({
+const { maxWidthClass, closeOnBackdrop } = defineProps({
   maxWidthClass: {
     type: String,
     default: 'max-w-7xl',
+  },
+  closeOnBackdrop: {
+    type: Boolean,
+    default: false,
   },
 })
 
 const emit = defineEmits(['close'])
 
 function handleBackdropClick() {
+  if (!closeOnBackdrop) {
+    return
+  }
+
   emit('close')
 }
 </script>

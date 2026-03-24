@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   RemoteIssueTemplateForm,
   RemoteIssueTemplatePreview,
@@ -17,6 +17,7 @@ import {
 import {
   buildLabelNamesFromSelection,
   buildMergedProjectLabelOptions,
+  mapLabelNamesToSelectedOptions,
 } from '../../utils/projectLabels'
 import TaskModalShell from './TaskModalShell.vue'
 
@@ -54,6 +55,10 @@ const selectedRepositoryKey = ref('')
 const syncingRepositoryKey = ref(false)
 const creationMode = ref('github')
 const templatePickerMode = ref('select')
+const applyingStoredDraft = ref(false)
+const shouldPersistDraftOnUnmount = ref(true)
+
+const CREATE_DRAFT_STORAGE_PREFIX = 'octoflow.tasks.create-draft.'
 
 const availableRepositories = computed(() => {
   const catalog = new Map()
@@ -114,6 +119,16 @@ const localRepositorySelection = computed(() => splitRepositoryKey(selectedRepos
 const previewTitle = computed(() => formatTemplateTitle(selectedTemplate.value, title.value))
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value, fieldValues), requesterEmail.value))
 const activeError = computed(() => isLocalMode.value ? templatesError.value : workspaceError.value)
+const createModalBusy = computed(() => submitting.value || loadingWorkspace.value || loadingTemplates.value)
+const createDraftStorageKey = computed(() => `${CREATE_DRAFT_STORAGE_PREFIX}${resolveDraftScope(props.currentUser)}`)
+const hasUnsavedCreateInput = computed(() => {
+  const normalizedTitle = String(title.value || '').trim()
+  const selectedLabelNames = buildLabelNamesFromSelection(selectedLabels.value)
+  const hasFieldContent = hasFilledDraftFieldValues(fieldValues)
+  const hasAssignee = String(selectedAssigneeId.value || '').trim() !== ''
+
+  return normalizedTitle !== '' || selectedLabelNames.length > 0 || hasFieldContent || hasAssignee
+})
 const assignablePlaceholderLabel = computed(() => {
   if (loadingWorkspace.value && assignableUsers.value.length === 0) {
     return 'Carregando colaboradores...'
@@ -126,13 +141,23 @@ const assignablePlaceholderLabel = computed(() => {
   return 'Sem atribuição inicial'
 })
 
-onMounted(() => {
+onMounted(async () => {
   creationMode.value = canUseGithubMode.value ? 'github' : 'local'
   selectedRepositoryKey.value = resolveInitialRepositoryKey()
-  void Promise.all([
+  await Promise.all([
     loadTemplates(),
     canUseGithubMode.value ? loadWorkspace() : Promise.resolve(),
   ])
+
+  restoreStoredCreateDraft()
+})
+
+onBeforeUnmount(() => {
+  if (!shouldPersistDraftOnUnmount.value) {
+    return
+  }
+
+  persistCreateDraft()
 })
 
 watch(selectedRepositoryKey, async (newValue, previousValue) => {
@@ -180,6 +205,22 @@ watch(assignableUsers, (users) => {
     selectedAssigneeId.value = ''
   }
 })
+
+watch(
+  [
+    creationMode,
+    selectedRepositoryKey,
+    selectedTemplateKey,
+    selectedAssigneeId,
+    title,
+    templatePickerMode,
+    () => JSON.stringify(selectedLabels.value || []),
+    () => JSON.stringify(fieldValues || {}),
+  ],
+  () => {
+    persistCreateDraft()
+  },
+)
 
 function resolveInitialRepositoryKey() {
   const normalizedInitialKey = String(props.initialRepositoryKey || '').trim()
@@ -334,6 +375,8 @@ async function submitIssue() {
       }
     }
 
+    shouldPersistDraftOnUnmount.value = false
+    clearCreateDraft()
     emit('issue-created', data || null)
     emit('close')
   } catch (error) {
@@ -348,10 +391,170 @@ async function submitIssue() {
   }
 }
 
+function requestClose() {
+  if (createModalBusy.value) {
+    submitError.value = 'Aguarde a operacao atual finalizar antes de fechar.'
+    return
+  }
+
+  persistCreateDraft()
+
+  if (!hasUnsavedCreateInput.value) {
+    emit('close')
+    return
+  }
+
+  if (typeof window !== 'undefined') {
+    const shouldCloseModal = window.confirm('Fechar agora? O rascunho atual foi salvo automaticamente.')
+    if (!shouldCloseModal) {
+      return
+    }
+  }
+
+  emit('close')
+}
+
+function resolveDraftScope(currentUser) {
+  const userId = String(currentUser?.id || '').trim()
+  if (userId !== '') {
+    return userId
+  }
+
+  const normalizedEmail = String(currentUser?.defaultEmail || currentUser?.email || '').trim().toLowerCase()
+  if (normalizedEmail !== '') {
+    return normalizedEmail
+  }
+
+  return 'guest'
+}
+
+function readStoredCreateDraft() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const rawStoredDraft = window.localStorage.getItem(createDraftStorageKey.value)
+  if (typeof rawStoredDraft !== 'string' || rawStoredDraft.trim() === '') {
+    return null
+  }
+
+  try {
+    const parsedDraft = JSON.parse(rawStoredDraft)
+    return parsedDraft && typeof parsedDraft === 'object' ? parsedDraft : null
+  } catch {
+    return null
+  }
+}
+
+function persistCreateDraft() {
+  if (typeof window === 'undefined' || applyingStoredDraft.value) {
+    return
+  }
+
+  const draftPayload = {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    creationMode: creationMode.value === 'local' ? 'local' : 'github',
+    selectedRepositoryKey: String(selectedRepositoryKey.value || '').trim(),
+    selectedTemplateKey: String(selectedTemplateKey.value || '').trim(),
+    selectedAssigneeId: String(selectedAssigneeId.value || '').trim(),
+    templatePickerMode: templatePickerMode.value === 'cards' ? 'cards' : 'select',
+    title: String(title.value || ''),
+    selectedLabelNames: buildLabelNamesFromSelection(selectedLabels.value),
+    fieldValues: normalizeDraftFieldValues(fieldValues),
+  }
+
+  try {
+    window.localStorage.setItem(createDraftStorageKey.value, JSON.stringify(draftPayload))
+  } catch {
+    // Silencioso: nao bloqueia o fluxo principal de criacao.
+  }
+}
+
+function clearCreateDraft() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(createDraftStorageKey.value)
+}
+
+function restoreStoredCreateDraft() {
+  const storedDraft = readStoredCreateDraft()
+  if (!storedDraft) {
+    return
+  }
+
+  applyingStoredDraft.value = true
+
+  try {
+    const draftCreationMode = storedDraft.creationMode === 'local' ? 'local' : 'github'
+    creationMode.value = draftCreationMode === 'github' && !canUseGithubMode.value ? 'local' : draftCreationMode
+
+    const draftRepositoryKey = String(storedDraft.selectedRepositoryKey || '').trim()
+    if (draftRepositoryKey !== '') {
+      selectedRepositoryKey.value = draftRepositoryKey
+    }
+
+    templatePickerMode.value = storedDraft.templatePickerMode === 'cards' ? 'cards' : 'select'
+
+    const draftTemplateKey = String(storedDraft.selectedTemplateKey || '').trim()
+    if (draftTemplateKey !== '' && templates.value.some((template) => template?.key === draftTemplateKey)) {
+      selectedTemplateKey.value = draftTemplateKey
+    }
+
+    title.value = typeof storedDraft.title === 'string' ? storedDraft.title : ''
+    selectedAssigneeId.value = typeof storedDraft.selectedAssigneeId === 'string'
+      ? storedDraft.selectedAssigneeId
+      : ''
+
+    if (Array.isArray(storedDraft.selectedLabelNames)) {
+      selectedLabels.value = mapLabelNamesToSelectedOptions(storedDraft.selectedLabelNames, labelOptions.value)
+    }
+
+    if (storedDraft.fieldValues && typeof storedDraft.fieldValues === 'object') {
+      syncFieldValues(storedDraft.fieldValues)
+    }
+  } finally {
+    applyingStoredDraft.value = false
+  }
+}
+
+function normalizeDraftFieldValues(rawFieldValues) {
+  const normalizedFieldValues = {}
+  const sourceFieldValues = rawFieldValues && typeof rawFieldValues === 'object' ? rawFieldValues : {}
+
+  for (const fieldKey of Object.keys(sourceFieldValues)) {
+    const rawFieldValue = sourceFieldValues[fieldKey]
+    if (Array.isArray(rawFieldValue)) {
+      normalizedFieldValues[fieldKey] = rawFieldValue.map((fieldItem) => String(fieldItem || ''))
+      continue
+    }
+
+    normalizedFieldValues[fieldKey] = typeof rawFieldValue === 'string'
+      ? rawFieldValue
+      : String(rawFieldValue ?? '')
+  }
+
+  return normalizedFieldValues
+}
+
+function hasFilledDraftFieldValues(rawFieldValues) {
+  const sourceFieldValues = rawFieldValues && typeof rawFieldValues === 'object' ? rawFieldValues : {}
+
+  return Object.values(sourceFieldValues).some((rawFieldValue) => {
+    if (Array.isArray(rawFieldValue)) {
+      return rawFieldValue.some((fieldItem) => String(fieldItem || '').trim() !== '')
+    }
+
+    return String(rawFieldValue || '').trim() !== ''
+  })
+}
+
 </script>
 
 <template>
-  <TaskModalShell @close="$emit('close')">
+  <TaskModalShell @close="requestClose">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Nova tarefa</p>
@@ -365,7 +568,8 @@ async function submitIssue() {
           <button
             type="button"
             class="app-btn app-btn-secondary"
-            @click="$emit('close')"
+            :disabled="createModalBusy"
+            @click="requestClose"
           >
             Fechar
           </button>

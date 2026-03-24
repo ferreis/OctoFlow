@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
 import {
   RemoteMarkdownPreview as MarkdownPreview,
@@ -72,6 +72,12 @@ const isLocalMode = computed(() => props.mode === 'local')
 const activePanel = ref('view')
 const githubViewTab = ref('description')
 const localViewTab = ref('description')
+const applyingStoredWorkItemDraft = ref(false)
+const githubBaselineSnapshot = ref('')
+const localBaselineSnapshot = ref('')
+const shouldPersistWorkItemDraftOnUnmount = ref(true)
+
+const WORK_ITEM_DRAFT_STORAGE_PREFIX = 'octoflow.tasks.work-item-draft.'
 
 watch(
   () => props.mode,
@@ -149,10 +155,51 @@ const assignablePlaceholderLabel = computed(() => {
 
   return 'Nao adicionar colaborador'
 })
+const isWorkItemBusy = computed(() => (
+  saving.value
+  || detailLoading.value
+  || localLoading.value
+  || localSaving.value
+  || localSyncing.value
+))
+const activeWorkItemId = computed(() => {
+  if (isGithubMode.value) {
+    return String(currentIssue.value?.id || '').trim()
+  }
+
+  if (isLocalMode.value) {
+    return String(localCurrentTask.value?.id || '').trim()
+  }
+
+  return ''
+})
+const workItemDraftStorageKey = computed(() => {
+  const itemId = activeWorkItemId.value
+  if (itemId === '') {
+    return ''
+  }
+
+  return `${WORK_ITEM_DRAFT_STORAGE_PREFIX}${resolveDraftScope(props.currentUser)}.${props.mode}.${itemId}`
+})
+const hasGithubUnsavedChanges = computed(() => {
+  if (!isGithubMode.value || activePanel.value !== 'edit' || githubBaselineSnapshot.value === '') {
+    return false
+  }
+
+  return buildGithubEditSnapshot() !== githubBaselineSnapshot.value
+})
+const hasLocalUnsavedChanges = computed(() => {
+  if (!isLocalMode.value || activePanel.value !== 'edit' || localBaselineSnapshot.value === '') {
+    return false
+  }
+
+  return buildLocalEditSnapshot() !== localBaselineSnapshot.value
+})
+const hasUnsavedWorkItemChanges = computed(() => hasGithubUnsavedChanges.value || hasLocalUnsavedChanges.value)
 
 watch(
   () => [props.mode, props.issue],
-  ([mode, issue]) => {
+  async ([mode, issue]) => {
     if (mode !== 'github') {
       return
     }
@@ -167,8 +214,11 @@ watch(
     detailSource.value = 'cache'
 
     if (issue?.id) {
-      void loadLatestIssue(issue.id)
+      await loadLatestIssue(issue.id)
     }
+
+    captureGithubBaselineSnapshot()
+    restoreStoredWorkItemDraft()
   },
   { immediate: true },
 )
@@ -526,6 +576,7 @@ async function saveIssue() {
     })
     await loadLatestIssue(currentIssue.value.id)
     activePanel.value = 'view'
+    clearStoredWorkItemDraft()
   } catch (requestError) {
     error.value = extractHttpMessage(requestError, 'Nao foi possivel atualizar a issue.')
   } finally {
@@ -952,7 +1003,7 @@ watch(
 
 watch(
   () => [props.mode, props.task],
-  ([mode, task]) => {
+  async ([mode, task]) => {
     if (mode !== 'local') {
       return
     }
@@ -965,11 +1016,65 @@ watch(
     localError.value = ''
 
     if (task?.id) {
-      void loadLocalTask(task.id)
+      await loadLocalTask(task.id)
     }
+
+    captureLocalBaselineSnapshot()
+    restoreStoredWorkItemDraft()
   },
   { immediate: true },
 )
+
+watch(
+  [
+    () => props.mode,
+    activePanel,
+    githubViewTab,
+    selectedTemplateKey,
+    () => form.state,
+    () => form.assignCollaboratorId,
+    () => JSON.stringify(form.selectedLabels || []),
+    () => JSON.stringify(templateFieldValues || {}),
+  ],
+  () => {
+    if (!isGithubMode.value) {
+      return
+    }
+
+    persistWorkItemDraft()
+  },
+)
+
+watch(
+  [
+    () => props.mode,
+    activePanel,
+    localViewTab,
+    localSelectedTemplateKey,
+    () => localForm.title,
+    () => localForm.body,
+    () => localForm.templateKey,
+    () => localForm.repositoryKey,
+    () => localSyncRepositoryKey.value,
+    () => JSON.stringify(localForm.selectedLabels || []),
+    () => JSON.stringify(localTemplateFieldValues || {}),
+  ],
+  () => {
+    if (!isLocalMode.value) {
+      return
+    }
+
+    persistWorkItemDraft()
+  },
+)
+
+onBeforeUnmount(() => {
+  if (!shouldPersistWorkItemDraftOnUnmount.value) {
+    return
+  }
+
+  persistWorkItemDraft()
+})
 
 async function loadLocalTask(taskId) {
   localLoading.value = true
@@ -1127,6 +1232,7 @@ async function saveLocalTask() {
       mode: 'local',
       payload: data || null,
     })
+    clearStoredWorkItemDraft()
   } catch (requestError) {
     localError.value = extractHttpMessage(requestError, 'Nao foi possivel atualizar a tarefa local.')
   } finally {
@@ -1154,6 +1260,8 @@ async function syncLocalTask() {
       repositoryName: selectedRepository.name,
     })
 
+    shouldPersistWorkItemDraftOnUnmount.value = false
+    clearStoredWorkItemDraft()
     notifyUser('Tarefa local enviada ao GitHub com sucesso.', 'success')
     emit('item-synced', data || null)
     emit('close')
@@ -1166,6 +1274,256 @@ async function syncLocalTask() {
 
 function localHistoryBadgeClass(kind) {
   return resolveHistoryBadgeToneClass(kind)
+}
+
+function requestClose() {
+  if (isWorkItemBusy.value) {
+    notifyUser('Aguarde a operacao atual finalizar antes de fechar.', 'warning')
+    return
+  }
+
+  persistWorkItemDraft()
+
+  if (!hasUnsavedWorkItemChanges.value) {
+    emit('close')
+    return
+  }
+
+  if (typeof window !== 'undefined') {
+    const shouldCloseModal = window.confirm('Fechar agora? O rascunho atual foi salvo automaticamente.')
+    if (!shouldCloseModal) {
+      return
+    }
+  }
+
+  emit('close')
+}
+
+function resolveDraftScope(currentUser) {
+  const userId = String(currentUser?.id || '').trim()
+  if (userId !== '') {
+    return userId
+  }
+
+  const normalizedEmail = String(currentUser?.defaultEmail || currentUser?.email || '').trim().toLowerCase()
+  if (normalizedEmail !== '') {
+    return normalizedEmail
+  }
+
+  return 'guest'
+}
+
+function buildGithubEditSnapshot() {
+  return JSON.stringify({
+    activePanel: activePanel.value,
+    viewTab: githubViewTab.value,
+    selectedTemplateKey: String(selectedTemplateKey.value || '').trim(),
+    state: String(form.state || '').trim(),
+    assignCollaboratorId: String(form.assignCollaboratorId || '').trim(),
+    selectedLabelNames: buildLabelNamesFromSelection(form.selectedLabels).sort((leftName, rightName) => leftName.localeCompare(rightName, 'pt-BR')),
+    templateFieldValues: normalizeDraftFieldValues(templateFieldValues),
+  })
+}
+
+function buildLocalEditSnapshot() {
+  return JSON.stringify({
+    activePanel: activePanel.value,
+    viewTab: localViewTab.value,
+    selectedTemplateKey: String(localSelectedTemplateKey.value || '').trim(),
+    title: String(localForm.title || ''),
+    body: String(localForm.body || ''),
+    templateKey: String(localForm.templateKey || ''),
+    repositoryKey: String(localForm.repositoryKey || ''),
+    syncRepositoryKey: String(localSyncRepositoryKey.value || ''),
+    selectedLabelNames: buildLabelNamesFromSelection(localForm.selectedLabels).sort((leftName, rightName) => leftName.localeCompare(rightName, 'pt-BR')),
+    templateFieldValues: normalizeDraftFieldValues(localTemplateFieldValues),
+  })
+}
+
+function captureGithubBaselineSnapshot() {
+  githubBaselineSnapshot.value = buildGithubEditSnapshot()
+}
+
+function captureLocalBaselineSnapshot() {
+  localBaselineSnapshot.value = buildLocalEditSnapshot()
+}
+
+function readStoredWorkItemDraft() {
+  if (typeof window === 'undefined' || workItemDraftStorageKey.value === '') {
+    return null
+  }
+
+  const rawStoredDraft = window.localStorage.getItem(workItemDraftStorageKey.value)
+  if (typeof rawStoredDraft !== 'string' || rawStoredDraft.trim() === '') {
+    return null
+  }
+
+  try {
+    const parsedDraft = JSON.parse(rawStoredDraft)
+    return parsedDraft && typeof parsedDraft === 'object' ? parsedDraft : null
+  } catch {
+    return null
+  }
+}
+
+function persistWorkItemDraft() {
+  if (typeof window === 'undefined' || workItemDraftStorageKey.value === '' || applyingStoredWorkItemDraft.value) {
+    return
+  }
+
+  const baseDraftPayload = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    mode: props.mode,
+    itemId: activeWorkItemId.value,
+  }
+
+  let draftPayload = null
+
+  if (isGithubMode.value) {
+    draftPayload = {
+      ...baseDraftPayload,
+      activePanel: activePanel.value,
+      viewTab: githubViewTab.value,
+      selectedTemplateKey: String(selectedTemplateKey.value || '').trim(),
+      formState: String(form.state || '').trim(),
+      assignCollaboratorId: String(form.assignCollaboratorId || '').trim(),
+      selectedLabelNames: buildLabelNamesFromSelection(form.selectedLabels),
+      templateFieldValues: normalizeDraftFieldValues(templateFieldValues),
+    }
+  } else if (isLocalMode.value) {
+    draftPayload = {
+      ...baseDraftPayload,
+      activePanel: activePanel.value,
+      viewTab: localViewTab.value,
+      localSelectedTemplateKey: String(localSelectedTemplateKey.value || '').trim(),
+      localForm: {
+        title: String(localForm.title || ''),
+        body: String(localForm.body || ''),
+        templateKey: String(localForm.templateKey || ''),
+        repositoryKey: String(localForm.repositoryKey || ''),
+        selectedLabelNames: buildLabelNamesFromSelection(localForm.selectedLabels),
+      },
+      localSyncRepositoryKey: String(localSyncRepositoryKey.value || '').trim(),
+      localTemplateFieldValues: normalizeDraftFieldValues(localTemplateFieldValues),
+    }
+  }
+
+  if (!draftPayload) {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(workItemDraftStorageKey.value, JSON.stringify(draftPayload))
+  } catch {
+    // Silencioso: nao bloqueia o fluxo principal de edicao.
+  }
+}
+
+function clearStoredWorkItemDraft() {
+  if (typeof window === 'undefined' || workItemDraftStorageKey.value === '') {
+    return
+  }
+
+  window.localStorage.removeItem(workItemDraftStorageKey.value)
+}
+
+function restoreStoredWorkItemDraft() {
+  const storedDraft = readStoredWorkItemDraft()
+  if (!storedDraft) {
+    return
+  }
+
+  const storedMode = String(storedDraft.mode || '').trim()
+  const storedItemId = String(storedDraft.itemId || '').trim()
+  if (storedMode !== props.mode || storedItemId === '' || storedItemId !== activeWorkItemId.value) {
+    return
+  }
+
+  applyingStoredWorkItemDraft.value = true
+
+  try {
+    const restoredPanel = storedDraft.activePanel === 'edit' ? 'edit' : 'view'
+    activePanel.value = restoredPanel
+
+    if (isGithubMode.value) {
+      githubViewTab.value = storedDraft.viewTab === 'history' ? 'history' : 'description'
+      form.state = storedDraft.formState === 'CLOSED' ? 'CLOSED' : 'OPEN'
+      form.assignCollaboratorId = String(storedDraft.assignCollaboratorId || '').trim()
+      form.selectedLabels = mapLabelNamesToSelectedOptions(storedDraft.selectedLabelNames, availableLabelOptions.value)
+
+      const restoredTemplateKey = String(storedDraft.selectedTemplateKey || '').trim()
+      if (restoredTemplateKey !== '' && props.updateTemplates.some((template) => template?.key === restoredTemplateKey)) {
+        selectedTemplateKey.value = restoredTemplateKey
+      }
+
+      applyDraftFieldValues(templateFieldValues, storedDraft.templateFieldValues)
+      return
+    }
+
+    localViewTab.value = storedDraft.viewTab === 'history' ? 'history' : 'description'
+    const restoredLocalForm = storedDraft.localForm && typeof storedDraft.localForm === 'object'
+      ? storedDraft.localForm
+      : {}
+
+    localForm.title = String(restoredLocalForm.title || '')
+    localForm.body = String(restoredLocalForm.body || '')
+    localForm.templateKey = String(restoredLocalForm.templateKey || '')
+    localForm.repositoryKey = String(restoredLocalForm.repositoryKey || '')
+    localForm.selectedLabels = mapLabelNamesToSelectedOptions(
+      restoredLocalForm.selectedLabelNames,
+      localAvailableLabelOptions.value,
+    )
+
+    localSyncRepositoryKey.value = String(storedDraft.localSyncRepositoryKey || '').trim()
+
+    const restoredLocalTemplateKey = String(storedDraft.localSelectedTemplateKey || '').trim()
+    if (restoredLocalTemplateKey !== '' && props.updateTemplates.some((template) => template?.key === restoredLocalTemplateKey)) {
+      localSelectedTemplateKey.value = restoredLocalTemplateKey
+    }
+
+    applyDraftFieldValues(localTemplateFieldValues, storedDraft.localTemplateFieldValues)
+  } finally {
+    applyingStoredWorkItemDraft.value = false
+  }
+}
+
+function normalizeDraftFieldValues(rawFieldValues) {
+  const normalizedFieldValues = {}
+  const sourceFieldValues = rawFieldValues && typeof rawFieldValues === 'object' ? rawFieldValues : {}
+
+  for (const fieldKey of Object.keys(sourceFieldValues)) {
+    const rawFieldValue = sourceFieldValues[fieldKey]
+    if (Array.isArray(rawFieldValue)) {
+      normalizedFieldValues[fieldKey] = rawFieldValue.map((fieldItem) => String(fieldItem || ''))
+      continue
+    }
+
+    normalizedFieldValues[fieldKey] = typeof rawFieldValue === 'string'
+      ? rawFieldValue
+      : String(rawFieldValue ?? '')
+  }
+
+  return normalizedFieldValues
+}
+
+function applyDraftFieldValues(targetReactiveMap, rawFieldValues) {
+  for (const fieldKey of Object.keys(targetReactiveMap)) {
+    delete targetReactiveMap[fieldKey]
+  }
+
+  if (!rawFieldValues || typeof rawFieldValues !== 'object') {
+    return
+  }
+
+  for (const fieldKey of Object.keys(rawFieldValues)) {
+    const rawFieldValue = rawFieldValues[fieldKey]
+    targetReactiveMap[fieldKey] = typeof rawFieldValue === 'string'
+      ? rawFieldValue
+      : Array.isArray(rawFieldValue)
+        ? rawFieldValue.map((fieldItem) => String(fieldItem || '')).join('\n')
+        : String(rawFieldValue ?? '')
+  }
 }
 
 function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
@@ -1203,7 +1561,7 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
 </script>
 
 <template>
-  <TaskModalShell @close="$emit('close')">
+  <TaskModalShell @close="requestClose">
     <template v-if="isGithubMode">
       <header class="flex flex-col gap-3 border-b border-slate-200/80 px-5 py-3">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1227,7 +1585,8 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
             <button
               type="button"
               class="app-btn app-btn-secondary"
-              @click="$emit('close')"
+              :disabled="isWorkItemBusy"
+              @click="requestClose"
             >
               Fechar
             </button>
@@ -1597,7 +1956,7 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
             </h2>
           </div>
 
-          <button type="button" class="app-btn app-btn-secondary" @click="$emit('close')">
+          <button type="button" class="app-btn app-btn-secondary" :disabled="isWorkItemBusy" @click="requestClose">
             Fechar
           </button>
         </div>
