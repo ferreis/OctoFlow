@@ -1205,11 +1205,11 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
 <template>
   <TaskModalShell @close="$emit('close')">
     <template v-if="isGithubMode">
-      <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <header class="flex flex-col gap-3 border-b border-slate-200/80 px-5 py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
             <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Visualização</p>
-            <h2 class="mt-1 break-words text-2xl font-semibold text-slate-950 sm:text-3xl">
+            <h2 class="mt-1 break-words text-xl font-semibold text-slate-950 sm:text-2xl">
               #{{ currentIssue?.number }} {{ currentIssue?.title }}
             </h2>
           </div>
@@ -1234,30 +1234,30 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
           </div>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ statusLabel }}</strong>
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Status</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ statusLabel }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Repositorio</span>
-            <strong class="mt-2 block break-all text-sm font-semibold text-slate-950">{{ repositoryName }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Repositorio</span>
+            <strong class="mt-0.5 block break-all text-sm font-semibold text-slate-950">{{ repositoryName }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Autor</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ currentIssue?.authorLogin || 'desconhecido' }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Autor</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ currentIssue?.authorLogin || 'desconhecido' }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Atualizada</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDateTime(currentIssue?.updatedAt) }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Atualizada</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ formatDateTime(currentIssue?.updatedAt) }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Criada em</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDateTime(currentIssue?.createdAt) }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Criada em</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ formatDateTime(currentIssue?.createdAt) }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/90 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Responsaveis</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Responsaveis</span>
+            <strong class="mt-0.5 block break-words text-sm font-semibold text-slate-950">
               {{ currentIssue?.assignees?.length ? currentIssue.assignees.map((assignee) => assignee.name || assignee.login).join(', ') : 'Sem responsavel' }}
             </strong>
           </div>
@@ -1588,16 +1588,13 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
     </template>
 
     <template v-else-if="isLocalMode">
-      <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <header class="flex flex-col gap-3 border-b border-slate-200/80 px-5 py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
             <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tarefa local</p>
-            <h2 class="mt-1 text-2xl font-semibold text-slate-950 sm:text-3xl">
+            <h2 class="mt-1 text-xl font-semibold text-slate-950 sm:text-2xl">
               {{ localCurrentTask?.title || 'Editar tarefa local' }}
             </h2>
-            <p class="mt-2 text-sm leading-7 text-slate-600">
-              Visualize detalhes e histórico da tarefa ou entre na aba de atualização para editar conteúdo, template e sincronização.
-            </p>
           </div>
 
           <button type="button" class="app-btn app-btn-secondary" @click="$emit('close')">
@@ -1605,30 +1602,30 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
           </button>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ localSyncStatusLabel }}</strong>
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Status</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ localSyncStatusLabel }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Repositorio</span>
-            <strong class="mt-2 block break-all text-sm font-semibold text-slate-950">{{ localCurrentTask?.repositoryKey || 'Definir depois' }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Repositorio</span>
+            <strong class="mt-0.5 block break-all text-sm font-semibold text-slate-950">{{ localCurrentTask?.repositoryKey || 'Definir depois' }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Autor</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ localAuthorLabel }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Autor</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ localAuthorLabel }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Atualizada</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDateTime(localCurrentTask?.updatedAt) }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Atualizada</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ formatDateTime(localCurrentTask?.updatedAt) }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Criada em</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ formatDateTime(localCurrentTask?.createdAt) }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Criada em</span>
+            <strong class="mt-0.5 block text-sm font-semibold text-slate-950">{{ formatDateTime(localCurrentTask?.createdAt) }}</strong>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Responsaveis</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ localResponsiblesLabel }}</strong>
+          <div class="flex min-h-[68px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-center">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Responsaveis</span>
+            <strong class="mt-0.5 block break-words text-sm font-semibold text-slate-950">{{ localResponsiblesLabel }}</strong>
           </div>
         </div>
 

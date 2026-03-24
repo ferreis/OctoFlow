@@ -1280,7 +1280,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
           </div>
 
           <label class="field">
-            <span>Intensidade do ajuste visual</span>
+            <span>Intensidade do graus de daltonismo</span>
             <div class="slider-row">
               <input
                 v-model.number="accessibilityForm.colorVisionIntensity"
