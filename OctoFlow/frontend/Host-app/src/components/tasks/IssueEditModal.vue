@@ -44,9 +44,7 @@ const templateFieldValues = reactive({})
 const templateDrafts = reactive({})
 const templateRenderTimestamp = ref(buildCurrentDateTimeLabel())
 const form = reactive({
-  title: '',
   state: 'OPEN',
-  additionalNotes: '',
   assignCollaboratorId: '',
 })
 const { notifyUser } = useNotification(props.notify)
@@ -160,9 +158,7 @@ async function loadLatestIssue(issueId) {
 }
 
 function syncFormFromIssue(issue) {
-  form.title = issue?.title || ''
   form.state = issue?.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
-  form.additionalNotes = ''
   form.assignCollaboratorId = resolvePrimaryAssigneeId(issue)
 }
 
@@ -393,7 +389,6 @@ function buildFinalBody(timestampLabel = templateRenderTimestamp.value) {
     buildTemplateSubmissionFields(selectedTemplate.value),
     timestampLabel,
   ).trim()
-  const additionalNotes = String(form.additionalNotes || '').trim()
 
   if (currentBody !== '') {
     sections.push(currentBody)
@@ -401,10 +396,6 @@ function buildFinalBody(timestampLabel = templateRenderTimestamp.value) {
 
   if (updateBlock !== '') {
     sections.push(updateBlock)
-  }
-
-  if (additionalNotes !== '') {
-    sections.push(additionalNotes)
   }
 
   return sections.join('\n\n').trim()
@@ -416,7 +407,8 @@ async function saveIssue() {
     return
   }
 
-  if (form.title.trim() === '') {
+  const issueTitle = String(currentIssue.value?.title || '').trim()
+  if (issueTitle === '') {
     error.value = 'O titulo da issue e obrigatorio.'
     return
   }
@@ -428,11 +420,10 @@ async function saveIssue() {
     templateRenderTimestamp.value = buildCurrentDateTimeLabel()
     const assigneeId = resolveSelectedAssigneeId()
     const { data } = await updateGithubIssue(props.request, currentIssue.value.id, {
-      title: form.title,
+      title: issueTitle,
       state: form.state,
       templateKey: selectedTemplate.value?.key || '',
       templateFields: buildTemplatePayloadFields(selectedTemplate.value),
-      additionalNotes: form.additionalNotes,
       assigneeIds: assigneeId ? [assigneeId] : [],
     })
 
@@ -954,28 +945,6 @@ function historyBadgeClass(kind) {
                 </div>
               </div>
 
-              <label class="grid gap-2">
-                <span class="text-sm font-semibold text-slate-900">Titulo</span>
-                <input
-                  v-model="form.title"
-                  type="text"
-                  :disabled="!canEdit || saving"
-                  class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
-                  required
-                >
-              </label>
-
-              <label class="grid gap-2">
-                <span class="text-sm font-semibold text-slate-900">Observacoes adicionais</span>
-                <textarea
-                  v-model="form.additionalNotes"
-                  rows="6"
-                  :disabled="!canEdit || saving"
-                  class="min-h-[144px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:bg-slate-100"
-                  placeholder="Se precisar complementar a atualização, escreva aqui."
-                />
-              </label>
-
               <label class="grid gap-2 sm:max-w-xs">
                 <span class="text-sm font-semibold text-slate-900">Status</span>
                 <select
@@ -1038,7 +1007,7 @@ function historyBadgeClass(kind) {
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Preview Markdown</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Resultado final da atualização</h3>
               <p class="mt-2 text-sm text-slate-500">
-                O preview abaixo considera a Descriçao atual da issue, o modelo preenchido e as observacoes adicionais.
+                O preview abaixo considera a Descriçao atual da issue e o modelo de atualização preenchido.
               </p>
             </div>
 

@@ -28,9 +28,102 @@ const syncing = ref(false)
 const error = ref('')
 const status = ref('')
 const activeTab = ref('tasks')
+const activeFinancialGroupKey = ref('accountsPayable')
+const dashboardChartContainerKeys = [
+  'issueStatus',
+  'closureWindow',
+  'cycleTime',
+  'updateFreshness',
+  'mostOpenTypes',
+  'responseByType',
+]
+const collapsedDashboardContainers = ref({
+  issueStatus: false,
+  closureWindow: false,
+  cycleTime: false,
+  updateFreshness: false,
+  mostOpenTypes: false,
+  responseByType: false,
+})
 const { notifyUser } = useNotification(props.notify)
+const issueStatusDonutRadius = 68
+const issueStatusDonutCircumference = 2 * Math.PI * issueStatusDonutRadius
+const financialGroupOptions = [
+  {
+    key: 'accountsPayable',
+    label: 'Contas a Pagar',
+    description: 'Compromissos de saida e vencimentos',
+  },
+  {
+    key: 'accountsReceivable',
+    label: 'Contas a Receber',
+    description: 'Entradas previstas e em aberto',
+  },
+]
 
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
+const allDashboardContainersCollapsed = computed(() => {
+  return dashboardChartContainerKeys.every((containerKey) => Boolean(collapsedDashboardContainers.value[containerKey]))
+})
+const dashboardContainersToggleLabel = computed(() => {
+  return allDashboardContainersCollapsed.value ? 'Expandir containers' : 'Recolher containers'
+})
+const activeFinancialGroup = computed(() => {
+  const selectedFinancialGroup = financialGroupOptions.find((financialGroupOption) => {
+    return financialGroupOption.key === activeFinancialGroupKey.value
+  })
+
+  return selectedFinancialGroup || financialGroupOptions[0]
+})
+const financialGroupTitle = computed(() => {
+  return activeFinancialGroupKey.value === 'accountsPayable'
+    ? 'Controle de pagamentos do periodo'
+    : 'Controle de recebimentos do periodo'
+})
+const financialGroupDescription = computed(() => {
+  return activeFinancialGroupKey.value === 'accountsPayable'
+    ? 'Organize titulos pendentes, vencimentos e previsao de saidas para nao misturar fluxo financeiro com a operacao de tarefas.'
+    : 'Organize valores previstos, carteira em aberto e recebimentos liquidados para manter visibilidade de entrada de caixa.'
+})
+const financialSummaryCards = computed(() => {
+  if (activeFinancialGroupKey.value === 'accountsPayable') {
+    return [
+      {
+        label: 'Status',
+        value: 'Planejado',
+        note: 'Estrutura inicial da area de pagamentos.',
+      },
+      {
+        label: 'Escopo inicial',
+        value: 'Fornecedores e vencimentos',
+        note: 'Base para registrar contas por data e prioridade.',
+      },
+      {
+        label: 'Grupo ativo',
+        value: 'Contas a Pagar',
+        note: 'Foco em compromissos financeiros de saida.',
+      },
+    ]
+  }
+
+  return [
+    {
+      label: 'Status',
+      value: 'Planejado',
+      note: 'Estrutura inicial da area de recebimentos.',
+    },
+    {
+      label: 'Escopo inicial',
+      value: 'Clientes e titulos em aberto',
+      note: 'Base para acompanhar previsoes e liquidação.',
+    },
+    {
+      label: 'Grupo ativo',
+      value: 'Contas a Receber',
+      note: 'Foco em entradas financeiras e pendencias.',
+    },
+  ]
+})
 const repositoryLabel = computed(() => {
   const repositories = Array.isArray(profile.value?.repositories) ? profile.value.repositories : []
   const owner = String(profile.value?.repositoryOwner || '').trim()
@@ -94,7 +187,9 @@ const issueStatusSeries = computed(() => {
       cardClass: 'border-emerald-200 bg-emerald-50/80',
       labelClass: 'text-emerald-700',
       valueClass: 'text-emerald-950',
-      barClass: 'bg-gradient-to-r from-emerald-500 to-teal-500',
+      barStartColor: '#10b981',
+      barEndColor: '#06b6d4',
+      strokeColor: '#10b981',
     },
     {
       label: 'Fechadas',
@@ -103,9 +198,30 @@ const issueStatusSeries = computed(() => {
       cardClass: 'border-slate-200 bg-slate-100/80',
       labelClass: 'text-slate-500',
       valueClass: 'text-slate-950',
-      barClass: 'bg-gradient-to-r from-slate-500 to-slate-700',
+      barStartColor: '#3b82f6',
+      barEndColor: '#1d4ed8',
+      strokeColor: '#3b82f6',
     },
   ]
+})
+const issueStatusDonutSegments = computed(() => {
+  let accumulatedLength = 0
+
+  return issueStatusSeries.value.map((segment) => {
+    const segmentLength = (segment.share / 100) * issueStatusDonutCircumference
+    const segmentStyle = {
+      stroke: segment.strokeColor,
+      strokeDasharray: `${segmentLength} ${issueStatusDonutCircumference}`,
+      strokeDashoffset: `${-accumulatedLength}`,
+    }
+
+    accumulatedLength += segmentLength
+
+    return {
+      ...segment,
+      segmentStyle,
+    }
+  })
 })
 const closureWindowSeries = computed(() => withPercent([
   {
@@ -205,7 +321,8 @@ const responseByTypeSeries = computed(() => {
       .filter((item) => item.hours !== null)
       .sort((left, right) => (right.hours || 0) - (left.hours || 0))
       .slice(0, 6),
-    'hours'
+    'hours',
+    { includeShare: false }
   )
 })
 onMounted(async () => {
@@ -453,23 +570,57 @@ function average(values) {
   return values.reduce((total, value) => total + value, 0) / values.length
 }
 
-function withPercent(items, valueKey = 'value') {
+function withPercent(items, valueKey = 'value', options = {}) {
+  const includeShare = options.includeShare !== false
   const maxValue = items.reduce((highest, item) => Math.max(highest, Number(item?.[valueKey] || 0)), 0)
+  const totalValue = items.reduce((total, item) => total + Number(item?.[valueKey] || 0), 0)
 
-  return items.map((item) => ({
-    ...item,
-    percentage: maxValue > 0 ? (Number(item?.[valueKey] || 0) / maxValue) * 100 : 0,
-  }))
+  return items.map((item) => {
+    const numericValue = Number(item?.[valueKey] || 0)
+
+    return {
+      ...item,
+      percentage: maxValue > 0 ? (numericValue / maxValue) * 100 : 0,
+      share: includeShare && totalValue > 0 ? (numericValue / totalValue) * 100 : null,
+    }
+  })
 }
 
 function buildBarStyle(percentage) {
   if (!Number.isFinite(percentage) || percentage <= 0) {
-    return { width: '0%' }
+    return {
+      width: '0%',
+      transition: 'width 480ms cubic-bezier(0.4, 0, 0.2, 1)',
+    }
   }
 
   return {
     width: `${Math.max(percentage, 8)}%`,
+    transition: 'width 480ms cubic-bezier(0.4, 0, 0.2, 1)',
   }
+}
+
+function buildBarFillStyle(percentage, startColor, endColor) {
+  return {
+    ...buildBarStyle(percentage),
+    backgroundColor: startColor,
+    backgroundImage: `linear-gradient(90deg, ${startColor} 0%, ${endColor} 100%)`,
+    boxShadow: '0 0 0 1px rgba(255,255,255,0.08) inset',
+  }
+}
+
+function buildBarTrackStyle() {
+  return {
+    backgroundColor: 'rgba(148, 163, 184, 0.35)',
+  }
+}
+
+function formatPercentage(value, decimalPlaces = 1) {
+  if (!Number.isFinite(value) || value === null) {
+    return '0%'
+  }
+
+  return `${Number(value).toFixed(decimalPlaces)}%`
 }
 
 function formatDuration(hours) {
@@ -492,6 +643,26 @@ function formatDuration(hours) {
 
   const months = days / 30
   return `${months.toFixed(1)} mes`
+}
+
+function isDashboardContainerCollapsed(containerKey) {
+  return Boolean(collapsedDashboardContainers.value[containerKey])
+}
+
+function toggleDashboardContainer(containerKey) {
+  if (!dashboardChartContainerKeys.includes(containerKey)) {
+    return
+  }
+
+  collapsedDashboardContainers.value[containerKey] = !collapsedDashboardContainers.value[containerKey]
+}
+
+function toggleAllDashboardContainers() {
+  const shouldCollapseAll = !allDashboardContainersCollapsed.value
+
+  for (const containerKey of dashboardChartContainerKeys) {
+    collapsedDashboardContainers.value[containerKey] = shouldCollapseAll
+  }
 }
 
 </script>
@@ -523,7 +694,16 @@ function formatDuration(hours) {
           </div>
         </div>
 
-        <div class="flex items-center justify-start md:justify-end">
+        <div class="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+          <button
+            v-if="activeTab === 'tasks' && issues.length > 0"
+            type="button"
+            class="app-btn app-btn-secondary"
+            @click="toggleAllDashboardContainers"
+          >
+            {{ dashboardContainersToggleLabel }}
+          </button>
+
           <button type="button"
             class="app-btn app-btn-primary app-btn-icon shrink-0"
             :disabled="loading || syncing" title="Atualizar analises" @click="loadDashboardContext(true)">
@@ -606,45 +786,102 @@ function formatDuration(hours) {
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Status atual</p>
                 <h3 class="mt-1 text-2xl font-semibold text-slate-950">Abertas x fechadas</h3>
               </div>
-              <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                {{ issues.length }} issues analisadas
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {{ issues.length }} issues analisadas
+                </span>
+                <button
+                  type="button"
+                  class="app-btn app-btn-secondary app-btn-sm"
+                  @click="toggleDashboardContainer('issueStatus')"
+                >
+                  {{ isDashboardContainerCollapsed('issueStatus') ? 'Expandir' : 'Recolher' }}
+                </button>
+              </div>
             </div>
 
-            <div class="flex h-4 overflow-hidden rounded-full bg-slate-200/80">
-              <span
-                v-for="segment in issueStatusSeries"
-                :key="segment.label"
-                class="h-full"
-                :class="segment.barClass"
-                :style="{ width: `${segment.share}%` }"
-              />
-            </div>
+            <div v-if="!isDashboardContainerCollapsed('issueStatus')" class="grid gap-5 lg:grid-cols-[220px,minmax(0,1fr)] lg:items-center">
+              <div class="relative mx-auto h-44 w-44">
+                <svg
+                  class="h-full w-full -rotate-90"
+                  viewBox="0 0 180 180"
+                  role="img"
+                  aria-label="Distribuicao de issues abertas e fechadas"
+                >
+                  <circle
+                    cx="90"
+                    cy="90"
+                    :r="issueStatusDonutRadius"
+                    class="fill-none stroke-slate-200/90"
+                    stroke-width="18"
+                  />
+                  <circle
+                    v-for="segment in issueStatusDonutSegments"
+                    :key="`status-donut-${segment.label}`"
+                    cx="90"
+                    cy="90"
+                    :r="issueStatusDonutRadius"
+                    class="fill-none"
+                    stroke-linecap="round"
+                    stroke-width="18"
+                    :style="segment.segmentStyle"
+                  />
+                </svg>
 
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div
-                v-for="segment in issueStatusSeries"
-                :key="segment.label"
-                class="rounded-2xl border p-4"
-                :class="segment.cardClass"
-              >
-                <span class="text-xs font-semibold uppercase tracking-[0.18em]" :class="segment.labelClass">{{ segment.label }}</span>
-                <strong class="mt-2 block text-2xl font-semibold" :class="segment.valueClass">{{ segment.value }}</strong>
-                <p class="mt-2 text-sm text-slate-500">{{ segment.share.toFixed(1) }}% do universo atual</p>
+                <div class="absolute inset-0 flex flex-col items-center justify-center gap-1 text-center leading-none">
+                  <strong class="block text-3xl font-semibold leading-none text-slate-950">{{ issues.length }}</strong>
+                  <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Issues</span>
+                </div>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div
+                  v-for="segment in issueStatusSeries"
+                  :key="segment.label"
+                  class="rounded-2xl border p-4"
+                  :class="segment.cardClass"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]" :class="segment.labelClass">
+                      <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: segment.strokeColor }" />
+                      {{ segment.label }}
+                    </span>
+                    <span class="rounded-full border border-white/80 bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                      {{ formatPercentage(segment.share) }}
+                    </span>
+                  </div>
+                  <strong class="mt-2 block text-2xl font-semibold" :class="segment.valueClass">{{ segment.value }}</strong>
+                  <p class="mt-2 text-sm text-slate-500">Participacao no universo atual</p>
+                  <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
+                    <span
+                      class="block h-full rounded-full"
+                      :style="buildBarFillStyle(segment.share, segment.barStartColor, segment.barEndColor)"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </article>
 
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-            <div>
-              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Fechamento</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Finalizadas por periodo</h3>
-              <p class="mt-3 text-sm leading-7 text-slate-600">
-                Quantas issues fechadas tiveram ultimo movimento de encerramento na semana, no mes e no ano.
-              </p>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Fechamento</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Finalizadas por periodo</h3>
+                <p class="mt-3 text-sm leading-7 text-slate-600">
+                  Quantas issues fechadas tiveram ultimo movimento de encerramento na semana, no mes e no ano.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="app-btn app-btn-secondary app-btn-sm"
+                @click="toggleDashboardContainer('closureWindow')"
+              >
+                {{ isDashboardContainerCollapsed('closureWindow') ? 'Expandir' : 'Recolher' }}
+              </button>
             </div>
 
-            <div class="grid gap-3">
+            <div v-if="!isDashboardContainerCollapsed('closureWindow')" class="grid gap-3">
               <div
                 v-for="item in closureWindowSeries"
                 :key="item.label"
@@ -652,12 +889,17 @@ function formatDuration(hours) {
               >
                 <div class="flex items-center justify-between gap-3 text-sm">
                   <strong class="font-semibold text-slate-900">{{ item.label }}</strong>
-                  <span class="font-semibold text-slate-600">{{ item.value }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-700">{{ item.value }}</span>
+                    <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      {{ formatPercentage(item.share) }}
+                    </span>
+                  </div>
                 </div>
-                <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
-                    class="block h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500"
-                    :style="buildBarStyle(item.percentage)"
+                    class="block h-full rounded-full"
+                    :style="buildBarFillStyle(item.percentage, '#06b6d4', '#0ea5e9')"
                   />
                 </div>
               </div>
@@ -667,12 +909,21 @@ function formatDuration(hours) {
 
         <div class="grid gap-5 xl:grid-cols-[minmax(0,0.8fr),minmax(0,1.2fr)]">
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-            <div>
-              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tempo medio</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Ciclo das tarefas</h3>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tempo medio</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Ciclo das tarefas</h3>
+              </div>
+              <button
+                type="button"
+                class="app-btn app-btn-secondary app-btn-sm"
+                @click="toggleDashboardContainer('cycleTime')"
+              >
+                {{ isDashboardContainerCollapsed('cycleTime') ? 'Expandir' : 'Recolher' }}
+              </button>
             </div>
 
-            <div class="grid gap-3">
+            <div v-if="!isDashboardContainerCollapsed('cycleTime')" class="grid gap-3">
               <article
                 v-for="card in cycleTimeCards"
                 :key="card.label"
@@ -687,12 +938,21 @@ function formatDuration(hours) {
           </article>
 
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-            <div>
-              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Atualização</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tempo sem mexer nas tarefas abertas</h3>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Atualização</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tempo sem mexer nas tarefas abertas</h3>
+              </div>
+              <button
+                type="button"
+                class="app-btn app-btn-secondary app-btn-sm"
+                @click="toggleDashboardContainer('updateFreshness')"
+              >
+                {{ isDashboardContainerCollapsed('updateFreshness') ? 'Expandir' : 'Recolher' }}
+              </button>
             </div>
 
-            <div class="grid gap-3">
+            <div v-if="!isDashboardContainerCollapsed('updateFreshness')" class="grid gap-3">
               <div
                 v-for="item in updateFreshnessSeries"
                 :key="item.label"
@@ -700,12 +960,17 @@ function formatDuration(hours) {
               >
                 <div class="flex items-center justify-between gap-3 text-sm">
                   <strong class="font-semibold text-slate-900">{{ item.label }}</strong>
-                  <span class="font-semibold text-slate-600">{{ item.value }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-700">{{ item.value }}</span>
+                    <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      {{ formatPercentage(item.share) }}
+                    </span>
+                  </div>
                 </div>
-                <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
-                    class="block h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400"
-                    :style="buildBarStyle(item.percentage)"
+                    class="block h-full rounded-full"
+                    :style="buildBarFillStyle(item.percentage, '#f97316', '#f59e0b')"
                   />
                 </div>
               </div>
@@ -715,12 +980,21 @@ function formatDuration(hours) {
 
         <div class="grid gap-5 xl:grid-cols-[minmax(0,0.82fr),minmax(0,1.18fr)]">
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-            <div>
-              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tipos abertos</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tipos de tarefa mais abertas</h3>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tipos abertos</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tipos de tarefa mais abertas</h3>
+              </div>
+              <button
+                type="button"
+                class="app-btn app-btn-secondary app-btn-sm"
+                @click="toggleDashboardContainer('mostOpenTypes')"
+              >
+                {{ isDashboardContainerCollapsed('mostOpenTypes') ? 'Expandir' : 'Recolher' }}
+              </button>
             </div>
 
-            <div v-if="mostOpenTypesSeries.length" class="grid gap-3">
+            <div v-if="!isDashboardContainerCollapsed('mostOpenTypes') && mostOpenTypesSeries.length" class="grid gap-3">
               <div
                 v-for="item in mostOpenTypesSeries"
                 :key="item.label"
@@ -728,19 +1002,24 @@ function formatDuration(hours) {
               >
                 <div class="flex items-center justify-between gap-3 text-sm">
                   <strong class="font-semibold text-slate-900">{{ item.label }}</strong>
-                  <span class="font-semibold text-slate-600">{{ item.value }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-700">{{ item.value }}</span>
+                    <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      {{ formatPercentage(item.share) }}
+                    </span>
+                  </div>
                 </div>
-                <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
-                    class="block h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
-                    :style="buildBarStyle(item.percentage)"
+                    class="block h-full rounded-full"
+                    :style="buildBarFillStyle(item.percentage, '#8b5cf6', '#d946ef')"
                   />
                 </div>
               </div>
             </div>
 
             <p
-              v-else
+              v-else-if="!isDashboardContainerCollapsed('mostOpenTypes')"
               class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
             >
               Nenhuma issue aberta o suficiente para montar este ranking agora.
@@ -748,15 +1027,24 @@ function formatDuration(hours) {
           </article>
 
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
-            <div>
-              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Resposta por tipo</p>
-              <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tempo medio por categoria</h3>
-              <p class="mt-3 text-sm leading-7 text-slate-600">
-                Leitura comparativa do tempo medio entre criação e ultimo movimento para cada tipo de tarefa.
-              </p>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Resposta por tipo</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Tempo medio por categoria</h3>
+                <p class="mt-3 text-sm leading-7 text-slate-600">
+                  Leitura comparativa do tempo medio entre criação e ultimo movimento para cada tipo de tarefa.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="app-btn app-btn-secondary app-btn-sm"
+                @click="toggleDashboardContainer('responseByType')"
+              >
+                {{ isDashboardContainerCollapsed('responseByType') ? 'Expandir' : 'Recolher' }}
+              </button>
             </div>
 
-            <div v-if="responseByTypeSeries.length" class="grid gap-3">
+            <div v-if="!isDashboardContainerCollapsed('responseByType') && responseByTypeSeries.length" class="grid gap-3">
               <div
                 v-for="item in responseByTypeSeries"
                 :key="item.label"
@@ -764,19 +1052,24 @@ function formatDuration(hours) {
               >
                 <div class="flex items-center justify-between gap-3">
                   <strong class="text-sm font-semibold text-slate-900">{{ item.label }}</strong>
-                  <span class="text-sm font-semibold text-slate-600">{{ item.formatted }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold text-slate-700">{{ item.formatted }}</span>
+                    <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      Indice {{ formatPercentage(item.percentage, 0) }}
+                    </span>
+                  </div>
                 </div>
-                <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
-                    class="block h-full rounded-full bg-gradient-to-r from-teal-500 to-cyan-500"
-                    :style="buildBarStyle(item.percentage)"
+                    class="block h-full rounded-full"
+                    :style="buildBarFillStyle(item.percentage, '#14b8a6', '#06b6d4')"
                   />
                 </div>
               </div>
             </div>
 
             <p
-              v-else
+              v-else-if="!isDashboardContainerCollapsed('responseByType')"
               class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
             >
               Ainda nao existe base temporal suficiente para comparar os tipos de tarefa.
@@ -789,29 +1082,59 @@ function formatDuration(hours) {
 
       <article
         v-else
-        class="themed-soft-surface grid gap-4 rounded-[24px] border border-slate-200 p-6"
+        class="themed-soft-surface grid gap-5 rounded-[24px] border border-slate-200 p-6"
       >
-        <div>
-          <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Financeiro</p>
-          <h3 class="mt-1 text-3xl font-semibold text-slate-950">Espaco reservado para os proximos indicadores</h3>
-          <p class="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-            Esta aba fica pronta para receber analises financeiras no futuro, sem misturar operação de tarefas com custo, receita ou margem.
-          </p>
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr),auto] lg:items-start">
+          <div>
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Financeiro</p>
+            <h3 class="mt-1 text-3xl font-semibold text-slate-950">Grupo Financeiro</h3>
+            <p class="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              Selecione o grupo financeiro para organizar o fluxo entre saidas e entradas sem misturar regras da operação de tarefas.
+            </p>
+          </div>
+
+          <div
+            class="inline-flex w-full max-w-full flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 p-1.5 lg:w-auto"
+          >
+            <button
+              v-for="financialGroupOption in financialGroupOptions"
+              :key="financialGroupOption.key"
+              type="button"
+              class="app-btn min-w-[170px]"
+              :class="activeFinancialGroupKey === financialGroupOption.key ? 'app-btn-tab-active' : 'app-btn-secondary'"
+              @click="activeFinancialGroupKey = financialGroupOption.key"
+            >
+              {{ financialGroupOption.label }}
+            </button>
+          </div>
         </div>
 
+        <article class="rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Grupo ativo</p>
+              <h4 class="mt-1 text-2xl font-semibold text-slate-950">{{ financialGroupTitle }}</h4>
+              <p class="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+                {{ financialGroupDescription }}
+              </p>
+            </div>
+
+            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              {{ activeFinancialGroup.label }}
+            </span>
+          </div>
+        </article>
+
         <div class="grid gap-3 sm:grid-cols-3">
-          <div class="rounded-2xl border border-slate-200 bg-white/85 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</span>
-            <strong class="mt-2 block text-base font-semibold text-slate-950">Planejado</strong>
-          </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/85 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Escopo futuro</span>
-            <strong class="mt-2 block text-base font-semibold text-slate-950">Custos, fluxo e previsoes</strong>
-          </div>
-          <div class="rounded-2xl border border-slate-200 bg-white/85 p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Aba</span>
-            <strong class="mt-2 block text-base font-semibold text-slate-950">Financeiro</strong>
-          </div>
+          <article
+            v-for="financialSummaryCard in financialSummaryCards"
+            :key="financialSummaryCard.label"
+            class="rounded-2xl border border-slate-200 bg-white/85 p-4"
+          >
+            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{{ financialSummaryCard.label }}</span>
+            <strong class="mt-2 block text-base font-semibold text-slate-950">{{ financialSummaryCard.value }}</strong>
+            <p class="mt-2 text-sm text-slate-500">{{ financialSummaryCard.note }}</p>
+          </article>
         </div>
       </article>
     </article>

@@ -710,11 +710,11 @@ function formatLocalTaskStatus(task) {
     return 'Falhou ao sincronizar'
   }
 
-  if (task?.syncState === 'PENDING') {
-    return 'Pendente de sincronização'
+  if (task?.state === 'CLOSED') {
+    return 'Fechada'
   }
 
-  return 'Sincronizada'
+  return 'Aberta'
 }
 
 function isGithubEntry(entry) {
@@ -737,6 +737,11 @@ function resolveEntryTitle(entry) {
 function resolveEntryNumberLabel(entry) {
   if (isGithubEntry(entry)) {
     return `#${entry.issue.number}`
+  }
+
+  const localTaskIdentifier = Number(entry?.localTask?.id || 0)
+  if (Number.isInteger(localTaskIdentifier) && localTaskIdentifier > 0) {
+    return `#${localTaskIdentifier}`
   }
 
   return '-'
@@ -775,7 +780,15 @@ function resolveEntryRepository(entry) {
     return entry.issue.repository?.nameWithOwner || 'Repositorio atual'
   }
 
-  return entry.localTask?.repositoryKey || 'Sem repositorio definido'
+  const localRepositoryKey = String(entry?.localTask?.repositoryKey || '').trim()
+
+  if (entry?.localTask?.syncState === 'PENDING') {
+    return localRepositoryKey !== ''
+      ? `${localRepositoryKey} - Pendente de sincronização`
+      : 'Pendente de sincronização'
+  }
+
+  return localRepositoryKey || 'Sem repositorio definido'
 }
 
 function resolveEntryLabels(entry) {

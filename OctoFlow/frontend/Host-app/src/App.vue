@@ -65,6 +65,7 @@ const notification = ref(null)
 const activeThemeKey = ref(DEFAULT_APP_THEME_KEY)
 const uiSettings = ref({ ...DEFAULT_UI_SETTINGS })
 const availableThemes = APP_THEME_OPTIONS
+const screenAuthValidationInProgress = ref(false)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 const effectiveSidebarExpanded = computed(() => isCompactViewport.value || sidebarExpanded.value)
@@ -149,6 +150,7 @@ async function handleLogin() {
 
     loginForm.password = ''
     activeView.value = 'dashboard'
+    await verifyAuthForScreenEntry('dashboard')
     showNotification('Login realizado com sucesso.', 'success')
   } catch (error) {
     showNotification(extractHttpMessage(error, 'Falha no login.'), 'error')
@@ -186,6 +188,7 @@ async function handleRegister() {
     loginForm.password = ''
     authMode.value = 'login'
     activeView.value = 'dashboard'
+    await verifyAuthForScreenEntry('dashboard')
     showNotification('Conta criada com sucesso.', 'success')
   } catch (error) {
     showNotification(extractHttpMessage(error, 'Falha ao criar conta.'), 'error')
@@ -215,6 +218,7 @@ async function handleGoogleCredential(credential) {
 
     activeView.value = 'dashboard'
     loginForm.password = ''
+    await verifyAuthForScreenEntry('dashboard')
     showNotification('Login com Google realizado com sucesso.', 'success')
   } catch (error) {
     showNotification(extractHttpMessage(error, 'Falha no login com Google.'), 'error')
@@ -229,6 +233,48 @@ function handleGoogleLoginError(error) {
 
 function switchAuthMode(mode) {
   authMode.value = mode === 'register' ? 'register' : 'login'
+}
+
+async function verifyAuthForScreenEntry(screenKey = activeView.value) {
+  if (!isAuthenticated.value || screenAuthValidationInProgress.value) {
+    return false
+  }
+
+  screenAuthValidationInProgress.value = true
+
+  try {
+    const response = await authRequest(
+      {
+        url: '/auth/me',
+        method: 'GET',
+      },
+      true,
+    )
+
+    const validatedUser = response.data?.user || null
+    if (!validatedUser) {
+      clearAuth()
+      showNotification('Sessao invalida. Faça login novamente.', 'warning')
+      return false
+    }
+
+    currentUser.value = validatedUser
+    return true
+  } catch (requestError) {
+    if (axios.isAxiosError(requestError) && requestError.response?.status === 401) {
+      clearAuth()
+      showNotification('Sessao expirada. Faça login novamente.', 'warning')
+      return false
+    }
+
+    showNotification(
+      extractHttpMessage(requestError, `Nao foi possivel validar a autenticação ao abrir a tela ${screenKey}.`),
+      'warning',
+    )
+    return false
+  } finally {
+    screenAuthValidationInProgress.value = false
+  }
 }
 
 async function loadCurrentUser(canRetry = true) {
@@ -302,8 +348,13 @@ async function logout() {
   }
 }
 
-function navigateTo(viewKey) {
+async function navigateTo(viewKey) {
   if (!isAuthenticated.value) {
+    return
+  }
+
+  const screenAuthIsValid = await verifyAuthForScreenEntry(viewKey)
+  if (!screenAuthIsValid) {
     return
   }
 
