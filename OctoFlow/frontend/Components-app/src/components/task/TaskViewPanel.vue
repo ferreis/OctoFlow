@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
+import { extractRequestErrorMessage } from '../../utils/requestErrors'
 
 const props = defineProps({
   request: {
@@ -46,128 +47,60 @@ async function loadTask(taskId) {
     task.value = response?.data?.item || null
   } catch (requestError) {
     task.value = null
-    error.value = extractMessage(requestError, 'Falha ao carregar detalhes da tarefa.')
+    error.value = extractRequestErrorMessage(requestError, 'Falha ao carregar detalhes da tarefa.')
   } finally {
     loading.value = false
   }
 }
 
-function extractMessage(error, fallback) {
-  if (error && typeof error === 'object') {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
+function statusLabel(taskEntry) {
+  return taskEntry?.completed ? 'Concluida' : 'Pendente'
+}
 
-    const message = error.message
-    if (typeof message === 'string' && message.trim() !== '') {
-      return message
-    }
-  }
-
-  return fallback
+function statusTone(taskEntry) {
+  return taskEntry?.completed ? 'app-status-badge--success' : 'app-status-badge--warning'
 }
 </script>
 
 <template>
-  <section class="task-block">
-    <h4>Visualizar tarefa</h4>
+  <section class="task-panel-block">
+    <h4 class="task-panel-title">Visualizar tarefa</h4>
 
-    <p v-if="!taskId" class="empty">Selecione uma tarefa na lista para visualizar.</p>
-    <p v-else-if="loading" class="empty">Carregando detalhes...</p>
-    <p v-else-if="error" class="feedback error">{{ error }}</p>
+    <p v-if="!taskId" class="task-panel-empty">Selecione uma tarefa na lista para visualizar.</p>
+    <p v-else-if="loading" class="task-panel-empty">Carregando detalhes...</p>
+    <p v-else-if="error" class="app-feedback app-feedback--danger task-panel-feedback">{{ error }}</p>
 
-    <div v-else-if="task" class="task-view-grid">
+    <div v-else-if="task" class="task-panel-view-grid">
       <div>
-        <p class="label">ID</p>
-        <p class="value">{{ task.id }}</p>
+        <p class="task-panel-meta-label">ID</p>
+        <p class="task-panel-meta-value">{{ task.id }}</p>
       </div>
       <div>
-        <p class="label">Titulo</p>
-        <p class="value">{{ task.title }}</p>
+        <p class="task-panel-meta-label">Titulo</p>
+        <p class="task-panel-meta-value">{{ task.title }}</p>
       </div>
       <div>
-        <p class="label">Descriçao</p>
-        <p class="value">{{ task.description || 'Sem Descriçao' }}</p>
+        <p class="task-panel-meta-label">Descricao</p>
+        <p class="task-panel-meta-value">{{ task.description || 'Sem descricao' }}</p>
       </div>
       <div>
-        <p class="label">Status</p>
-        <p class="value">{{ task.completed ? 'Concluida' : 'Pendente' }}</p>
+        <p class="task-panel-meta-label">Status</p>
+        <span class="app-status-badge" :class="statusTone(task)">{{ statusLabel(task) }}</span>
       </div>
       <div>
-        <p class="label">Owner</p>
-        <p class="value">{{ task.owner?.email || '-' }}</p>
+        <p class="task-panel-meta-label">Owner</p>
+        <p class="task-panel-meta-value">{{ task.owner?.email || '-' }}</p>
       </div>
     </div>
 
-    <button v-if="taskId" type="button" class="ghost" :disabled="loading" @click="loadTask(taskId)">
+    <button
+      v-if="taskId"
+      type="button"
+      class="task-panel-button task-panel-button--secondary"
+      :disabled="loading"
+      @click="loadTask(taskId)"
+    >
       {{ loading ? 'Atualizando...' : 'Atualizar view' }}
     </button>
   </section>
 </template>
-
-<style scoped>
-.task-block {
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  padding: 14px;
-}
-
-.task-block h4 {
-  margin: 0 0 10px;
-}
-
-.empty {
-  color: #64748b;
-  margin: 8px 0 0;
-}
-
-.feedback {
-  border-radius: 8px;
-  font-weight: 600;
-  margin-top: 10px;
-  padding: 8px 10px;
-}
-
-.feedback.error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-}
-
-.task-view-grid {
-  display: grid;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.label {
-  color: #64748b;
-  font-size: 0.8rem;
-  font-weight: 700;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-.value {
-  color: #0f172a;
-  font-weight: 600;
-  margin: 3px 0 0;
-}
-
-button {
-  background: #e2e8f0;
-  border: 0;
-  border-radius: 8px;
-  color: #0f172a;
-  cursor: pointer;
-  font-weight: 700;
-  margin-top: 12px;
-  padding: 8px 10px;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-</style>

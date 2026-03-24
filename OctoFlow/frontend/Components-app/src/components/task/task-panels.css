@@ -1,0 +1,265 @@
+.task-shell {
+  background: var(--app-panel-bg);
+  border: 1px solid var(--app-panel-border);
+  border-radius: 24px;
+  box-shadow: var(--app-panel-shadow);
+  color: var(--ink);
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.task-shell-header {
+  display: grid;
+  gap: 6px;
+}
+
+.task-shell-kicker {
+  color: var(--color-secondary);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.task-shell-title {
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.task-shell-copy {
+  color: var(--muted);
+  margin: 0;
+}
+
+.task-shell-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-shell-toolbar .task-panel-button {
+  min-height: 40px;
+}
+
+.task-shell-selected {
+  color: var(--muted);
+  margin: 0;
+}
+
+.task-shell-mount {
+  margin-top: 4px;
+}
+
+.task-panel-block {
+  border: 1px solid var(--app-panel-border);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.task-panel-title {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.task-panel-empty {
+  color: var(--muted);
+  margin: 0;
+}
+
+.task-panel-form {
+  display: grid;
+  gap: 10px;
+}
+
+.task-panel-field {
+  display: grid;
+  gap: 6px;
+}
+
+.task-panel-field-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.task-panel-field-control {
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.task-panel-field-area {
+  min-height: 120px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.task-panel-checkbox {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+}
+
+.task-panel-button {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 12px;
+  text-align: center;
+  transition:
+    border-color 0.2s ease,
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.task-panel-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.task-panel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.task-panel-button--primary {
+  background: var(--button-gradient);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: var(--button-primary-text);
+}
+
+.task-panel-button--secondary {
+  background: var(--app-field-bg);
+  border-color: var(--app-field-border);
+  color: var(--ink);
+}
+
+.task-panel-button--chip {
+  background: var(--app-chip-bg);
+  border-color: var(--app-chip-border);
+  color: var(--app-chip-text);
+}
+
+.task-panel-button--danger {
+  background: var(--app-feedback-danger-bg);
+  border-color: var(--app-feedback-danger-border);
+  color: var(--app-feedback-danger-text);
+}
+
+.task-panel-feedback {
+  margin: 0;
+}
+
+.task-panel-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-panel-item {
+  background: var(--app-panel-solid-bg);
+  border: 1px solid var(--app-panel-border);
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.task-panel-item.is-selected {
+  border-color: var(--app-panel-border-strong);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-secondary) 14%, transparent);
+}
+
+.task-panel-item-main {
+  min-width: 0;
+}
+
+.task-panel-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-panel-item-title {
+  color: var(--ink);
+  font-weight: 700;
+  margin: 0;
+}
+
+.task-panel-item-title.is-done {
+  color: var(--app-feedback-success-text);
+  text-decoration: line-through;
+}
+
+.task-panel-item-description {
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+.task-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.task-panel-view-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.task-panel-meta-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.task-panel-meta-value {
+  color: var(--ink);
+  font-weight: 600;
+  margin: 3px 0 0;
+}
+
+.task-panel-filter {
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+}
+
+.task-panel-filter-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .task-panel-item {
+    flex-direction: column;
+  }
+
+  .task-panel-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 680px) {
+  .task-shell-toolbar {
+    flex-direction: column;
+  }
+}

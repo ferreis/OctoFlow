@@ -1034,6 +1034,22 @@ select optgroup {
   --tw-ring-color: color-mix(in srgb, var(--danger) 34%, transparent) !important;
 }
 
+.accent-cyan-600 {
+  accent-color: var(--color-secondary) !important;
+}
+
+.shadow-\[0_12px_28px_rgba\(34\,211\,238\,0\.10\)\] {
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-secondary) 16%, transparent) !important;
+}
+
+.shadow-\[0_12px_32px_rgba\(15\,23\,42\,0\.05\)\],
+.shadow-\[0_16px_38px_rgba\(15\,23\,42\,0\.05\)\],
+.shadow-\[0_16px_40px_rgba\(15\,23\,42\,0\.06\)\],
+.shadow-\[0_18px_48px_rgba\(15\,23\,42\,0\.07\)\],
+.shadow-\[0_28px_80px_rgba\(15\,23\,42\,0\.28\)\] {
+  box-shadow: var(--app-panel-shadow) !important;
+}
+
 .hover\:bg-white:hover,
 .hover\:bg-slate-50:hover,
 .hover\:bg-slate-100:hover {

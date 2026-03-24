@@ -187,9 +187,9 @@ const issueStatusSeries = computed(() => {
       cardClass: 'border-emerald-200 bg-emerald-50/80',
       labelClass: 'text-emerald-700',
       valueClass: 'text-emerald-950',
-      barStartColor: '#10b981',
-      barEndColor: '#06b6d4',
-      strokeColor: '#10b981',
+      barStartColor: 'var(--app-chart-open-start)',
+      barEndColor: 'var(--app-chart-open-end)',
+      strokeColor: 'var(--app-chart-open-start)',
     },
     {
       label: 'Fechadas',
@@ -198,9 +198,9 @@ const issueStatusSeries = computed(() => {
       cardClass: 'border-slate-200 bg-slate-100/80',
       labelClass: 'text-slate-500',
       valueClass: 'text-slate-950',
-      barStartColor: '#3b82f6',
-      barEndColor: '#1d4ed8',
-      strokeColor: '#3b82f6',
+      barStartColor: 'var(--app-chart-closed-start)',
+      barEndColor: 'var(--app-chart-closed-end)',
+      strokeColor: 'var(--app-chart-closed-start)',
     },
   ]
 })
@@ -605,13 +605,13 @@ function buildBarFillStyle(percentage, startColor, endColor) {
     ...buildBarStyle(percentage),
     backgroundColor: startColor,
     backgroundImage: `linear-gradient(90deg, ${startColor} 0%, ${endColor} 100%)`,
-    boxShadow: '0 0 0 1px rgba(255,255,255,0.08) inset',
+    boxShadow: '0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent) inset',
   }
 }
 
 function buildBarTrackStyle() {
   return {
-    backgroundColor: 'rgba(148, 163, 184, 0.35)',
+    backgroundColor: 'var(--app-chart-track-bg)',
   }
 }
 
@@ -669,13 +669,13 @@ function toggleAllDashboardContainers() {
 
 <template>
   <section class="grid gap-5">
-    <article class="themed-hero-surface rounded-[28px] border border-white/60 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+    <article class="themed-hero-surface rounded-[28px] border border-white/60 p-5 app-depth-soft backdrop-blur">
       <div class="min-w-0">
         <h2 class="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Dashboard</h2>
       </div>
     </article>
 
-    <article class="grid gap-6 rounded-[28px] border border-white/60 bg-white/80 p-5 md:p-6 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+    <article class="grid gap-6 rounded-[28px] border border-white/60 bg-white/80 p-5 md:p-6 app-depth-soft backdrop-blur">
       <div class="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
         <div class="min-w-0">
           <div
@@ -770,7 +770,7 @@ function toggleAllDashboardContainers() {
           <article
             v-for="card in taskOverviewCards"
             :key="card.label"
-            class="rounded-[24px] border p-4 shadow-[0_16px_38px_rgba(15,23,42,0.05)]"
+            class="rounded-[24px] border p-4 app-depth-soft"
             :class="card.cardClass"
           >
             <span class="text-xs font-semibold uppercase tracking-[0.18em]" :class="card.labelClass">{{ card.label }}</span>
@@ -780,7 +780,7 @@ function toggleAllDashboardContainers() {
         </div>
 
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(0,0.95fr)]">
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Status atual</p>
@@ -828,9 +828,9 @@ function toggleAllDashboardContainers() {
                   />
                 </svg>
 
-                <div class="absolute inset-0 flex flex-col items-center justify-center gap-1 text-center leading-none">
+                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
                   <strong class="block text-3xl font-semibold leading-none text-slate-950">{{ issues.length }}</strong>
-                  <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Issues</span>
+                  <span class="mt-1 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Issues</span>
                 </div>
               </div>
 
@@ -863,7 +863,7 @@ function toggleAllDashboardContainers() {
             </div>
           </article>
 
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Fechamento</p>
@@ -899,7 +899,7 @@ function toggleAllDashboardContainers() {
                 <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
                     class="block h-full rounded-full"
-                    :style="buildBarFillStyle(item.percentage, '#06b6d4', '#0ea5e9')"
+                    :style="buildBarFillStyle(item.percentage, 'var(--app-chart-closure-start)', 'var(--app-chart-closure-end)')"
                   />
                 </div>
               </div>
@@ -908,7 +908,7 @@ function toggleAllDashboardContainers() {
         </div>
 
         <div class="grid gap-5 xl:grid-cols-[minmax(0,0.8fr),minmax(0,1.2fr)]">
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tempo medio</p>
@@ -937,7 +937,7 @@ function toggleAllDashboardContainers() {
             </div>
           </article>
 
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Atualização</p>
@@ -970,7 +970,7 @@ function toggleAllDashboardContainers() {
                 <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
                     class="block h-full rounded-full"
-                    :style="buildBarFillStyle(item.percentage, '#f97316', '#f59e0b')"
+                    :style="buildBarFillStyle(item.percentage, 'var(--app-chart-freshness-start)', 'var(--app-chart-freshness-end)')"
                   />
                 </div>
               </div>
@@ -979,7 +979,7 @@ function toggleAllDashboardContainers() {
         </div>
 
         <div class="grid gap-5 xl:grid-cols-[minmax(0,0.82fr),minmax(0,1.18fr)]">
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Tipos abertos</p>
@@ -1012,7 +1012,7 @@ function toggleAllDashboardContainers() {
                 <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
                     class="block h-full rounded-full"
-                    :style="buildBarFillStyle(item.percentage, '#8b5cf6', '#d946ef')"
+                    :style="buildBarFillStyle(item.percentage, 'var(--app-chart-types-start)', 'var(--app-chart-types-end)')"
                   />
                 </div>
               </div>
@@ -1026,7 +1026,7 @@ function toggleAllDashboardContainers() {
             </p>
           </article>
 
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Resposta por tipo</p>
@@ -1062,7 +1062,7 @@ function toggleAllDashboardContainers() {
                 <div class="mt-3 h-2.5 overflow-hidden rounded-full" :style="buildBarTrackStyle()">
                   <span
                     class="block h-full rounded-full"
-                    :style="buildBarFillStyle(item.percentage, '#14b8a6', '#06b6d4')"
+                    :style="buildBarFillStyle(item.percentage, 'var(--app-chart-response-start)', 'var(--app-chart-response-end)')"
                   />
                 </div>
               </div>
@@ -1109,7 +1109,7 @@ function toggleAllDashboardContainers() {
           </div>
         </div>
 
-        <article class="rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+        <article class="rounded-[22px] border border-white/80 bg-white/80 p-5 app-depth-soft">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Grupo ativo</p>

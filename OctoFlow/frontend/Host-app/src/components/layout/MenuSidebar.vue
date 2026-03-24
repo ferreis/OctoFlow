@@ -93,22 +93,22 @@ function handleMouseLeave() {
 
 <template>
   <aside
-    class="sticky top-0 flex h-screen max-h-screen flex-col border-r border-cyan-500/10 bg-slate-950/95 text-[var(--nav-text)] backdrop-blur transition-[width,padding] duration-200"
+    class="menu-sidebar sticky top-0 flex h-screen max-h-screen flex-col backdrop-blur transition-[width,padding] duration-200"
     :class="sidebarExpanded ? 'w-[272px] px-3 py-4' : 'w-[84px] px-2 py-4'" @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave">
 
     <!-- topo -->
-    <div class="rounded-2xl border border-cyan-500/15 bg-slate-900/80" :class="sidebarExpanded ? 'p-3' : 'p-2'">
+    <div class="menu-sidebar-panel rounded-2xl" :class="sidebarExpanded ? 'p-3' : 'p-2'">
       <div class="flex items-center" :class="sidebarExpanded ? 'gap-3' : 'justify-center'">
         <img src="/icon.ico" alt="OctoFlow"
-          class="h-11 w-11 shrink-0 rounded-xl border border-cyan-400/20 bg-cyan-500/10 object-cover p-1">
+          class="menu-logo h-11 w-11 shrink-0 rounded-xl object-cover p-1">
 
         <div class="min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-200"
           :class="sidebarExpanded ? 'max-w-[160px] opacity-100 translate-x-0' : 'max-w-0 opacity-0 -translate-x-2'">
-          <h1 class="truncate whitespace-nowrap text-lg font-semibold text-white">
+          <h1 class="menu-title truncate whitespace-nowrap text-lg font-semibold">
             OctoFlow
           </h1>
-          <p class="truncate whitespace-nowrap text-xs text-slate-400">
+          <p class="menu-subtitle truncate whitespace-nowrap text-xs">
             Painel interno
           </p>
         </div>
@@ -121,27 +121,27 @@ function handleMouseLeave() {
       <nav class="flex flex-col gap-2" aria-label="Navegação principal">
         <button v-for="item in primaryItems" :key="item.key" type="button" :disabled="!props.authenticated"
           :title="item.label" @click="navigate(item.key)"
-          class="group rounded-2xl border transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45"
+          class="menu-nav-item group rounded-2xl border transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45"
           :class="[
             sidebarExpanded
               ? 'flex w-full items-center gap-3 px-3 py-3 text-left'
               : 'flex h-14 w-full items-center justify-center px-0 py-0',
             item.key === props.activeKey
-              ? 'border-cyan-400/50 bg-cyan-500/15 shadow-[0_0_0_1px_rgba(34,211,238,0.08)]'
-              : 'border-white/8 bg-slate-900/70 hover:border-white/15 hover:bg-slate-900',
+              ? 'menu-nav-item-active'
+              : 'menu-nav-item-idle',
           ]">
           <span
-            class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-[var(--nav-text)]"
-            :class="item.key === props.activeKey ? 'bg-cyan-400/15' : 'bg-white/5'">
+            class="menu-nav-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black"
+            :class="item.key === props.activeKey ? 'menu-nav-icon-active' : 'menu-nav-icon-idle'">
             {{ item.short }}
           </span>
 
           <div class="min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-200"
             :class="sidebarExpanded ? 'max-w-[170px] opacity-100 translate-x-0' : 'max-w-0 opacity-0 -translate-x-2'">
-            <strong class="block truncate whitespace-nowrap text-sm font-semibold text-white">
+            <strong class="menu-nav-label block truncate whitespace-nowrap text-sm font-semibold">
               {{ item.label }}
             </strong>
-            <small class="block truncate whitespace-nowrap text-xs text-slate-400">
+            <small class="menu-nav-description block truncate whitespace-nowrap text-xs">
               {{ item.description }}
             </small>
           </div>
@@ -150,28 +150,28 @@ function handleMouseLeave() {
     </div>
 
     <!-- rodapé / perfil -->
-    <div class="mt-4 rounded-2xl border border-cyan-500/15 bg-slate-900/80" :class="sidebarExpanded ? 'p-3' : 'p-2'">
+    <div class="menu-sidebar-panel mt-4 rounded-2xl" :class="sidebarExpanded ? 'p-3' : 'p-2'">
 
       <button type="button" :disabled="!props.authenticated" :title="profileItem.label" @click="openProfile"
-        class="w-full rounded-2xl transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45" :class="[
+        class="menu-profile-button w-full rounded-2xl transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45" :class="[
           sidebarExpanded
             ? 'flex items-center gap-3 px-2 py-2 text-left'
             : 'flex h-14 items-center justify-center',
           profileSelected
-            ? 'bg-cyan-500/15 ring-1 ring-cyan-400/40'
-            : 'hover:bg-white/5',
+            ? 'menu-profile-button-active'
+            : 'menu-profile-button-idle',
         ]">
         <span
-          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-sm font-black text-white">
+          class="menu-profile-avatar inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black">
           {{ userInitial }}
         </span>
 
         <div class="min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-200"
           :class="sidebarExpanded ? 'max-w-[160px] opacity-100 translate-x-0' : 'max-w-0 opacity-0 -translate-x-2'">
-          <p class="truncate whitespace-nowrap text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+          <p class="menu-profile-kicker truncate whitespace-nowrap text-[11px] font-black uppercase tracking-[0.18em]">
             {{ profileItem.label }}
           </p>
-          <strong class="block truncate whitespace-nowrap text-sm font-semibold text-white">
+          <strong class="menu-profile-user block truncate whitespace-nowrap text-sm font-semibold">
             {{ userLabel }}
           </strong>
         </div>
@@ -179,10 +179,88 @@ function handleMouseLeave() {
 
       <button type="button" :disabled="!props.authenticated" :title="sidebarExpanded ? '' : 'Sair'"
         @click.stop="$emit('logout')"
-        class="mt-2 rounded-2xl border border-white/10 font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+        class="menu-logout mt-2 rounded-2xl border font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
         :class="sidebarExpanded ? 'h-11 w-full px-4' : 'h-12 w-full px-0'">
         {{ sidebarExpanded ? 'Sair' : 'S' }}
       </button>
     </div>
   </aside>
 </template>
+
+<style scoped>
+.menu-sidebar {
+  border-right: 1px solid var(--nav-border);
+  background-color: var(--nav-bg);
+  color: var(--nav-text);
+}
+
+.menu-sidebar-panel {
+  border: 1px solid var(--nav-border);
+  background: color-mix(in srgb, var(--nav-bg) 84%, var(--color-text) 16%);
+}
+
+.menu-logo {
+  border: 1px solid color-mix(in srgb, var(--color-secondary) 34%, transparent);
+  background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
+}
+
+.menu-title,
+.menu-nav-label,
+.menu-profile-user,
+.menu-nav-icon {
+  color: var(--nav-text);
+}
+
+.menu-subtitle,
+.menu-nav-description,
+.menu-profile-kicker {
+  color: var(--nav-muted);
+}
+
+.menu-nav-item {
+  border-color: var(--nav-border);
+}
+
+.menu-nav-item-idle {
+  background: var(--nav-card);
+}
+
+.menu-nav-item-idle:hover {
+  background: var(--nav-card-hover);
+  border-color: var(--nav-border-strong);
+}
+
+.menu-nav-item-active {
+  background: var(--nav-active-bg);
+  border-color: var(--nav-active-border);
+  box-shadow: var(--nav-active-shadow);
+}
+
+.menu-nav-icon-idle,
+.menu-profile-avatar {
+  background: color-mix(in srgb, var(--nav-card) 70%, var(--color-text) 30%);
+}
+
+.menu-nav-icon-active {
+  background: color-mix(in srgb, var(--color-secondary) 18%, transparent);
+}
+
+.menu-profile-button-active {
+  background: var(--nav-active-bg);
+  box-shadow: inset 0 0 0 1px var(--nav-active-border);
+}
+
+.menu-profile-button-idle:hover {
+  background: var(--nav-card);
+}
+
+.menu-logout {
+  border-color: var(--nav-border);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.menu-logout:hover:not(:disabled) {
+  background: var(--app-field-bg-hover);
+}
+</style>

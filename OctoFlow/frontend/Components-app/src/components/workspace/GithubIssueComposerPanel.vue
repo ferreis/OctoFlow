@@ -135,8 +135,8 @@ const labelOptions = computed(() => labels.value
 }
 
 .template-tile {
-  background: var(--app-choice-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
-  border: 1px solid var(--app-choice-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-choice-bg, var(--surface-strong));
+  border: 1px solid var(--app-choice-border, var(--line));
   border-radius: 20px;
   cursor: pointer;
   display: grid;
@@ -151,19 +151,19 @@ const labelOptions = computed(() => labels.value
 }
 
 .template-tile:hover {
-  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
-  border-color: var(--app-panel-border-strong, var(--color-secondary, #06b6d4));
+  background: var(--app-field-bg-hover);
+  border-color: var(--app-panel-border-strong, var(--color-secondary));
   transform: translateY(-1px);
 }
 
 .template-tile.active {
-  background: var(--app-choice-bg-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white));
-  border-color: var(--app-choice-border-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 32%, white));
-  box-shadow: var(--app-choice-shadow-active, 0 14px 28px rgba(14, 165, 233, 0.12));
+  background: var(--app-choice-bg-active, color-mix(in srgb, var(--color-secondary) 10%, white));
+  border-color: var(--app-choice-border-active, color-mix(in srgb, var(--color-secondary) 32%, white));
+  box-shadow: var(--app-choice-shadow-active);
 }
 
 .template-prefix {
-  color: var(--color-secondary, #06b6d4);
+  color: var(--color-secondary);
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0.18em;
@@ -171,12 +171,12 @@ const labelOptions = computed(() => labels.value
 }
 
 .template-tile strong {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font-size: 1rem;
 }
 
 .template-tile small {
-  color: var(--muted, #475569);
+  color: var(--muted);
   line-height: 1.5;
 }
 

@@ -26,7 +26,7 @@ defineProps({
 
 <style scoped>
 .section-kicker {
-  color: var(--color-secondary, #06b6d4);
+  color: var(--color-secondary);
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0.22em;
@@ -35,14 +35,14 @@ defineProps({
 }
 
 .section-title {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font-size: clamp(1.45rem, 2vw, 1.9rem);
   font-weight: 700;
   margin: 0.35rem 0 0;
 }
 
 .section-description {
-  color: var(--muted, #475569);
+  color: var(--muted);
   line-height: 1.75;
   margin: 0.75rem 0 0;
 }

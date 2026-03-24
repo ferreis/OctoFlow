@@ -14,6 +14,7 @@ import {
   formatTemplateTitle,
   resolveSelectLabel,
 } from '../../utils/issueTemplate'
+import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
   request: {
@@ -372,8 +373,7 @@ function normalizeLabelOption(label) {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-slate-950/55 px-4 py-6 backdrop-blur-sm" @click.self="$emit('close')">
-    <div class="themed-modal-surface mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+  <TaskModalShell @close="$emit('close')">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Nova tarefa</p>
@@ -579,6 +579,5 @@ function normalizeLabelOption(label) {
           :heading="isLocalMode ? 'Como a tarefa sera salva localmente' : 'Como a issue vai subir'"
         />
       </div>
-    </div>
-  </div>
+  </TaskModalShell>
 </template>

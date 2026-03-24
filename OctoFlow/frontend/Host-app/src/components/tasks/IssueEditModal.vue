@@ -5,11 +5,13 @@ import { RemoteMarkdownPreview as MarkdownPreview } from '../../federation/remot
 import { fetchGithubIssueDetails, updateGithubIssue } from '../../services/tasks'
 import { buildCurrentDateTimeLabel, formatDateTime } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { resolveHistoryBadgeToneClass } from '../../utils/statusTone'
 import {
   buildInitialFieldState,
   buildSubmissionFields,
   snapshotFieldValues,
 } from '../../utils/issueTemplate'
+import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
   request: {
@@ -654,23 +656,13 @@ function buildHistoryTitle(kind) {
 }
 
 function historyBadgeClass(kind) {
-  switch (normalizeHistoryKind(kind)) {
-    case 'created':
-      return 'border-cyan-200 bg-cyan-50 text-cyan-800'
-    case 'updated':
-      return 'border-amber-200 bg-amber-50 text-amber-800'
-    case 'closed':
-      return 'border-rose-200 bg-rose-50 text-rose-800'
-    default:
-      return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  }
+  return resolveHistoryBadgeToneClass(normalizeHistoryKind(kind))
 }
 
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-slate-950/55 px-4 py-6 backdrop-blur-sm" @click.self="$emit('close')">
-    <div class="themed-modal-surface mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+  <TaskModalShell @close="$emit('close')">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
@@ -772,7 +764,7 @@ function historyBadgeClass(kind) {
               </span>
             </div>
 
-            <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+            <div class="rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Descriçao</p>
                 <h3 class="mt-1 text-2xl font-semibold text-slate-950">Conteudo formatado</h3>
@@ -794,7 +786,7 @@ function historyBadgeClass(kind) {
             </p>
           </article>
 
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Historico</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Linha do tempo da issue</h3>
@@ -809,7 +801,7 @@ function historyBadgeClass(kind) {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <div class="flex min-w-0 flex-wrap items-center gap-2">
                     <span
-                      class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em]"
+                      class="app-status-badge app-status-badge--compact"
                       :class="historyBadgeClass(entry.kind)"
                     >
                       {{ entry.title }}
@@ -856,7 +848,7 @@ function historyBadgeClass(kind) {
           class="grid gap-5 xl:grid-cols-[minmax(0,1.08fr),minmax(320px,0.92fr)]"
         >
           <article class="grid gap-4">
-            <form class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]" @submit.prevent="saveIssue">
+            <form class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft" @submit.prevent="saveIssue">
               <div>
                 <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Modelos de atualização</p>
                 <h3 class="mt-1 text-2xl font-semibold text-slate-950">Escolha o template da atualização</h3>
@@ -1002,7 +994,7 @@ function historyBadgeClass(kind) {
             </form>
           </article>
 
-          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Preview Markdown</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Resultado final da atualização</h3>
@@ -1020,6 +1012,5 @@ function historyBadgeClass(kind) {
           </article>
         </div>
       </div>
-    </div>
-  </div>
+  </TaskModalShell>
 </template>

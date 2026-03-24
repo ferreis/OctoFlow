@@ -17,23 +17,21 @@ const projectsMeta = computed(() => props.workspace?.projectsMeta || { available
 
 function projectStatusStyle(option) {
   const palette = {
-    BLUE: '#2563eb',
-    GRAY: '#475569',
-    GREEN: '#15803d',
-    ORANGE: '#ea580c',
-    PINK: '#db2777',
-    PURPLE: '#7c3aed',
-    RED: '#dc2626',
-    YELLOW: '#ca8a04',
+    BLUE: 'var(--app-project-tone-blue)',
+    GRAY: 'var(--app-project-tone-gray)',
+    GREEN: 'var(--app-project-tone-green)',
+    ORANGE: 'var(--app-project-tone-orange)',
+    PINK: 'var(--app-project-tone-pink)',
+    PURPLE: 'var(--app-project-tone-purple)',
+    RED: 'var(--app-project-tone-red)',
+    YELLOW: 'var(--app-project-tone-yellow)',
   }
 
   const normalizedColor = typeof option?.color === 'string' ? option.color.toUpperCase() : ''
-  const tone = palette[normalizedColor] || '#0f766e'
+  const tone = palette[normalizedColor] || 'var(--color-secondary)'
 
   return {
-    borderColor: tone,
-    background: `${tone}18`,
-    color: tone,
+    '--project-tone': tone,
   }
 }
 </script>
@@ -107,8 +105,8 @@ function projectStatusStyle(option) {
 }
 
 .project-item {
-  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: color-mix(in srgb, var(--surface-muted) 88%, white);
+  border: 1px solid var(--line);
   border-radius: 18px;
   display: grid;
   gap: 0.75rem;
@@ -124,22 +122,22 @@ function projectStatusStyle(option) {
 }
 
 .project-copy strong {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   display: block;
   font-size: 1rem;
 }
 
 .project-copy p {
-  color: var(--muted, #475569);
+  color: var(--muted);
   margin: 0.45rem 0 0;
 }
 
 .project-link {
   align-items: center;
-  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
-  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
   border-radius: 14px;
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   display: inline-flex;
   font-size: 0.9rem;
   font-weight: 700;
@@ -153,8 +151,8 @@ function projectStatusStyle(option) {
 }
 
 .project-link:hover {
-  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
-  border-color: var(--app-panel-border-strong, var(--color-secondary, #06b6d4));
+  background: var(--app-field-bg-hover);
+  border-color: var(--app-panel-border-strong);
   transform: translateY(-1px);
 }
 
@@ -165,6 +163,9 @@ function projectStatusStyle(option) {
 }
 
 .status-pill {
+  background: color-mix(in srgb, var(--project-tone) 16%, transparent);
+  border-color: var(--project-tone);
+  color: var(--project-tone);
   border: 1px solid;
   border-radius: 999px;
   display: inline-flex;

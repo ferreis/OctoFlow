@@ -15,6 +15,7 @@
   --app-panel-border: color-mix(in srgb, var(--line, rgba(148, 163, 184, 0.22)) 72%, var(--nav-border, rgba(255, 255, 255, 0.1)) 28%);
   --app-panel-border-strong: color-mix(in srgb, var(--line-strong, rgba(6, 182, 212, 0.24)) 58%, var(--color-secondary, #06b6d4) 42%);
   --app-panel-shadow: var(--shadow-lg, 0 22px 60px rgba(2, 6, 23, 0.28));
+
   --app-field-bg: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 82%, var(--nav-card, rgba(255, 255, 255, 0.06)) 18%);
   --app-field-bg-hover: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 72%, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 28%);
   --app-field-bg-focus: color-mix(in srgb, var(--surface-strong, rgba(15, 23, 42, 0.9)) 64%, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 36%);
@@ -22,14 +23,59 @@
   --app-field-border: color-mix(in srgb, var(--line, rgba(148, 163, 184, 0.22)) 74%, var(--nav-border, rgba(255, 255, 255, 0.1)) 26%);
   --app-field-border-focus: color-mix(in srgb, var(--color-secondary, #06b6d4) 58%, var(--line, rgba(148, 163, 184, 0.22)) 42%);
   --app-field-placeholder: color-mix(in srgb, var(--muted, #cbd5e1) 82%, var(--ink, #f8fafc) 18%);
+
   --app-choice-bg: var(--app-panel-solid-bg);
   --app-choice-bg-active: color-mix(in srgb, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 78%, var(--surface-strong, rgba(15, 23, 42, 0.9)) 22%);
   --app-choice-border: var(--app-panel-border);
   --app-choice-border-active: var(--app-panel-border-strong);
   --app-choice-shadow-active: 0 14px 28px rgba(14, 165, 233, 0.12);
+
   --app-chip-bg: color-mix(in srgb, var(--secondary-soft, rgba(6, 182, 212, 0.18)) 74%, var(--surface-strong, rgba(15, 23, 42, 0.9)) 26%);
   --app-chip-border: color-mix(in srgb, var(--color-secondary, #06b6d4) 42%, var(--line, rgba(148, 163, 184, 0.22)) 58%);
   --app-chip-text: color-mix(in srgb, var(--color-secondary, #06b6d4) 72%, var(--ink, #f8fafc) 28%);
+
+  --app-feedback-info-bg: var(--secondary-soft, color-mix(in srgb, var(--color-secondary, #06b6d4) 14%, transparent));
+  --app-feedback-info-border: color-mix(in srgb, var(--color-secondary, #06b6d4) 42%, var(--app-panel-border, transparent));
+  --app-feedback-info-text: var(--color-secondary, #06b6d4);
+  --app-feedback-success-bg: var(--success-bg, color-mix(in srgb, var(--success, #22c55e) 16%, transparent));
+  --app-feedback-success-border: color-mix(in srgb, var(--success, #22c55e) 42%, var(--app-panel-border, transparent));
+  --app-feedback-success-text: var(--success, #22c55e);
+  --app-feedback-warning-bg: var(--warning-bg, color-mix(in srgb, var(--warning, #f59e0b) 16%, transparent));
+  --app-feedback-warning-border: color-mix(in srgb, var(--warning, #f59e0b) 42%, var(--app-panel-border, transparent));
+  --app-feedback-warning-text: var(--warning, #f59e0b);
+  --app-feedback-danger-bg: var(--danger-bg, color-mix(in srgb, var(--danger, #ef4444) 16%, transparent));
+  --app-feedback-danger-border: color-mix(in srgb, var(--danger, #ef4444) 42%, var(--app-panel-border, transparent));
+  --app-feedback-danger-text: var(--danger, #ef4444);
+  --app-feedback-neutral-bg: var(--app-panel-bg-muted);
+  --app-feedback-neutral-border: var(--app-panel-border);
+  --app-feedback-neutral-text: var(--muted, #64748b);
+
+  --app-chart-track-bg: color-mix(in srgb, var(--line, rgba(148, 163, 184, 0.22)) 78%, transparent);
+  --app-chart-open-start: color-mix(in srgb, var(--success, #22c55e) 82%, var(--color-secondary, #06b6d4) 18%);
+  --app-chart-open-end: color-mix(in srgb, var(--color-secondary, #06b6d4) 74%, var(--success, #22c55e) 26%);
+  --app-chart-closed-start: color-mix(in srgb, var(--color-primary, #2563eb) 80%, var(--color-accent, #6366f1) 20%);
+  --app-chart-closed-end: color-mix(in srgb, var(--color-accent, #6366f1) 74%, var(--color-primary, #2563eb) 26%);
+  --app-chart-closure-start: color-mix(in srgb, var(--color-secondary, #06b6d4) 82%, var(--color-primary, #2563eb) 18%);
+  --app-chart-closure-end: color-mix(in srgb, var(--color-primary, #2563eb) 74%, var(--color-secondary, #06b6d4) 26%);
+  --app-chart-freshness-start: color-mix(in srgb, var(--warning, #f59e0b) 82%, var(--color-accent, #6366f1) 18%);
+  --app-chart-freshness-end: color-mix(in srgb, var(--color-accent, #6366f1) 76%, var(--warning, #f59e0b) 24%);
+  --app-chart-types-start: color-mix(in srgb, var(--color-accent, #6366f1) 80%, var(--danger, #ef4444) 20%);
+  --app-chart-types-end: color-mix(in srgb, var(--danger, #ef4444) 68%, var(--color-accent, #6366f1) 32%);
+  --app-chart-response-start: color-mix(in srgb, var(--color-secondary, #06b6d4) 74%, var(--success, #22c55e) 26%);
+  --app-chart-response-end: color-mix(in srgb, var(--success, #22c55e) 70%, var(--color-secondary, #06b6d4) 30%);
+
+  --app-modal-overlay-bg: var(--modal-backdrop, rgba(2, 6, 23, 0.55));
+  --app-modal-border: color-mix(in srgb, var(--app-panel-border, rgba(148, 163, 184, 0.22)) 72%, transparent);
+  --app-modal-shadow: 0 28px 80px color-mix(in srgb, var(--color-bg, #0f172a) 30%, transparent);
+
+  --app-project-tone-blue: color-mix(in srgb, var(--color-primary, #2563eb) 72%, var(--color-secondary, #06b6d4) 28%);
+  --app-project-tone-gray: color-mix(in srgb, var(--muted, #64748b) 82%, var(--ink, #0f172a) 18%);
+  --app-project-tone-green: color-mix(in srgb, var(--success, #22c55e) 86%, var(--color-secondary, #06b6d4) 14%);
+  --app-project-tone-orange: color-mix(in srgb, var(--warning, #f59e0b) 86%, var(--color-accent, #6366f1) 14%);
+  --app-project-tone-pink: color-mix(in srgb, var(--danger, #ef4444) 72%, var(--color-accent, #6366f1) 28%);
+  --app-project-tone-purple: color-mix(in srgb, var(--color-accent, #6366f1) 80%, var(--color-primary, #2563eb) 20%);
+  --app-project-tone-red: color-mix(in srgb, var(--danger, #ef4444) 84%, var(--warning, #f59e0b) 16%);
+  --app-project-tone-yellow: color-mix(in srgb, var(--warning, #f59e0b) 78%, var(--color-secondary, #06b6d4) 22%);
 }
 
 :root[data-high-contrast='true'] {
@@ -38,6 +84,7 @@
   --app-panel-solid-bg: var(--surface-strong);
   --app-panel-border: var(--line);
   --app-panel-border-strong: var(--line-strong);
+
   --app-field-bg: var(--surface-strong);
   --app-field-bg-hover: var(--surface);
   --app-field-bg-focus: var(--surface);
@@ -45,13 +92,48 @@
   --app-field-border: var(--line);
   --app-field-border-focus: var(--line-strong);
   --app-field-placeholder: var(--muted);
+
   --app-choice-bg: var(--surface-strong);
   --app-choice-bg-active: var(--surface);
   --app-choice-border: var(--line);
   --app-choice-border-active: var(--line-strong);
+
   --app-chip-bg: var(--surface);
   --app-chip-border: var(--line-strong);
   --app-chip-text: var(--ink);
+
+  --app-feedback-info-bg: var(--surface);
+  --app-feedback-info-border: var(--line-strong);
+  --app-feedback-info-text: var(--ink);
+  --app-feedback-success-bg: var(--surface);
+  --app-feedback-success-border: var(--line-strong);
+  --app-feedback-success-text: var(--ink);
+  --app-feedback-warning-bg: var(--surface);
+  --app-feedback-warning-border: var(--line-strong);
+  --app-feedback-warning-text: var(--ink);
+  --app-feedback-danger-bg: var(--surface);
+  --app-feedback-danger-border: var(--line-strong);
+  --app-feedback-danger-text: var(--ink);
+  --app-feedback-neutral-bg: var(--surface);
+  --app-feedback-neutral-border: var(--line);
+  --app-feedback-neutral-text: var(--ink);
+
+  --app-chart-track-bg: var(--line);
+  --app-chart-open-start: var(--color-secondary);
+  --app-chart-open-end: var(--color-secondary);
+  --app-chart-closed-start: var(--color-primary);
+  --app-chart-closed-end: var(--color-primary);
+  --app-chart-closure-start: var(--color-secondary);
+  --app-chart-closure-end: var(--color-secondary);
+  --app-chart-freshness-start: var(--warning);
+  --app-chart-freshness-end: var(--warning);
+  --app-chart-types-start: var(--color-accent);
+  --app-chart-types-end: var(--color-accent);
+  --app-chart-response-start: var(--color-secondary);
+  --app-chart-response-end: var(--color-secondary);
+
+  --app-modal-border: var(--line-strong);
+  --app-modal-shadow: 0 0 0 1px var(--line-strong);
 }
 
 .app-panel-standard,
@@ -165,4 +247,170 @@ select.app-field-control optgroup {
   background: var(--app-field-bg-hover);
   border-color: var(--app-panel-border-strong);
   transform: translateY(-1px);
+}
+
+.app-feedback {
+  border: 1px solid transparent;
+  border-radius: 16px;
+  font-weight: 600;
+  padding: 0.65rem 0.85rem;
+}
+
+.app-feedback--info {
+  background: var(--app-feedback-info-bg);
+  border-color: var(--app-feedback-info-border);
+  color: var(--app-feedback-info-text);
+}
+
+.app-feedback--success {
+  background: var(--app-feedback-success-bg);
+  border-color: var(--app-feedback-success-border);
+  color: var(--app-feedback-success-text);
+}
+
+.app-feedback--warning {
+  background: var(--app-feedback-warning-bg);
+  border-color: var(--app-feedback-warning-border);
+  color: var(--app-feedback-warning-text);
+}
+
+.app-feedback--danger {
+  background: var(--app-feedback-danger-bg);
+  border-color: var(--app-feedback-danger-border);
+  color: var(--app-feedback-danger-text);
+}
+
+.app-feedback--neutral {
+  background: var(--app-feedback-neutral-bg);
+  border-color: var(--app-feedback-neutral-border);
+  color: var(--app-feedback-neutral-text);
+}
+
+.app-status-badge {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  gap: 0.3rem;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  padding: 0.35rem 0.7rem;
+}
+
+.app-status-badge--compact {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-status-badge--info {
+  background: var(--app-feedback-info-bg);
+  border-color: var(--app-feedback-info-border);
+  color: var(--app-feedback-info-text);
+}
+
+.app-status-badge--success {
+  background: var(--app-feedback-success-bg);
+  border-color: var(--app-feedback-success-border);
+  color: var(--app-feedback-success-text);
+}
+
+.app-status-badge--warning {
+  background: var(--app-feedback-warning-bg);
+  border-color: var(--app-feedback-warning-border);
+  color: var(--app-feedback-warning-text);
+}
+
+.app-status-badge--danger {
+  background: var(--app-feedback-danger-bg);
+  border-color: var(--app-feedback-danger-border);
+  color: var(--app-feedback-danger-text);
+}
+
+.app-status-badge--neutral {
+  background: var(--app-feedback-neutral-bg);
+  border-color: var(--app-feedback-neutral-border);
+  color: var(--app-feedback-neutral-text);
+}
+
+.app-chart-track {
+  background: var(--app-chart-track-bg);
+}
+
+.app-depth-soft {
+  box-shadow: var(--app-panel-shadow);
+}
+
+.app-task-row-selected {
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-secondary) 16%, transparent);
+}
+
+.app-modal-overlay {
+  background: var(--app-modal-overlay-bg);
+  backdrop-filter: blur(4px);
+  inset: 0;
+  padding: 1.5rem 1rem;
+  position: fixed;
+  z-index: 50;
+}
+
+.app-modal-frame {
+  background: var(--modal-surface, var(--app-panel-bg));
+  border: 1px solid var(--app-modal-border);
+  border-radius: 32px;
+  box-shadow: var(--app-modal-shadow);
+}
+
+.app-notification-frame {
+  border: 1px solid transparent;
+}
+
+.app-notification-badge {
+  border-radius: 999px;
+}
+
+.app-notification-frame--info {
+  background: var(--app-feedback-info-bg);
+  border-color: var(--app-feedback-info-border);
+  color: var(--app-feedback-info-text);
+}
+
+.app-notification-badge--info {
+  background: color-mix(in srgb, var(--app-feedback-info-border) 30%, transparent);
+  color: var(--app-feedback-info-text);
+}
+
+.app-notification-frame--success {
+  background: var(--app-feedback-success-bg);
+  border-color: var(--app-feedback-success-border);
+  color: var(--app-feedback-success-text);
+}
+
+.app-notification-badge--success {
+  background: color-mix(in srgb, var(--app-feedback-success-border) 30%, transparent);
+  color: var(--app-feedback-success-text);
+}
+
+.app-notification-frame--warning {
+  background: var(--app-feedback-warning-bg);
+  border-color: var(--app-feedback-warning-border);
+  color: var(--app-feedback-warning-text);
+}
+
+.app-notification-badge--warning {
+  background: color-mix(in srgb, var(--app-feedback-warning-border) 30%, transparent);
+  color: var(--app-feedback-warning-text);
+}
+
+.app-notification-frame--danger {
+  background: var(--app-feedback-danger-bg);
+  border-color: var(--app-feedback-danger-border);
+  color: var(--app-feedback-danger-text);
+}
+
+.app-notification-badge--danger {
+  background: color-mix(in srgb, var(--app-feedback-danger-border) 30%, transparent);
+  color: var(--app-feedback-danger-text);
 }

@@ -291,7 +291,7 @@ function updateFieldValue(fieldKey, nextValue) {
 }
 
 .field span {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font-size: 0.95rem;
   font-weight: 700;
 }
@@ -299,10 +299,10 @@ function updateFieldValue(fieldKey, nextValue) {
 .field input,
 .field textarea,
 .field select {
-  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
-  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
   border-radius: 16px;
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font: inherit;
   outline: none;
   padding: 0.85rem 0.9rem;
@@ -316,21 +316,21 @@ function updateFieldValue(fieldKey, nextValue) {
 .field input::placeholder,
 .field textarea::placeholder,
 .field select::placeholder {
-  color: var(--app-field-placeholder, var(--muted, #475569));
+  color: var(--app-field-placeholder, var(--muted));
 }
 
 .field input:hover,
 .field textarea:hover,
 .field select:hover {
-  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
+  background: var(--app-field-bg-hover);
 }
 
 .field input:focus,
 .field textarea:focus,
 .field select:focus {
-  background: var(--app-field-bg-focus, var(--surface, rgba(19, 28, 50, 0.82)));
-  border-color: var(--app-field-border-focus, var(--color-secondary, #06b6d4));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #06b6d4) 18%, transparent);
+  background: var(--app-field-bg-focus);
+  border-color: var(--app-field-border-focus, var(--color-secondary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent);
 }
 
 .field textarea {
@@ -339,7 +339,7 @@ function updateFieldValue(fieldKey, nextValue) {
 }
 
 .field small {
-  color: var(--muted, #475569);
+  color: var(--muted);
 }
 
 .form-actions {
@@ -362,16 +362,16 @@ function updateFieldValue(fieldKey, nextValue) {
 }
 
 .primary-action {
-  background: var(--button-gradient, linear-gradient(135deg, #4f46e5 0%, #06b6d4 54%, #3b82f6 100%));
+  background: var(--button-gradient);
   border: 0;
-  color: var(--button-primary-text, #f8fafc);
-  box-shadow: var(--button-shadow, 0 14px 30px rgba(6, 182, 212, 0.22));
+  color: var(--button-primary-text);
+  box-shadow: var(--button-shadow);
 }
 
 .secondary-action {
-  background: var(--app-panel-solid-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
-  border: 1px solid var(--app-panel-border, var(--line, rgba(148, 163, 184, 0.22)));
-  color: var(--ink, #0f172a);
+  background: var(--app-panel-solid-bg, var(--surface-strong));
+  border: 1px solid var(--app-panel-border);
+  color: var(--ink);
 }
 
 @media (max-width: 768px) {

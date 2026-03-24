@@ -1,9 +1,30 @@
 @import "tailwindcss";
 @import "../../shared/styles/app-visual-standard.css";
+@import "./components/task/task-panels.css";
 
 :root {
+  font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root:not([data-theme]) {
   background: var(--color-bg, #f8fafc);
   color: var(--color-text, #0f172a);
+  --color-primary: #2563eb;
+  --color-secondary: #06b6d4;
+  --color-accent: #6366f1;
+  --color-bg: #f8fafc;
+  --color-text: #0f172a;
+  --danger: #b91c1c;
+  --danger-bg: color-mix(in srgb, var(--danger) 14%, transparent);
+  --success: #166534;
+  --success-bg: color-mix(in srgb, var(--success) 14%, transparent);
+  --warning: #b45309;
+  --warning-bg: color-mix(in srgb, var(--warning) 14%, transparent);
   --surface: rgba(19, 28, 50, 0.82);
   --surface-strong: rgba(15, 23, 42, 0.9);
   --surface-muted: rgba(30, 41, 59, 0.76);
@@ -15,12 +36,11 @@
   --nav-border: rgba(255, 255, 255, 0.1);
   --secondary-soft: rgba(6, 182, 212, 0.18);
   --shadow-lg: 0 22px 60px rgba(2, 6, 23, 0.28);
-  font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
-  font-synthesis: none;
-  line-height: 1.5;
-  text-rendering: optimizeLegibility;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-font-smoothing: antialiased;
+  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 52%, var(--color-accent) 100%);
+  --button-shadow: 0 14px 30px color-mix(in srgb, var(--color-primary) 26%, transparent);
+  --button-primary-text: #f8fafc;
+  --modal-surface: var(--app-panel-bg);
+  --modal-backdrop: rgba(2, 6, 23, 0.55);
 }
 
 * {

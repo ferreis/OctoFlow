@@ -4,6 +4,7 @@ import { useNotification } from '../../composables/useNotification'
 import { formatDateTime } from '../../utils/date'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { resolveTaskEntryBadgeToneClass } from '../../utils/statusTone'
 import { fetchLocalTasks, fetchTaskUpdateTemplates } from '../../services/tasks'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
 import IssueEditModal from '../tasks/IssueEditModal.vue'
@@ -756,15 +757,11 @@ function resolveEntryStatusLabel(entry) {
 }
 
 function resolveEntryStatusClass(entry) {
-  if (isGithubEntry(entry)) {
-    return entry.issue.state === 'CLOSED'
-      ? 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
-      : 'bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200'
-  }
+  const entryType = isGithubEntry(entry) ? 'github' : 'local'
+  const issueState = isGithubEntry(entry) ? entry.issue.state : ''
+  const localSyncState = isGithubEntry(entry) ? '' : entry.localTask?.syncState
 
-  return entry.localTask?.syncState === 'FAILED'
-    ? 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
-    : 'bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200'
+  return resolveTaskEntryBadgeToneClass(entryType, issueState, localSyncState)
 }
 
 function resolveEntryAssignees(entry) {
@@ -807,7 +804,7 @@ function resolveEntryOriginLabel(entry) {
 
 <template>
   <section class="grid gap-5">
-    <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+    <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 app-depth-soft backdrop-blur">
       <div class="flex flex-col gap-3">
         <div class="min-w-0">
           <h2 class="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{{ scopeTitle }}</h2>
@@ -854,7 +851,7 @@ function resolveEntryOriginLabel(entry) {
     </article>
 
     <article
-      class="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+      class="rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
           <h3 class="mt-1 text-2xl font-semibold text-slate-950">Filtros</h3>
@@ -974,7 +971,7 @@ function resolveEntryOriginLabel(entry) {
       </div>
     </article>
 
-    <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.07)] backdrop-blur">
+    <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 app-depth-soft backdrop-blur">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 class="text-xl font-semibold text-slate-950">Listagem de tarefas</h3>
@@ -1000,7 +997,7 @@ function resolveEntryOriginLabel(entry) {
       <div v-else class="mt-4 grid gap-2">
         <button v-for="entry in paginatedTaskEntries" :key="entry.entryKey" type="button"
           class="w-full rounded-xl border px-4 py-3 text-left transition-all" :class="isGithubEntry(entry) && entry.issue.id === selectedIssueId
-              ? 'border-cyan-300 bg-cyan-50/70 shadow-[0_12px_28px_rgba(34,211,238,0.10)]'
+              ? 'border-cyan-300 bg-cyan-50/70 app-task-row-selected'
               : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
             " @click="openTaskEntry(entry)">
           <div class="space-y-3">
@@ -1027,7 +1024,7 @@ function resolveEntryOriginLabel(entry) {
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                   Status
                 </p>
-                <span class="mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-bold" :class="resolveEntryStatusClass(entry)">
+                <span class="app-status-badge mt-1" :class="resolveEntryStatusClass(entry)">
                   {{ resolveEntryStatusLabel(entry) }}
                 </span>
               </div>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, watch } from 'vue'
+import { resolveNotificationToneClasses } from '../../utils/statusTone'
 
 const props = defineProps({
   notification: {
@@ -31,37 +32,7 @@ const effectiveDuration = computed(() => {
 })
 
 const tone = computed(() => {
-  const type = String(props.notification?.type || 'info').toLowerCase()
-
-  if (type === 'success') {
-    return {
-      frame: 'border-emerald-200 bg-emerald-50/95 text-emerald-950 shadow-[0_22px_50px_rgba(22,101,52,0.18)]',
-      badge: 'bg-emerald-100 text-emerald-700',
-      title: 'Sucesso',
-    }
-  }
-
-  if (type === 'error') {
-    return {
-      frame: 'border-rose-200 bg-rose-50/95 text-rose-950 shadow-[0_22px_50px_rgba(185,28,28,0.16)]',
-      badge: 'bg-rose-100 text-rose-700',
-      title: 'Erro',
-    }
-  }
-
-  if (type === 'warning') {
-    return {
-      frame: 'border-amber-200 bg-amber-50/95 text-amber-950 shadow-[0_22px_50px_rgba(217,119,6,0.16)]',
-      badge: 'bg-amber-100 text-amber-700',
-      title: 'Aviso',
-    }
-  }
-
-  return {
-    frame: 'border-cyan-200 bg-cyan-50/95 text-cyan-950 shadow-[0_22px_50px_rgba(8,145,178,0.16)]',
-    badge: 'bg-cyan-100 text-cyan-700',
-    title: 'Informação',
-  }
+  return resolveNotificationToneClasses(props.notification?.type)
 })
 
 watch(
@@ -136,14 +107,14 @@ function closeNotification() {
       >
         <button
           type="button"
-          class="pointer-events-auto grid w-full gap-3 rounded-[24px] border p-4 text-left backdrop-blur"
+          class="pointer-events-auto app-notification-frame grid w-full gap-3 rounded-[24px] p-4 text-left backdrop-blur"
           :class="tone.frame"
           @mouseenter="pauseCloseTimer"
           @mouseleave="resumeCloseTimer"
           @click="closeNotification"
         >
           <div class="flex items-start justify-between gap-3">
-            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.2em]" :class="tone.badge">
+            <span class="app-notification-badge inline-flex items-center px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.2em]" :class="tone.badge">
               {{ tone.title }}
             </span>
             <span class="text-xs font-semibold opacity-70">Clique para fechar</span>

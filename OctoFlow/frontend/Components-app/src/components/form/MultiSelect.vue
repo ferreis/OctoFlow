@@ -513,8 +513,8 @@ function optionChipStyle(option) {
 
 .selection-shell {
   align-items: center;
-  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
-  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
   border-radius: 18px;
   display: flex;
   flex-wrap: wrap;
@@ -531,12 +531,12 @@ function optionChipStyle(option) {
 
 .selection-shell:hover,
 .is-open .selection-shell {
-  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
+  background: var(--app-field-bg-hover);
 }
 
 .is-open .selection-shell {
-  border-color: var(--app-field-border-focus, var(--color-secondary, #06b6d4));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #06b6d4) 18%, transparent);
+  border-color: var(--app-field-border-focus, var(--color-secondary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent);
 }
 
 .selection-list {
@@ -546,11 +546,11 @@ function optionChipStyle(option) {
 }
 
 .selection-chip {
-  background: var(--app-chip-bg, color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white));
+  background: var(--app-chip-bg, color-mix(in srgb, var(--color-secondary) 10%, white));
   align-items: center;
-  border: 1px solid var(--app-chip-border, color-mix(in srgb, var(--color-secondary, #06b6d4) 28%, white));
+  border: 1px solid var(--app-chip-border, color-mix(in srgb, var(--color-secondary) 28%, white));
   border-radius: 999px;
-  color: var(--app-chip-text, var(--ink, #0f172a));
+  color: var(--app-chip-text, var(--ink));
   display: inline-flex;
   gap: 0.4rem;
   max-width: 100%;
@@ -569,26 +569,26 @@ function optionChipStyle(option) {
 .selection-input {
   background: transparent;
   border: 0;
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   flex: 1 1 180px;
   min-width: 120px;
   outline: none;
 }
 
 .selection-input::placeholder {
-  color: var(--app-field-placeholder, var(--muted, #475569));
+  color: var(--app-field-placeholder, var(--muted));
 }
 
 .helper-text {
-  color: var(--muted, #475569);
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
 .dropdown-panel {
   background: var(--app-panel-bg, var(--surface-strong, white));
-  border: 1px solid var(--app-panel-border, var(--line, rgba(148, 163, 184, 0.22)));
+  border: 1px solid var(--app-panel-border);
   border-radius: 20px;
-  box-shadow: var(--app-panel-shadow, 0 18px 48px rgba(15, 23, 42, 0.09));
+  box-shadow: var(--app-panel-shadow);
   display: grid;
   gap: 0.35rem;
   left: 0;
@@ -614,20 +614,20 @@ function optionChipStyle(option) {
 }
 
 .dropdown-option strong {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
 }
 
 .dropdown-option small {
-  color: var(--muted, #475569);
+  color: var(--muted);
 }
 
 .dropdown-option.highlighted,
 .dropdown-option:hover {
-  background: var(--app-field-bg-hover, color-mix(in srgb, var(--color-secondary, #06b6d4) 8%, white));
+  background: var(--app-field-bg-hover, color-mix(in srgb, var(--color-secondary) 8%, white));
 }
 
 .empty-label {
-  color: var(--muted, #475569);
+  color: var(--muted);
   font-size: 0.92rem;
   margin: 0;
   padding: 0.8rem 0.9rem;

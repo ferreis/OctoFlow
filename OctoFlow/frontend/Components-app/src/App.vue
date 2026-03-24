@@ -9,7 +9,7 @@
 <style scoped>
 .remote-shell {
   align-items: center;
-  color: #0f172a;
+  color: var(--ink);
   display: grid;
   gap: 8px;
   margin: 0 auto;
@@ -25,7 +25,7 @@
 }
 
 .remote-shell p {
-  color: #334155;
+  color: var(--muted);
   margin: 0;
 }
 </style>

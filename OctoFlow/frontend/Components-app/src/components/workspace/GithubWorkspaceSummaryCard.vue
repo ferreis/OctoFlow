@@ -100,7 +100,7 @@ const requesterEmail = computed(() => {
 }
 
 .repository-title {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font-size: clamp(1.45rem, 2vw, 2rem);
   font-weight: 700;
   margin: 0.25rem 0 0;
@@ -108,17 +108,17 @@ const requesterEmail = computed(() => {
 }
 
 .repository-copy {
-  color: var(--muted, #475569);
+  color: var(--muted);
   line-height: 1.75;
   margin: 0.75rem 0 0;
   max-width: 48rem;
 }
 
 .requester-card {
-  background: color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white);
-  border: 1px solid var(--line, rgba(148, 163, 184, 0.22));
+  background: color-mix(in srgb, var(--surface-muted) 88%, white);
+  border: 1px solid var(--line);
   border-radius: 18px;
-  color: var(--muted, #475569);
+  color: var(--muted);
   display: grid;
   gap: 0.3rem;
   min-width: 220px;
@@ -135,7 +135,7 @@ const requesterEmail = computed(() => {
 
 .requester-card strong,
 .metric-card strong {
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font-size: 1.35rem;
   font-weight: 700;
 }
@@ -147,8 +147,8 @@ const requesterEmail = computed(() => {
 }
 
 .metric-card {
-  background: var(--app-panel-bg-muted, color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white));
-  border: 1px solid var(--app-panel-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-panel-bg-muted, color-mix(in srgb, var(--surface-muted) 88%, white));
+  border: 1px solid var(--app-panel-border);
   border-radius: 18px;
   display: grid;
   gap: 0.35rem;
@@ -156,8 +156,8 @@ const requesterEmail = computed(() => {
 }
 
 .metric-card-accent {
-  background: var(--app-choice-bg-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 10%, white));
-  border-color: var(--app-choice-border-active, color-mix(in srgb, var(--color-secondary, #06b6d4) 28%, white));
+  background: var(--app-choice-bg-active, color-mix(in srgb, var(--color-secondary) 10%, white));
+  border-color: var(--app-choice-border-active, color-mix(in srgb, var(--color-secondary) 28%, white));
 }
 
 .summary-actions {
@@ -168,10 +168,10 @@ const requesterEmail = computed(() => {
 
 .link-button {
   align-items: center;
-  background: var(--app-field-bg, var(--surface-strong, rgba(15, 23, 42, 0.9)));
-  border: 1px solid var(--app-field-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-field-bg);
+  border: 1px solid var(--app-field-border);
   border-radius: 14px;
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   display: inline-flex;
   font-size: 0.95rem;
   font-weight: 700;
@@ -185,17 +185,17 @@ const requesterEmail = computed(() => {
 }
 
 .link-button:hover {
-  background: var(--app-field-bg-hover, var(--surface, rgba(19, 28, 50, 0.82)));
-  border-color: var(--app-panel-border-strong, var(--color-secondary, #06b6d4));
+  background: var(--app-field-bg-hover);
+  border-color: var(--app-panel-border-strong, var(--color-secondary));
   transform: translateY(-1px);
 }
 
 .owner-pill {
   align-items: center;
-  background: var(--app-chip-bg, color-mix(in srgb, var(--surface-muted, #f8fafc) 88%, white));
-  border: 1px solid var(--app-chip-border, var(--line, rgba(148, 163, 184, 0.22)));
+  background: var(--app-chip-bg, color-mix(in srgb, var(--surface-muted) 88%, white));
+  border: 1px solid var(--app-chip-border, var(--line));
   border-radius: 999px;
-  color: var(--app-chip-text, var(--muted, #475569));
+  color: var(--app-chip-text, var(--muted));
   display: inline-flex;
   font-size: 0.8rem;
   font-weight: 700;

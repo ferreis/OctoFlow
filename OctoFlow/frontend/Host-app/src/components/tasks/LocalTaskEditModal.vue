@@ -6,6 +6,8 @@ import { fetchLocalTask, fetchTaskTemplates, syncLocalTaskToGithub, updateLocalT
 import { formatDateTime } from '../../utils/date'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { resolveHistoryBadgeToneClass } from '../../utils/statusTone'
+import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
   request: {
@@ -287,31 +289,12 @@ async function syncTask() {
 }
 
 function historyBadgeClass(kind) {
-  const normalizedKind = String(kind || '').trim().toLowerCase()
-
-  if (normalizedKind === 'created') {
-    return 'border-cyan-200 bg-cyan-50 text-cyan-800'
-  }
-
-  if (normalizedKind === 'updated') {
-    return 'border-amber-200 bg-amber-50 text-amber-800'
-  }
-
-  if (normalizedKind === 'failed') {
-    return 'border-rose-200 bg-rose-50 text-rose-800'
-  }
-
-  if (normalizedKind === 'synced') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  }
-
-  return 'border-indigo-200 bg-indigo-50 text-indigo-800'
+  return resolveHistoryBadgeToneClass(kind)
 }
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-slate-950/55 px-4 py-6 backdrop-blur-sm" @click.self="$emit('close')">
-    <div class="themed-modal-surface mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/60 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+  <TaskModalShell @close="$emit('close')">
       <header class="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
@@ -522,7 +505,7 @@ function historyBadgeClass(kind) {
                 >
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <span
-                      class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em]"
+                      class="app-status-badge app-status-badge--compact"
                       :class="historyBadgeClass(historyEntry.kind)"
                     >
                       {{ historyEntry.title }}
@@ -589,6 +572,5 @@ function historyBadgeClass(kind) {
           </div>
         </div>
       </div>
-    </div>
-  </div>
+  </TaskModalShell>
 </template>

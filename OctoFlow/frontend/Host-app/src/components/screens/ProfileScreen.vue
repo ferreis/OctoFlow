@@ -1545,8 +1545,8 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 }
 
 .repository-state.ignored {
-  background: color-mix(in srgb, #f59e0b 14%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
 }
 
 .repository-actions {
@@ -1561,13 +1561,13 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 }
 
 .button-danger {
-  background: color-mix(in srgb, #ef4444 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, #ef4444 24%, var(--line));
-  color: #b91c1c;
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--line));
+  color: var(--danger);
 }
 
 .button-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, #ef4444 14%, var(--surface));
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
 }
 
 .repository-pagination {

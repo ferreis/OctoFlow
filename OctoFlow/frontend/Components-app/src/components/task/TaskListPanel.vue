@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { extractRequestErrorMessage } from '../../utils/requestErrors'
 
 const props = defineProps({
   request: {
@@ -52,7 +53,7 @@ async function loadTasks() {
 
     tasks.value = response?.data?.items || []
   } catch (requestError) {
-    error.value = extractMessage(requestError, 'Falha ao carregar lista de tarefas.')
+    error.value = extractRequestErrorMessage(requestError, 'Falha ao carregar lista de tarefas.')
   } finally {
     loading.value = false
   }
@@ -88,7 +89,7 @@ async function removeTask(task) {
     emit('task-deleted', task.id)
     emit('task-status', `Tarefa ${task.id} removida.`)
   } catch (requestError) {
-    error.value = extractMessage(requestError, 'Falha ao remover tarefa.')
+    error.value = extractRequestErrorMessage(requestError, 'Falha ao remover tarefa.')
   } finally {
     rowLoadingId.value = null
   }
@@ -116,83 +117,73 @@ async function toggleStatus(task) {
     tasks.value = tasks.value.map((item) => (item.id === task.id ? updatedTask : item))
     emit('task-status', `Status da tarefa ${task.id} atualizado para ${updatedTask.completed ? 'Concluida' : 'Pendente'}.`)
   } catch (requestError) {
-    error.value = extractMessage(requestError, 'Falha ao atualizar status da tarefa.')
+    error.value = extractRequestErrorMessage(requestError, 'Falha ao atualizar status da tarefa.')
   } finally {
     rowLoadingId.value = null
   }
 }
 
-function extractMessage(error, fallback) {
-  if (error && typeof error === 'object') {
-    const responseMessage = error.response?.data?.message
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage
-    }
-
-    const message = error.message
-    if (typeof message === 'string' && message.trim() !== '') {
-      return message
-    }
-  }
-
-  return fallback
-}
-
 function statusLabel(task) {
   return task.completed ? 'Concluida' : 'Pendente'
+}
+
+function statusTone(task) {
+  return task.completed ? 'app-status-badge--success' : 'app-status-badge--info'
 }
 </script>
 
 <template>
-  <section class="task-block">
-    <header class="task-block-header">
-      <h4>Lista de tarefas</h4>
-      <button type="button" class="ghost" :disabled="loading" @click="loadTasks">
+  <section class="task-panel-block">
+    <header class="task-shell-toolbar">
+      <h4 class="task-panel-title">Lista de tarefas</h4>
+      <button type="button" class="task-panel-button task-panel-button--secondary" :disabled="loading" @click="loadTasks">
         {{ loading ? 'Atualizando...' : 'Atualizar' }}
       </button>
     </header>
 
-    <label class="filter-field">
-      <span>Filtro de status</span>
-      <select v-model="statusFilter" :disabled="loading">
+    <label class="task-panel-filter">
+      <span class="task-panel-filter-label">Filtro de status</span>
+      <select v-model="statusFilter" :disabled="loading" class="app-field-control task-panel-field-control">
         <option value="all">Todos</option>
         <option value="pending">Pendentes</option>
         <option value="completed">Concluidas</option>
       </select>
     </label>
 
-    <p v-if="error" class="feedback error">{{ error }}</p>
-    <p v-if="loading" class="empty">Carregando tarefas...</p>
-    <p v-else-if="filteredTasks.length === 0" class="empty">
+    <p v-if="error" class="app-feedback app-feedback--danger task-panel-feedback">{{ error }}</p>
+    <p v-if="loading" class="task-panel-empty">Carregando tarefas...</p>
+    <p v-else-if="filteredTasks.length === 0" class="task-panel-empty">
       {{ tasks.length === 0 ? 'Nenhuma tarefa encontrada.' : 'Nenhuma tarefa para o status selecionado.' }}
     </p>
 
-    <ul v-else class="task-list">
+    <ul v-else class="task-panel-list">
       <li
         v-for="task in filteredTasks"
         :key="task.id"
-        class="task-item"
-        :class="{ selected: task.id === selectedTaskId }"
+        class="task-panel-item"
+        :class="{ 'is-selected': task.id === selectedTaskId }"
         tabindex="0"
         @click="selectTask(task)"
         @keydown.enter.prevent="selectTask(task)"
         @keydown.space.prevent="selectTask(task)"
       >
-        <div class="task-main">
-          <div class="task-title-row">
-            <p class="task-title" :class="{ done: task.completed }">{{ task.title }}</p>
-            <span class="status-chip" :class="task.completed ? 'done' : 'pending'">{{ statusLabel(task) }}</span>
+        <div class="task-panel-item-main">
+          <div class="task-panel-title-row">
+            <p class="task-panel-item-title" :class="{ 'is-done': task.completed }">{{ task.title }}</p>
+            <span class="app-status-badge app-status-badge--compact" :class="statusTone(task)">
+              {{ statusLabel(task) }}
+            </span>
           </div>
-          <p class="task-description">{{ task.description || 'Sem Descriçao' }}</p>
+          <p class="task-panel-item-description">{{ task.description || 'Sem descricao' }}</p>
         </div>
 
-        <div class="task-actions">
-          <button type="button" class="ghost" @click.stop="openView(task)">View</button>
-          <button type="button" class="ghost" @click.stop="openEdit(task)">Editar</button>
-          <button type="button" class="tag" :disabled="rowLoadingId === task.id" @click.stop="toggleStatus(task)">
+        <div class="task-panel-actions">
+          <button type="button" class="task-panel-button task-panel-button--secondary" @click.stop="openView(task)">View</button>
+          <button type="button" class="task-panel-button task-panel-button--secondary" @click.stop="openEdit(task)">Editar</button>
+          <button type="button" class="task-panel-button task-panel-button--chip" :disabled="rowLoadingId === task.id" @click.stop="toggleStatus(task)">
             Status
           </button>
-          <button type="button" class="danger" :disabled="rowLoadingId === task.id" @click.stop="removeTask(task)">
+          <button type="button" class="task-panel-button task-panel-button--danger" :disabled="rowLoadingId === task.id" @click.stop="removeTask(task)">
             Excluir
           </button>
         </div>
@@ -200,168 +191,3 @@ function statusLabel(task) {
     </ul>
   </section>
 </template>
-
-<style scoped>
-.task-block {
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  padding: 14px;
-}
-
-.task-block-header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-
-.filter-field {
-  color: #334155;
-  display: grid;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.filter-field span {
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-.filter-field select {
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  color: #0f172a;
-  padding: 8px 10px;
-}
-
-.task-block-header h4 {
-  margin: 0;
-}
-
-.feedback {
-  border-radius: 8px;
-  font-weight: 600;
-  margin-top: 10px;
-  padding: 8px 10px;
-}
-
-.feedback.error {
-  background: var(--danger-bg, #fef2f2);
-  border: 1px solid color-mix(in srgb, var(--danger, #ef4444) 28%, transparent);
-  color: var(--danger, #991b1b);
-}
-
-.empty {
-  color: #64748b;
-  margin-top: 12px;
-}
-
-.task-list {
-  display: grid;
-  gap: 10px;
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-}
-
-.task-item {
-  background: var(--app-panel-bg, var(--surface-strong, #ffffff));
-  border: 1px solid var(--app-panel-border, #e2e8f0);
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  padding: 10px;
-}
-
-.task-item.selected {
-  border-color: var(--app-panel-border-strong, #0f766e);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-secondary, #06b6d4) 14%, transparent);
-}
-
-.task-title-row {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.task-title {
-  color: #0f172a;
-  font-weight: 700;
-  margin: 0;
-}
-
-.task-title.done {
-  color: #0f766e;
-  text-decoration: line-through;
-}
-
-.task-description {
-  color: #475569;
-  margin: 4px 0 0;
-}
-
-.status-chip {
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 4px 8px;
-}
-
-.status-chip.done {
-  background: #ccfbf1;
-  color: #115e59;
-}
-
-.status-chip.pending {
-  background: #e0f2fe;
-  color: #075985;
-}
-
-.task-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-button {
-  background: linear-gradient(90deg, #0f766e 0%, #0369a1 100%);
-  border: 0;
-  border-radius: 8px;
-  color: #ffffff;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 8px 10px;
-}
-
-button.ghost {
-  background: var(--app-field-bg, #e2e8f0);
-  color: var(--ink, #0f172a);
-}
-
-button.tag {
-  background: var(--app-chip-bg, #f1f5f9);
-  color: var(--app-chip-text, #0f172a);
-}
-
-button.danger {
-  background: #ef4444;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-@media (max-width: 700px) {
-  .task-item {
-    flex-direction: column;
-  }
-
-  .task-actions {
-    justify-content: flex-start;
-  }
-}
-</style>
