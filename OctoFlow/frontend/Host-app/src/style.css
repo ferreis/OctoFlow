@@ -312,6 +312,85 @@
   --markdown-pre-bg: #020617;
 }
 
+:root[data-theme='personalizado'] {
+  --theme-primary: var(--custom-theme-primary, #4f46e5);
+  --theme-secondary: var(--custom-theme-secondary, #06b6d4);
+  --theme-accent: var(--custom-theme-accent, #3b82f6);
+  --theme-bg: var(--custom-theme-bg, #0f172a);
+  --theme-text: var(--custom-theme-text, #f8fafc);
+  --theme-danger: color-mix(in srgb, var(--theme-accent) 58%, #ef4444 42%);
+  --theme-success: color-mix(in srgb, var(--theme-secondary) 62%, #22c55e 38%);
+  --theme-warning: color-mix(in srgb, var(--theme-primary) 58%, #f59e0b 42%);
+  --color-primary: var(--theme-primary);
+  --color-secondary: var(--theme-secondary);
+  --color-accent: var(--theme-accent);
+  --color-bg: var(--theme-bg);
+  --color-text: var(--theme-text);
+  --bg-canvas:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-secondary) 20%, transparent), transparent 28%),
+    radial-gradient(circle at 85% 0%, color-mix(in srgb, var(--theme-primary) 18%, transparent), transparent 24%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bg) 92%, black 8%) 0%,
+      color-mix(in srgb, var(--theme-bg) 82%, var(--theme-primary) 18%) 46%,
+      color-mix(in srgb, var(--theme-bg) 90%, var(--theme-secondary) 10%) 100%
+    );
+  --surface: color-mix(in srgb, var(--theme-bg) 86%, var(--theme-text) 14%);
+  --surface-strong: color-mix(in srgb, var(--theme-bg) 92%, var(--theme-text) 8%);
+  --surface-muted: color-mix(in srgb, var(--theme-bg) 76%, var(--theme-text) 24%);
+  --line: color-mix(in srgb, var(--theme-text) 26%, transparent);
+  --line-strong: color-mix(in srgb, var(--theme-secondary) 30%, transparent);
+  --ink: var(--color-text);
+  --muted: color-mix(in srgb, var(--theme-text) 70%, var(--theme-bg) 30%);
+  --accent: var(--color-primary);
+  --accent-strong: color-mix(in srgb, var(--theme-text) 88%, var(--theme-bg) 12%);
+  --accent-alt: var(--color-secondary);
+  --primary-soft: color-mix(in srgb, var(--theme-primary) 18%, transparent);
+  --secondary-soft: color-mix(in srgb, var(--theme-secondary) 18%, transparent);
+  --accent-soft: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  --danger: var(--theme-danger);
+  --danger-bg: color-mix(in srgb, var(--theme-danger) 16%, transparent);
+  --success: var(--theme-success);
+  --success-bg: color-mix(in srgb, var(--theme-success) 16%, transparent);
+  --warning: var(--theme-warning);
+  --warning-bg: color-mix(in srgb, var(--theme-warning) 16%, transparent);
+  --shadow-lg: 0 22px 60px color-mix(in srgb, var(--theme-bg) 66%, transparent);
+  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 52%, var(--color-accent) 100%);
+  --button-shadow: 0 14px 30px color-mix(in srgb, var(--color-secondary) 24%, transparent);
+  --button-primary-text: color-mix(in srgb, var(--theme-text) 92%, var(--theme-bg) 8%);
+  --nav-bg: color-mix(in srgb, var(--theme-bg) 90%, transparent);
+  --nav-card: color-mix(in srgb, var(--theme-text) 8%, transparent);
+  --nav-card-hover: color-mix(in srgb, var(--theme-text) 14%, transparent);
+  --nav-border: color-mix(in srgb, var(--theme-text) 14%, transparent);
+  --nav-border-strong: color-mix(in srgb, var(--theme-text) 24%, transparent);
+  --nav-text: var(--theme-text);
+  --nav-muted: color-mix(in srgb, var(--theme-text) 72%, var(--theme-bg) 28%);
+  --nav-active-bg: color-mix(in srgb, var(--theme-secondary) 18%, transparent);
+  --nav-active-border: color-mix(in srgb, var(--theme-secondary) 34%, transparent);
+  --nav-active-shadow: 0 12px 30px color-mix(in srgb, var(--theme-secondary) 16%, transparent);
+  --hero-surface: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--theme-primary) 18%, transparent) 0%,
+    color-mix(in srgb, var(--theme-secondary) 10%, transparent) 44%,
+    color-mix(in srgb, var(--theme-accent) 14%, transparent) 100%
+  );
+  --modal-surface: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--theme-primary) 14%, transparent) 0%,
+    color-mix(in srgb, var(--theme-bg) 96%, transparent) 48%,
+    color-mix(in srgb, var(--theme-secondary) 12%, transparent) 100%
+  );
+  --soft-surface: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--theme-primary) 12%, transparent) 0%,
+    color-mix(in srgb, var(--theme-secondary) 10%, transparent) 52%,
+    color-mix(in srgb, var(--theme-accent) 12%, transparent) 100%
+  );
+  --modal-backdrop: color-mix(in srgb, var(--theme-bg) 62%, transparent);
+  --markdown-code-bg: color-mix(in srgb, var(--theme-text) 16%, transparent);
+  --markdown-pre-bg: color-mix(in srgb, var(--theme-bg) 96%, black 4%);
+}
+
 :root[data-high-contrast='true'] {
   --surface: color-mix(in srgb, var(--color-bg) 82%, var(--color-text) 18%);
   --surface-strong: color-mix(in srgb, var(--color-bg) 90%, var(--color-text) 10%);

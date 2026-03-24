@@ -2,6 +2,15 @@ export const DEFAULT_APP_THEME_KEY = 'original'
 export const DEFAULT_COLOR_VISION_MODE = 'none'
 export const DEFAULT_COLOR_VISION_INTENSITY = 100
 export const DEFAULT_FONT_SCALE = 'default'
+export const CUSTOM_THEME_KEY = 'personalizado'
+export const CUSTOM_THEME_COLOR_KEYS = Object.freeze(['primary', 'secondary', 'accent', 'bg', 'text'])
+export const DEFAULT_CUSTOM_THEME_PALETTE = Object.freeze({
+  primary: '#4f46e5',
+  secondary: '#06b6d4',
+  accent: '#3b82f6',
+  bg: '#0f172a',
+  text: '#f8fafc',
+})
 
 export const APP_THEME_OPTIONS = [
   {
@@ -69,6 +78,15 @@ export const APP_THEME_OPTIONS = [
       text: '#FFFFFF',
     },
   },
+  {
+    key: CUSTOM_THEME_KEY,
+    label: 'Personalizado',
+    description: 'Tema customizado com 5 cores escolhidas por voce.',
+    dark: true,
+    colors: {
+      ...DEFAULT_CUSTOM_THEME_PALETTE,
+    },
+  },
 ]
 
 export const COLOR_VISION_MODE_OPTIONS = [
@@ -128,6 +146,7 @@ export const DEFAULT_UI_SETTINGS = Object.freeze({
   colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
   highContrastEnabled: false,
   fontScale: DEFAULT_FONT_SCALE,
+  customThemePalette: { ...DEFAULT_CUSTOM_THEME_PALETTE },
 })
 
 const IDENTITY_COLOR_MATRIX = [
@@ -169,6 +188,36 @@ const colorVisionModeMap = new Map(COLOR_VISION_MODE_OPTIONS.map((option) => [op
 const fontScaleMap = new Map(FONT_SCALE_OPTIONS.map((option) => [option.key, option]))
 const UI_SETTINGS_STORAGE_PREFIX = 'octoflow.ui-settings.user.'
 const UI_SETTINGS_SESSION_PREFIX = 'octoflow.ui-settings.session.user.'
+const HEX_COLOR_PATTERN = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
+const CUSTOM_THEME_VARIABLE_MAP = Object.freeze({
+  primary: '--custom-theme-primary',
+  secondary: '--custom-theme-secondary',
+  accent: '--custom-theme-accent',
+  bg: '--custom-theme-bg',
+  text: '--custom-theme-text',
+})
+
+function expandHexColorIfNeeded(colorValue) {
+  if (typeof colorValue !== 'string' || colorValue.length !== 4) {
+    return colorValue
+  }
+
+  return `#${colorValue[1]}${colorValue[1]}${colorValue[2]}${colorValue[2]}${colorValue[3]}${colorValue[3]}`
+}
+
+function normalizeHexColor(value, fallbackColor) {
+  const normalizedValue = typeof value === 'string' ? value.trim() : ''
+  if (HEX_COLOR_PATTERN.test(normalizedValue)) {
+    return expandHexColorIfNeeded(normalizedValue).toLowerCase()
+  }
+
+  const normalizedFallback = typeof fallbackColor === 'string' ? fallbackColor.trim() : ''
+  if (HEX_COLOR_PATTERN.test(normalizedFallback)) {
+    return expandHexColorIfNeeded(normalizedFallback).toLowerCase()
+  }
+
+  return '#000000'
+}
 
 export function normalizeThemeKey(value) {
   const normalizedValue = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -218,6 +267,23 @@ export function normalizeFontScale(value) {
   return fontScaleMap.has(normalizedValue) ? normalizedValue : DEFAULT_FONT_SCALE
 }
 
+export function normalizeCustomThemePalette(value = {}, basePalette = DEFAULT_CUSTOM_THEME_PALETTE) {
+  const nextPaletteCandidate = value && typeof value === 'object' ? value : {}
+  const fallbackPalette = basePalette && typeof basePalette === 'object'
+    ? basePalette
+    : DEFAULT_CUSTOM_THEME_PALETTE
+  const normalizedPalette = {}
+
+  for (const colorKey of CUSTOM_THEME_COLOR_KEYS) {
+    normalizedPalette[colorKey] = normalizeHexColor(
+      nextPaletteCandidate?.[colorKey],
+      fallbackPalette?.[colorKey] ?? DEFAULT_CUSTOM_THEME_PALETTE[colorKey],
+    )
+  }
+
+  return normalizedPalette
+}
+
 export function normalizeUiSettingsPayload(settings = {}, baseSettings = DEFAULT_UI_SETTINGS) {
   const nextSettings = settings && typeof settings === 'object' ? settings : {}
   const fallbackSettings = baseSettings && typeof baseSettings === 'object'
@@ -230,6 +296,10 @@ export function normalizeUiSettingsPayload(settings = {}, baseSettings = DEFAULT
     colorVisionIntensity: normalizeColorVisionIntensity(nextSettings?.colorVisionIntensity ?? fallbackSettings?.colorVisionIntensity ?? DEFAULT_COLOR_VISION_INTENSITY),
     highContrastEnabled: normalizeHighContrastEnabled(nextSettings?.highContrastEnabled ?? fallbackSettings?.highContrastEnabled ?? false),
     fontScale: normalizeFontScale(nextSettings?.fontScale ?? fallbackSettings?.fontScale ?? DEFAULT_FONT_SCALE),
+    customThemePalette: normalizeCustomThemePalette(
+      nextSettings?.customThemePalette,
+      fallbackSettings?.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE,
+    ),
   }
 }
 
@@ -351,14 +421,47 @@ export function buildColorVisionFilterMatrix(mode, intensity = DEFAULT_COLOR_VIS
   )
 }
 
-export function applyThemeToDocument(themeKey) {
+function applyCustomThemePaletteToDocument(rootNode, customThemePalette) {
+  for (const colorKey of CUSTOM_THEME_COLOR_KEYS) {
+    rootNode.style.setProperty(CUSTOM_THEME_VARIABLE_MAP[colorKey], customThemePalette[colorKey])
+  }
+}
+
+function clearCustomThemePaletteFromDocument(rootNode) {
+  for (const cssVariableName of Object.values(CUSTOM_THEME_VARIABLE_MAP)) {
+    rootNode.style.removeProperty(cssVariableName)
+  }
+}
+
+function isColorDark(colorValue) {
+  const normalizedColor = normalizeHexColor(colorValue, '#000000')
+  const redChannel = Number.parseInt(normalizedColor.slice(1, 3), 16) / 255
+  const greenChannel = Number.parseInt(normalizedColor.slice(3, 5), 16) / 255
+  const blueChannel = Number.parseInt(normalizedColor.slice(5, 7), 16) / 255
+  const luminance = (0.2126 * redChannel) + (0.7152 * greenChannel) + (0.0722 * blueChannel)
+
+  return luminance < 0.52
+}
+
+export function applyThemeToDocument(themeKey, customThemePalette = DEFAULT_CUSTOM_THEME_PALETTE) {
   if (typeof document === 'undefined') {
     return
   }
 
   const theme = getThemeDefinition(themeKey)
-  document.documentElement.dataset.theme = theme.key
-  document.documentElement.style.colorScheme = theme.dark ? 'dark' : 'light'
+  const root = document.documentElement
+
+  root.dataset.theme = theme.key
+
+  if (theme.key === CUSTOM_THEME_KEY) {
+    const normalizedPalette = normalizeCustomThemePalette(customThemePalette)
+    applyCustomThemePaletteToDocument(root, normalizedPalette)
+    root.style.colorScheme = isColorDark(normalizedPalette.bg) ? 'dark' : 'light'
+    return
+  }
+
+  clearCustomThemePaletteFromDocument(root)
+  root.style.colorScheme = theme.dark ? 'dark' : 'light'
 }
 
 export function applyAccessibilityToDocument(settings = DEFAULT_UI_SETTINGS) {

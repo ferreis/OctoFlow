@@ -33,6 +33,17 @@ class UISettings
         'extra-large',
     ];
 
+    /**
+     * @var list<string>
+     */
+    public const CUSTOM_THEME_COLOR_KEYS = [
+        'primary',
+        'secondary',
+        'accent',
+        'bg',
+        'text',
+    ];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -56,6 +67,12 @@ class UISettings
 
     #[ORM\Column(length: 32, options: ['default' => self::FONT_SCALE_DEFAULT])]
     private string $fontScale = self::FONT_SCALE_DEFAULT;
+
+    /**
+     * @var array<string, string>|null
+     */
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $customThemePalette = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -176,6 +193,87 @@ class UISettings
     public function getUpdatedAt(): \DateTimeImmutable
     {
         return $this->updatedAt;
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    public function getCustomThemePalette(): ?array
+    {
+        if ($this->customThemePalette === null) {
+            return null;
+        }
+
+        return $this->normalizeCustomThemePalette($this->customThemePalette);
+    }
+
+    /**
+     * @param array<string, mixed>|null $customThemePalette
+     */
+    public function setCustomThemePalette(?array $customThemePalette): self
+    {
+        if ($customThemePalette === null) {
+            $this->customThemePalette = null;
+            $this->touch();
+
+            return $this;
+        }
+
+        $this->customThemePalette = $this->normalizeCustomThemePalette($customThemePalette);
+        $this->touch();
+
+        return $this;
+    }
+
+    /**
+     * @param array<string, mixed> $customThemePalette
+     *
+     * @return array<string, string>
+     */
+    private function normalizeCustomThemePalette(array $customThemePalette): array
+    {
+        $providedKeys = array_keys($customThemePalette);
+        sort($providedKeys);
+
+        $expectedKeys = self::CUSTOM_THEME_COLOR_KEYS;
+        sort($expectedKeys);
+
+        if ($providedKeys !== $expectedKeys) {
+            throw new \InvalidArgumentException('The custom theme palette must contain exactly: primary, secondary, accent, bg and text.');
+        }
+
+        $normalizedPalette = [];
+
+        foreach (self::CUSTOM_THEME_COLOR_KEYS as $colorKey) {
+            $rawColor = $customThemePalette[$colorKey] ?? null;
+            if (!is_string($rawColor)) {
+                throw new \InvalidArgumentException(sprintf('The custom theme color "%s" must be a HEX string.', $colorKey));
+            }
+
+            $normalizedPalette[$colorKey] = $this->normalizeHexColor($rawColor, $colorKey);
+        }
+
+        return $normalizedPalette;
+    }
+
+    private function normalizeHexColor(string $hexColor, string $colorKey): string
+    {
+        $normalizedColor = strtolower(trim($hexColor));
+
+        if (!preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/', $normalizedColor)) {
+            throw new \InvalidArgumentException(sprintf('The custom theme color "%s" must be a valid HEX color.', $colorKey));
+        }
+
+        if (strlen($normalizedColor) === 4) {
+            return sprintf(
+                '#%1$s%1$s%2$s%2$s%3$s%3$s',
+                $normalizedColor[1],
+                $normalizedColor[2],
+                $normalizedColor[3],
+            );
+        }
+
+        return $normalizedColor;
     }
 
     private function touch(): void

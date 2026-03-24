@@ -576,7 +576,7 @@ function applyUiSettingsLocally(settings = {}, baseSettings = uiSettings.value) 
   const nextSettings = normalizeUiSettings(settings, baseSettings)
   uiSettings.value = nextSettings
   activeThemeKey.value = nextSettings.themeKey
-  applyThemeToDocument(nextSettings.themeKey)
+  applyThemeToDocument(nextSettings.themeKey, nextSettings.customThemePalette)
   applyAccessibilityToDocument(nextSettings)
 
   return nextSettings
@@ -639,7 +639,7 @@ async function updateUiSettings(partialSettings = {}, options = {}) {
   const currentSettingsUser = currentUser.value
   const payload = {}
 
-  for (const fieldKey of ['themeKey', 'colorVisionMode', 'colorVisionIntensity', 'highContrastEnabled', 'fontScale']) {
+  for (const fieldKey of ['themeKey', 'colorVisionMode', 'colorVisionIntensity', 'highContrastEnabled', 'fontScale', 'customThemePalette']) {
     if (Object.prototype.hasOwnProperty.call(partialSettings, fieldKey)) {
       payload[fieldKey] = nextSettings[fieldKey]
     }

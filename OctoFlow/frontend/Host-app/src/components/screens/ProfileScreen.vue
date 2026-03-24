@@ -15,14 +15,18 @@ import { extractHttpMessage } from '../../utils/httpErrors'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
 import {
   COLOR_VISION_MODE_OPTIONS,
+  CUSTOM_THEME_COLOR_KEYS,
+  CUSTOM_THEME_KEY,
   DEFAULT_COLOR_VISION_INTENSITY,
   DEFAULT_COLOR_VISION_MODE,
+  DEFAULT_CUSTOM_THEME_PALETTE,
   DEFAULT_FONT_SCALE,
   FONT_SCALE_OPTIONS,
   getColorVisionModeDefinition,
   getFontScaleDefinition,
   normalizeColorVisionIntensity,
   normalizeColorVisionMode,
+  normalizeCustomThemePalette,
   normalizeFontScale,
   normalizeHighContrastEnabled,
   normalizeUiSettingsPayload,
@@ -79,6 +83,7 @@ const creatingAccount = ref(false)
 const savingAccountId = ref(0)
 const deletingAccountId = ref(0)
 const savingAccessibility = ref(false)
+const savingCustomTheme = ref(false)
 const savingRepositoryAccountId = ref(0)
 const savingRepositoryId = ref(0)
 const deletingRepositoryId = ref(0)
@@ -102,6 +107,9 @@ const accessibilityForm = reactive({
   highContrastEnabled: false,
   fontScale: DEFAULT_FONT_SCALE,
 })
+const customThemeForm = reactive({
+  ...DEFAULT_CUSTOM_THEME_PALETTE,
+})
 const { notifyUser } = useNotification(props.notify)
 
 const displayEmail = computed(() => props.currentUser?.defaultEmail || props.currentUser?.email || 'Nao definido')
@@ -121,10 +129,23 @@ const defaultRepositoryLabel = computed(() => {
 const colorVisionModeOptions = COLOR_VISION_MODE_OPTIONS
 const fontScaleOptions = FONT_SCALE_OPTIONS
 const normalizedUiSettings = computed(() => normalizeUiSettingsPayload(props.uiSettings || {}))
+const savedCustomThemePalette = computed(() => normalizeCustomThemePalette(normalizedUiSettings.value.customThemePalette))
 const savedColorVisionMode = computed(() => normalizeColorVisionMode(normalizedUiSettings.value.colorVisionMode))
 const savedColorVisionIntensity = computed(() => normalizeColorVisionIntensity(normalizedUiSettings.value.colorVisionIntensity))
 const savedHighContrastEnabled = computed(() => normalizeHighContrastEnabled(normalizedUiSettings.value.highContrastEnabled))
 const savedFontScale = computed(() => normalizeFontScale(normalizedUiSettings.value.fontScale))
+const customThemeColorPickers = [
+  { key: 'primary', label: 'Primaria' },
+  { key: 'secondary', label: 'Secundaria' },
+  { key: 'accent', label: 'Acento' },
+  { key: 'bg', label: 'Fundo' },
+  { key: 'text', label: 'Texto' },
+]
+const isCustomThemeActive = computed(() => normalizeUiSettingsPayload({ themeKey: props.activeThemeKey }).themeKey === CUSTOM_THEME_KEY)
+const hasCustomThemeChanges = computed(() => CUSTOM_THEME_COLOR_KEYS.some((colorKey) => (
+  customThemeForm[colorKey] !== savedCustomThemePalette.value[colorKey]
+)))
+const canSaveCustomTheme = computed(() => hasCustomThemeChanges.value || !isCustomThemeActive.value)
 const selectedColorVisionDefinition = computed(() => getColorVisionModeDefinition(accessibilityForm.colorVisionMode))
 const selectedFontScaleDefinition = computed(() => getFontScaleDefinition(accessibilityForm.fontScale))
 const accessibilityIntensityLabel = computed(() => (
@@ -184,6 +205,7 @@ watch(
   () => props.uiSettings,
   () => {
     syncAccessibilityForm()
+    syncCustomThemeForm()
   },
   {
     immediate: true,
@@ -354,6 +376,14 @@ function syncAccessibilityForm() {
   accessibilityForm.fontScale = savedFontScale.value
 }
 
+function syncCustomThemeForm() {
+  const normalizedCustomThemePalette = savedCustomThemePalette.value
+
+  for (const colorKey of CUSTOM_THEME_COLOR_KEYS) {
+    customThemeForm[colorKey] = normalizedCustomThemePalette[colorKey]
+  }
+}
+
 async function createAccount() {
   creatingAccount.value = true
   profileError.value = ''
@@ -520,9 +550,56 @@ function forwardSessionUpdate(session) {
   emit('session-updated', session)
 }
 
-function selectTheme(themeKey) {
-  if (typeof props.setTheme === 'function') {
-    props.setTheme(themeKey)
+async function selectTheme(themeKey) {
+  try {
+    if (themeKey === CUSTOM_THEME_KEY && typeof props.updateUiSettings === 'function') {
+      await props.updateUiSettings({
+        themeKey: CUSTOM_THEME_KEY,
+        customThemePalette: normalizeCustomThemePalette(customThemeForm),
+      })
+      return
+    }
+
+    if (typeof props.setTheme === 'function') {
+      await props.setTheme(themeKey)
+      return
+    }
+
+    if (typeof props.updateUiSettings === 'function') {
+      await props.updateUiSettings({ themeKey })
+    }
+  } catch {
+    // updateUiSettings ja exibe feedback de erro.
+  }
+}
+
+function restoreCustomThemeDefaults() {
+  const normalizedDefaultPalette = normalizeCustomThemePalette(DEFAULT_CUSTOM_THEME_PALETTE)
+
+  for (const colorKey of CUSTOM_THEME_COLOR_KEYS) {
+    customThemeForm[colorKey] = normalizedDefaultPalette[colorKey]
+  }
+}
+
+async function saveCustomTheme() {
+  if (typeof props.updateUiSettings !== 'function') {
+    return
+  }
+
+  savingCustomTheme.value = true
+
+  try {
+    await props.updateUiSettings(
+      {
+        themeKey: CUSTOM_THEME_KEY,
+        customThemePalette: normalizeCustomThemePalette(customThemeForm),
+      },
+      {
+        successMessage: 'Tema personalizado salvo e aplicado.',
+      },
+    )
+  } finally {
+    savingCustomTheme.value = false
   }
 }
 
@@ -1003,32 +1080,91 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
         </button>
       </div>
 
-      <div v-if="isSectionOpen('theme')" class="theme-grid">
-        <button
-          v-for="theme in themeOptions"
-          :key="theme.key"
-          type="button"
-          class="theme-option"
-          :class="{ selected: theme.key === activeThemeKey }"
-          :aria-pressed="theme.key === activeThemeKey"
-          @click="selectTheme(theme.key)"
-        >
-          <div class="theme-swatch-row" aria-hidden="true">
-            <span class="theme-swatch" :style="{ background: theme.colors.primary }" />
-            <span class="theme-swatch" :style="{ background: theme.colors.secondary }" />
-            <span class="theme-swatch" :style="{ background: theme.colors.accent }" />
-            <span class="theme-swatch theme-swatch-large" :style="{ background: theme.colors.bg }" />
-            <span class="theme-swatch theme-swatch-large" :style="{ background: theme.colors.text }" />
+      <div v-if="isSectionOpen('theme')" class="theme-stack">
+        <div class="theme-grid">
+          <button
+            v-for="theme in themeOptions"
+            :key="theme.key"
+            type="button"
+            class="theme-option"
+            :class="{ selected: theme.key === activeThemeKey }"
+            :aria-pressed="theme.key === activeThemeKey"
+            @click="selectTheme(theme.key)"
+          >
+            <div class="theme-swatch-row" aria-hidden="true">
+              <span class="theme-swatch" :style="{ background: theme.colors.primary }" />
+              <span class="theme-swatch" :style="{ background: theme.colors.secondary }" />
+              <span class="theme-swatch" :style="{ background: theme.colors.accent }" />
+              <span class="theme-swatch theme-swatch-large" :style="{ background: theme.colors.bg }" />
+              <span class="theme-swatch theme-swatch-large" :style="{ background: theme.colors.text }" />
+            </div>
+
+            <div class="theme-copy">
+              <div class="theme-copy-head">
+                <strong>{{ theme.label }}</strong>
+                <span class="theme-badge">{{ theme.key === activeThemeKey ? 'Ativo' : 'Aplicar' }}</span>
+              </div>
+              <p>{{ theme.description }}</p>
+            </div>
+          </button>
+        </div>
+
+        <section v-if="isCustomThemeActive" class="custom-theme-card">
+          <div class="panel-head-inline">
+            <div>
+              <p class="section-kicker">Personalizado</p>
+            </div>
+            <span class="theme-badge">{{ isCustomThemeActive ? 'Tema ativo' : 'Tema inativo' }}</span>
+          </div>
+          <div class="custom-theme-grid">
+            <label
+              v-for="picker in customThemeColorPickers"
+              :key="picker.key"
+              class="field custom-theme-field"
+            >
+              <span>{{ picker.label }}</span>
+              <div class="custom-theme-color-row">
+                <input
+                  v-model="customThemeForm[picker.key]"
+                  class="custom-theme-color-picker"
+                  type="color"
+                  :aria-label="`Cor ${picker.label}`"
+                >
+                <code class="custom-theme-color-value">{{ customThemeForm[picker.key] }}</code>
+              </div>
+            </label>
           </div>
 
-          <div class="theme-copy">
-            <div class="theme-copy-head">
-              <strong>{{ theme.label }}</strong>
-              <span class="theme-badge">{{ theme.key === activeThemeKey ? 'Ativo' : 'Aplicar' }}</span>
+          <div class="form-actions form-actions-between">
+            <div class="form-actions-inline">
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="savingCustomTheme || !hasCustomThemeChanges"
+                @click="syncCustomThemeForm"
+              >
+                Descartar alteracoes
+              </button>
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="savingCustomTheme"
+                @click="restoreCustomThemeDefaults"
+              >
+                Restaurar 5 cores padrao
+              </button>
             </div>
-            <p>{{ theme.description }}</p>
+
+            <button
+              class="button-primary"
+              type="button"
+              :disabled="savingCustomTheme || !canSaveCustomTheme"
+              @click="saveCustomTheme"
+            >
+              {{ savingCustomTheme ? 'Salvando...' : 'Salvar e aplicar personalizado' }}
+            </button>
           </div>
-        </button>
+        </section>
       </div>
     </article>
 
@@ -1288,6 +1424,65 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.theme-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.custom-theme-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.custom-theme-card h3 {
+  margin: 0;
+}
+
+.custom-theme-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.custom-theme-field {
+  gap: 8px;
+}
+
+.custom-theme-color-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.custom-theme-color-picker {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  height: 42px;
+  padding: 4px;
+  width: 52px;
+}
+
+.custom-theme-color-value {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-height: 34px;
+  padding: 0 12px;
+  text-transform: lowercase;
+  align-items: center;
 }
 
 .accessibility-status-grid {

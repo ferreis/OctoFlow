@@ -36,6 +36,7 @@ final class UISettingsManager
      *     colorVisionIntensity: int,
      *     highContrastEnabled: bool,
      *     fontScale: string,
+     *     customThemePalette: array<string, string>|null,
      *     updatedAt: string
      * }
      */
@@ -47,6 +48,7 @@ final class UISettingsManager
             'colorVisionIntensity' => $settings->getColorVisionIntensity(),
             'highContrastEnabled' => $settings->isHighContrastEnabled(),
             'fontScale' => $settings->getFontScale(),
+            'customThemePalette' => $settings->getCustomThemePalette(),
             'updatedAt' => $settings->getUpdatedAt()->format(\DATE_ATOM),
         ];
     }
@@ -76,7 +78,28 @@ final class UISettingsManager
             $settings->setFontScale((string) $payload['fontScale']);
         }
 
+        if (array_key_exists('customThemePalette', $payload)) {
+            $settings->setCustomThemePalette($this->normalizeCustomThemePalette($payload['customThemePalette']));
+        }
+
         return $settings;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function normalizeCustomThemePalette(mixed $value): ?array
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_array($value)) {
+            throw new \InvalidArgumentException('The custom theme palette payload is invalid.');
+        }
+
+        /** @var array<string, mixed> $value */
+        return $value;
     }
 
     private function normalizeIntensity(mixed $value): int
