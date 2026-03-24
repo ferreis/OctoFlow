@@ -6,7 +6,7 @@ return [
     'description' => 'Template para validar divergencias entre frontend, backend e regra esperada.',
     'access' => [],
     'titlePrefix' => 'question',
-    'defaultLabels' => ['question'],
+    'defaultLabels' => ['qa'],
     'fields' => [
         [
             'key' => 'moduleOrScreen',

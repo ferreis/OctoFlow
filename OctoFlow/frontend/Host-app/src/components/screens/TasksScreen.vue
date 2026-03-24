@@ -7,8 +7,7 @@ import { extractHttpMessage } from '../../utils/httpErrors'
 import { resolveTaskEntryBadgeToneClass } from '../../utils/statusTone'
 import { fetchLocalTasks, fetchTaskUpdateTemplates } from '../../services/tasks'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
-import IssueEditModal from '../tasks/IssueEditModal.vue'
-import LocalTaskEditModal from '../tasks/LocalTaskEditModal.vue'
+import WorkItemEditModal from '../tasks/WorkItemEditModal.vue'
 
 const props = defineProps({
   request: {
@@ -64,6 +63,28 @@ const localTasks = computed(() => Array.isArray(localTaskBoard.value?.items) ? l
 const localTaskStats = computed(() => localTaskBoard.value?.stats || { total: 0, pending: 0, failed: 0 })
 const editingIssue = computed(() => issues.value.find((issue) => issue.id === editingIssueId.value) || null)
 const editingLocalTask = computed(() => localTasks.value.find((task) => task.id === editingLocalTaskId.value) || null)
+const activeEditingMode = computed(() => {
+  if (editingIssue.value) {
+    return 'github'
+  }
+
+  if (editingLocalTask.value) {
+    return 'local'
+  }
+
+  return ''
+})
+const activeEditingKey = computed(() => {
+  if (activeEditingMode.value === 'github') {
+    return `github:${String(editingIssue.value?.id || '')}`
+  }
+
+  if (activeEditingMode.value === 'local') {
+    return `local:${String(editingLocalTask.value?.id || '')}`
+  }
+
+  return ''
+})
 const activeRepository = computed(() => issueBoard.value?.repository || null)
 const cacheMeta = computed(() => issueBoard.value?.cache || null)
 const repositoriesCount = computed(() => repositories.value.length)
@@ -523,10 +544,6 @@ function openIssueModal(issue) {
   error.value = ''
 }
 
-function closeIssueModal() {
-  editingIssueId.value = ''
-}
-
 function openLocalTaskModal(task) {
   editingLocalTaskId.value = task.id
   editingIssueId.value = ''
@@ -535,7 +552,8 @@ function openLocalTaskModal(task) {
   error.value = ''
 }
 
-function closeLocalTaskModal() {
+function closeWorkItemModal() {
+  editingIssueId.value = ''
   editingLocalTaskId.value = null
 }
 
@@ -589,6 +607,17 @@ async function handleLocalTaskSynced(payload) {
 
   await loadLocalTasks()
   await loadCachedIssues({ resetSelection: false, syncStrategy: 'force' })
+}
+
+async function handleWorkItemUpdated(eventPayload) {
+  if (eventPayload?.mode === 'github') {
+    handleIssueUpdated(eventPayload.payload || null)
+    return
+  }
+
+  if (eventPayload?.mode === 'local') {
+    await handleLocalTaskUpdated(eventPayload.payload || null)
+  }
 }
 
 function mergeIssueIntoBoard(updatedIssue) {
@@ -903,8 +932,8 @@ function resolveEntryOriginLabel(entry) {
             <select v-model="draftSourceFilter"
               class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
               <option value="all">Local e GitHub</option>
-              <option value="github">Apenas GitHub</option>
-              <option value="local">Apenas local</option>
+              <option value="github">GitHub</option>
+              <option value="local">Sistema</option>
             </select>
           </label>
 
@@ -1154,27 +1183,20 @@ function resolveEntryOriginLabel(entry) {
       @issue-created="handleIssueCreated"
     />
 
-    <IssueEditModal
-      v-if="editingIssue"
-      :key="editingIssue.id"
+    <WorkItemEditModal
+      v-if="activeEditingMode"
+      :key="activeEditingKey"
       :request="props.request"
       :notify="props.notify"
+      :current-user="props.currentUser"
+      :mode="activeEditingMode"
       :issue="editingIssue"
-      :update-templates="issueUpdateTemplates"
-      @close="closeIssueModal"
-      @issue-updated="handleIssueUpdated"
-    />
-
-    <LocalTaskEditModal
-      v-if="editingLocalTask"
-      :key="editingLocalTask.id"
-      :request="props.request"
-      :notify="props.notify"
       :task="editingLocalTask"
+      :update-templates="issueUpdateTemplates"
       :repositories="repositories"
-      @close="closeLocalTaskModal"
-      @task-updated="handleLocalTaskUpdated"
-      @task-synced="handleLocalTaskSynced"
+      @close="closeWorkItemModal"
+      @item-updated="handleWorkItemUpdated"
+      @item-synced="handleLocalTaskSynced"
     />
   </section>
 </template>

@@ -14,6 +14,10 @@ import {
   formatTemplateTitle,
   resolveSelectLabel,
 } from '../../utils/issueTemplate'
+import {
+  buildLabelNamesFromSelection,
+  buildMergedProjectLabelOptions,
+} from '../../utils/projectLabels'
 import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
@@ -80,11 +84,7 @@ const templates = computed(() => {
 })
 const repository = computed(() => workspace.value?.repository || null)
 const labels = computed(() => Array.isArray(repository.value?.labels) ? repository.value.labels : [])
-const labelOptions = computed(() => labels.value
-  .map((label) => normalizeLabelOption(label))
-  .filter((label) => label.id !== '' && label.name !== '')
-  .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' }))
-)
+const labelOptions = computed(() => buildMergedProjectLabelOptions(labels.value))
 const {
   fieldValues,
   selectedLabels,
@@ -113,7 +113,6 @@ const repositorySelection = computed(() => splitRepositoryKey(selectedRepository
 const localRepositorySelection = computed(() => splitRepositoryKey(selectedRepositoryKey.value))
 const previewTitle = computed(() => formatTemplateTitle(selectedTemplate.value, title.value))
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value, fieldValues), requesterEmail.value))
-const isFeatureRequestTemplate = computed(() => selectedTemplate.value?.key === 'feature-request')
 const activeError = computed(() => isLocalMode.value ? templatesError.value : workspaceError.value)
 const assignablePlaceholderLabel = computed(() => {
   if (loadingWorkspace.value && assignableUsers.value.length === 0) {
@@ -308,6 +307,7 @@ async function submitIssue() {
         templateKey: selectedTemplate.value.key,
         title: previewTitle.value,
         body: previewBody.value,
+        labelNames: buildLabelNamesFromSelection(selectedLabels.value),
         repositoryOwner: localRepositorySelection.value.owner || null,
         repositoryName: localRepositorySelection.value.name || null,
       })
@@ -348,28 +348,6 @@ async function submitIssue() {
   }
 }
 
-function normalizeLabelName(value) {
-  return String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-}
-
-function normalizeLabelColor(value) {
-  const normalizedValue = String(value || '').trim().replace(/^#/, '')
-  return /^[0-9a-fA-F]{6}$/.test(normalizedValue) ? normalizedValue.toUpperCase() : '94A3B8'
-}
-
-function normalizeLabelOption(label) {
-  return {
-    id: String(label?.id || '').trim(),
-    name: normalizeLabelName(label?.name),
-    color: normalizeLabelColor(label?.color),
-    description: typeof label?.description === 'string' && label.description.trim() !== ''
-      ? label.description.trim()
-      : null,
-    isNew: String(label?.id || '').trim() === '',
-  }
-}
 </script>
 
 <template>
@@ -556,7 +534,7 @@ function normalizeLabelOption(label) {
                 :selected-labels="selectedLabels"
                 :label-options="labelOptions"
                 :show-assignee-field="!isLocalMode"
-                :show-label-field="!isLocalMode && isFeatureRequestTemplate"
+                :show-label-field="true"
                 :submit-error="submitError"
                 :submitting="submitting"
                 :submit-label="isLocalMode ? 'Criar tarefa local' : 'Criar issue no GitHub'"

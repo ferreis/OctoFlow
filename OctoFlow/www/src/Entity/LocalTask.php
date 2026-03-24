@@ -50,6 +50,18 @@ class LocalTask
     #[ORM\Column(length: 191, nullable: true)]
     private ?string $repositoryName = null;
 
+    /**
+     * @var list<string>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $labelNames = [];
+
+    /**
+     * @var list<array{id: string, kind: string, title: string, description: string, createdAt: string, url?: string}>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $historyEntries = [];
+
     #[ORM\Column(length: 191, nullable: true)]
     private ?string $githubIssueId = null;
 
@@ -211,6 +223,154 @@ class LocalTask
         }
 
         return sprintf('%s/%s', $this->repositoryOwner, $this->repositoryName);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getLabelNames(): array
+    {
+        return $this->labelNames;
+    }
+
+    /**
+     * @param list<string> $labelNames
+     */
+    public function setLabelNames(array $labelNames): self
+    {
+        $normalizedLabelNames = [];
+        $seenLabelKeys = [];
+
+        foreach ($labelNames as $labelName) {
+            $normalizedLabelName = preg_replace('/\s+/', ' ', trim((string) $labelName));
+            if (!is_string($normalizedLabelName) || $normalizedLabelName === '') {
+                continue;
+            }
+
+            $normalizedLabelKey = strtolower($normalizedLabelName);
+            if (isset($seenLabelKeys[$normalizedLabelKey])) {
+                continue;
+            }
+
+            $seenLabelKeys[$normalizedLabelKey] = true;
+            $normalizedLabelNames[] = $normalizedLabelName;
+        }
+
+        $this->labelNames = $normalizedLabelNames;
+        $this->touch();
+
+        return $this;
+    }
+
+    /**
+     * @return list<array{id: string, kind: string, title: string, description: string, createdAt: string, url?: string}>
+     */
+    public function getHistoryEntries(): array
+    {
+        return $this->historyEntries;
+    }
+
+    /**
+     * @param list<array{id: string, kind: string, title: string, description: string, createdAt: string, url?: string}> $historyEntries
+     */
+    public function setHistoryEntries(array $historyEntries): self
+    {
+        $normalizedHistoryEntries = [];
+
+        foreach ($historyEntries as $historyEntry) {
+            if (!is_array($historyEntry)) {
+                continue;
+            }
+
+            $normalizedKind = strtolower(trim((string) ($historyEntry['kind'] ?? 'updated')));
+            if ($normalizedKind === '') {
+                $normalizedKind = 'updated';
+            }
+
+            $normalizedTitle = trim((string) ($historyEntry['title'] ?? 'Atualizacao registrada'));
+            if ($normalizedTitle === '') {
+                $normalizedTitle = 'Atualizacao registrada';
+            }
+
+            $normalizedDescription = trim((string) ($historyEntry['description'] ?? 'Sem detalhes adicionais.'));
+            if ($normalizedDescription === '') {
+                $normalizedDescription = 'Sem detalhes adicionais.';
+            }
+
+            $normalizedCreatedAt = trim((string) ($historyEntry['createdAt'] ?? ''));
+            if ($normalizedCreatedAt === '') {
+                $normalizedCreatedAt = (new \DateTimeImmutable())->format(DATE_ATOM);
+            }
+
+            $normalizedId = trim((string) ($historyEntry['id'] ?? ''));
+            if ($normalizedId === '') {
+                $normalizedId = sprintf(
+                    'local-task-history-%s-%s',
+                    $normalizedKind,
+                    str_replace('.', '', uniqid('', true))
+                );
+            }
+
+            $normalizedEntry = [
+                'id' => $normalizedId,
+                'kind' => $normalizedKind,
+                'title' => $normalizedTitle,
+                'description' => $normalizedDescription,
+                'createdAt' => $normalizedCreatedAt,
+            ];
+
+            $normalizedUrl = trim((string) ($historyEntry['url'] ?? ''));
+            if ($normalizedUrl !== '') {
+                $normalizedEntry['url'] = $normalizedUrl;
+            }
+
+            $normalizedHistoryEntries[] = $normalizedEntry;
+        }
+
+        $this->historyEntries = $normalizedHistoryEntries;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function appendHistoryEntry(string $kind, string $title, string $description, ?string $url = null): self
+    {
+        $normalizedKind = strtolower(trim($kind));
+        if ($normalizedKind === '') {
+            $normalizedKind = 'updated';
+        }
+
+        $normalizedTitle = trim($title);
+        if ($normalizedTitle === '') {
+            $normalizedTitle = 'Atualizacao registrada';
+        }
+
+        $normalizedDescription = trim($description);
+        if ($normalizedDescription === '') {
+            $normalizedDescription = 'Sem detalhes adicionais.';
+        }
+
+        $normalizedEntry = [
+            'id' => sprintf(
+                'local-task-history-%s-%s',
+                $normalizedKind,
+                str_replace('.', '', uniqid('', true))
+            ),
+            'kind' => $normalizedKind,
+            'title' => $normalizedTitle,
+            'description' => $normalizedDescription,
+            'createdAt' => (new \DateTimeImmutable())->format(DATE_ATOM),
+        ];
+
+        $normalizedUrl = $url === null ? '' : trim($url);
+        if ($normalizedUrl !== '') {
+            $normalizedEntry['url'] = $normalizedUrl;
+        }
+
+        $this->historyEntries[] = $normalizedEntry;
+        $this->touch();
+
+        return $this;
     }
 
     public function getGithubIssueId(): ?string

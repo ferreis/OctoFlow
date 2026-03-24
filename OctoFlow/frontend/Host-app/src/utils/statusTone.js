@@ -18,6 +18,14 @@ export function resolveHistoryBadgeToneClass(historyEventKind) {
     return resolveBadgeToneClass('info')
   }
 
+  if (normalizedEventKind === 'label-added') {
+    return resolveBadgeToneClass('success')
+  }
+
+  if (normalizedEventKind === 'label-removed') {
+    return resolveBadgeToneClass('warning')
+  }
+
   if (normalizedEventKind === 'updated' || normalizedEventKind === 'pending') {
     return resolveBadgeToneClass('warning')
   }

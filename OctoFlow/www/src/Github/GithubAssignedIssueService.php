@@ -8,6 +8,7 @@ use App\Github\Exception\GithubGraphQLException;
 final class GithubAssignedIssueService
 {
     private const UPDATE_COMMENT_TIMEZONE = 'America/Sao_Paulo';
+    private const DEFAULT_LABEL_COLOR = '94A3B8';
 
     private const ISSUE_SCOPE_ALL = 'all';
     private const ISSUE_SCOPE_ASSIGNED = 'assigned';
@@ -38,8 +39,17 @@ query GithubIssueUpdateContext($issueId: ID!) {
         }
       }
       repository {
+        id
         nameWithOwner
         url
+        labels(first: 50) {
+          nodes {
+            id
+            name
+            color
+            description
+          }
+        }
         assignableUsers(first: 50) {
           nodes {
             id
@@ -49,6 +59,50 @@ query GithubIssueUpdateContext($issueId: ID!) {
             url
           }
         }
+      }
+    }
+  }
+}
+GRAPHQL;
+
+    private const UPDATE_ISSUE_WITH_LABELS_MUTATION = <<<'GRAPHQL'
+mutation GithubUpdateIssueWithLabels($issueId: ID!, $title: String!, $body: String!, $state: IssueState!, $labelIds: [ID!]) {
+  updateIssue(input: {id: $issueId, title: $title, body: $body, state: $state, labelIds: $labelIds}) {
+    issue {
+      id
+      number
+      title
+      body
+      state
+      url
+      createdAt
+      updatedAt
+      viewerCanUpdate
+      viewerCanClose
+      viewerCanReopen
+      author {
+        login
+      }
+      assignees(first: 10) {
+        nodes {
+          id
+          login
+          name
+          avatarUrl
+          url
+        }
+      }
+      labels(first: 15) {
+        nodes {
+          id
+          name
+          color
+          description
+        }
+      }
+      repository {
+        nameWithOwner
+        url
       }
     }
   }
@@ -124,6 +178,17 @@ query GithubIssueDetail($issueId: ID!) {
           }
         }
       }
+    }
+  }
+}
+GRAPHQL;
+
+    private const CREATE_LABEL_MUTATION = <<<'GRAPHQL'
+mutation CreateLabel($repositoryId: ID!, $name: String!, $color: String!) {
+  createLabel(input: {repositoryId: $repositoryId, name: $name, color: $color}) {
+    label {
+      id
+      name
     }
   }
 }
@@ -543,12 +608,27 @@ GRAPHQL;
             );
         }
 
-        $data = $this->graphqlClient->query($token, self::UPDATE_ISSUE_MUTATION, [
+        $shouldSyncLabels = array_key_exists('labelIds', $payload) || array_key_exists('newLabelNames', $payload);
+        $updateIssueMutation = self::UPDATE_ISSUE_MUTATION;
+        $updateIssueVariables = [
             'issueId' => $normalizedIssueId,
             'title' => $title,
             'body' => $body,
             'state' => $state,
-        ]);
+        ];
+
+        if ($shouldSyncLabels) {
+            $resolvedLabelIds = $this->resolveLabelIds(
+                $token,
+                is_array($issueUpdateContext['repository'] ?? null) ? $issueUpdateContext['repository'] : [],
+                $payload['labelIds'] ?? [],
+                $payload['newLabelNames'] ?? []
+            );
+            $updateIssueMutation = self::UPDATE_ISSUE_WITH_LABELS_MUTATION;
+            $updateIssueVariables['labelIds'] = $resolvedLabelIds;
+        }
+
+        $data = $this->graphqlClient->query($token, $updateIssueMutation, $updateIssueVariables);
 
         $issue = $data['updateIssue']['issue'] ?? null;
         if (!is_array($issue)) {
@@ -585,12 +665,18 @@ GRAPHQL;
             'body' => (string) ($node['body'] ?? ''),
             'assignees' => $this->normalizeGithubUsers($node['assignees']['nodes'] ?? []),
             'repository' => [
+                'id' => is_array($node['repository'] ?? null)
+                    ? trim((string) (($node['repository']['id'] ?? '')))
+                    : '',
                 'nameWithOwner' => is_array($node['repository'] ?? null)
                     ? trim((string) (($node['repository']['nameWithOwner'] ?? '')))
                     : '',
                 'url' => is_array($node['repository'] ?? null)
                     ? trim((string) (($node['repository']['url'] ?? '')))
                     : '',
+                'labels' => is_array($node['repository'] ?? null)
+                    ? $this->normalizeLabels($node['repository']['labels']['nodes'] ?? [])
+                    : [],
                 'assignableUsers' => is_array($node['repository'] ?? null)
                     ? $this->normalizeGithubUsers($node['repository']['assignableUsers']['nodes'] ?? [])
                     : [],
@@ -1075,6 +1161,149 @@ GRAPHQL;
         }
 
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param mixed $rawNames
+     *
+     * @return list<string>
+     */
+    private function normalizeLabelNameList(mixed $rawNames): array
+    {
+        if (!is_array($rawNames)) {
+            return [];
+        }
+
+        $normalizedNames = [];
+        $seenNames = [];
+
+        foreach ($rawNames as $rawName) {
+            $normalizedName = $this->normalizeLabelName($rawName);
+            if ($normalizedName === '') {
+                continue;
+            }
+
+            $normalizedNameKey = $this->buildLabelNameKey($normalizedName);
+            if (isset($seenNames[$normalizedNameKey])) {
+                continue;
+            }
+
+            $seenNames[$normalizedNameKey] = true;
+            $normalizedNames[] = $normalizedName;
+        }
+
+        return $normalizedNames;
+    }
+
+    /**
+     * @param array<string, mixed> $repository
+     * @param mixed $rawLabelIds
+     * @param mixed $rawNewLabelNames
+     *
+     * @return list<string>
+     */
+    private function resolveLabelIds(
+        string $token,
+        array $repository,
+        mixed $rawLabelIds,
+        mixed $rawNewLabelNames
+    ): array {
+        $resolvedLabelIds = $this->normalizeIdList($rawLabelIds);
+        $pendingLabelNames = $this->normalizeLabelNameList($rawNewLabelNames);
+
+        if ($pendingLabelNames === []) {
+            return array_values(array_unique($resolvedLabelIds));
+        }
+
+        $repositoryId = trim((string) ($repository['id'] ?? ''));
+        if ($repositoryId === '') {
+            throw new GithubGraphQLException('GitHub returned an invalid repository id for label creation.');
+        }
+
+        $labelsByName = [];
+        foreach (is_array($repository['labels'] ?? null) ? $repository['labels'] : [] as $repositoryLabel) {
+            if (!is_array($repositoryLabel)) {
+                continue;
+            }
+
+            $labelId = trim((string) ($repositoryLabel['id'] ?? ''));
+            $labelName = $this->normalizeLabelName($repositoryLabel['name'] ?? null);
+            if ($labelId === '' || $labelName === '') {
+                continue;
+            }
+
+            $labelsByName[$this->buildLabelNameKey($labelName)] = [
+                'id' => $labelId,
+                'name' => $labelName,
+            ];
+        }
+
+        foreach ($pendingLabelNames as $pendingLabelName) {
+            $pendingLabelNameKey = $this->buildLabelNameKey($pendingLabelName);
+            $existingLabel = $labelsByName[$pendingLabelNameKey] ?? null;
+
+            if (is_array($existingLabel) && trim((string) ($existingLabel['id'] ?? '')) !== '') {
+                $resolvedLabelIds[] = trim((string) $existingLabel['id']);
+                continue;
+            }
+
+            $createdLabel = $this->createRepositoryLabel($token, $repositoryId, $pendingLabelName);
+            $createdLabelId = trim((string) ($createdLabel['id'] ?? ''));
+            if ($createdLabelId === '') {
+                throw new GithubGraphQLException('GitHub did not return the created label id.');
+            }
+
+            $resolvedLabelIds[] = $createdLabelId;
+            $labelsByName[$pendingLabelNameKey] = [
+                'id' => $createdLabelId,
+                'name' => $this->normalizeLabelName($createdLabel['name'] ?? $pendingLabelName),
+            ];
+        }
+
+        return array_values(array_unique($resolvedLabelIds));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function createRepositoryLabel(string $token, string $repositoryId, string $name): array
+    {
+        $data = $this->graphqlClient->query($token, self::CREATE_LABEL_MUTATION, [
+            'repositoryId' => $repositoryId,
+            'name' => $name,
+            'color' => self::DEFAULT_LABEL_COLOR,
+        ]);
+
+        $label = $data['createLabel']['label'] ?? null;
+        if (!is_array($label)) {
+            throw new GithubGraphQLException('GitHub did not return the label creation payload.');
+        }
+
+        return $label;
+    }
+
+    private function normalizeLabelName(mixed $value): string
+    {
+        $normalizedValue = trim((string) $value);
+        if ($normalizedValue === '') {
+            return '';
+        }
+
+        return (string) preg_replace('/\s+/', ' ', $normalizedValue);
+    }
+
+    private function buildLabelNameKey(mixed $value): string
+    {
+        $normalizedValue = $this->normalizeLabelName($value);
+        if ($normalizedValue === '') {
+            return '';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            return mb_strtolower($normalizedValue, 'UTF-8');
+        }
+
+        return strtolower($normalizedValue);
     }
 
     /**

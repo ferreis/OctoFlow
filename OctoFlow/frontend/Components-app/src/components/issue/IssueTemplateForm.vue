@@ -101,11 +101,97 @@ const featureRequestFields = computed(() => {
   }
 })
 
+const normalizedLabelOptions = computed(() => {
+  const labelCatalog = new Map()
+  const rawOptions = Array.isArray(props.labelOptions) ? props.labelOptions : []
+
+  for (const rawOption of rawOptions) {
+    const normalizedName = normalizeLabelName(rawOption?.name)
+    const normalizedNameKey = buildLabelNameKey(normalizedName)
+    if (normalizedNameKey === '') {
+      continue
+    }
+
+    labelCatalog.set(normalizedNameKey, {
+      id: String(rawOption?.id || '').trim(),
+      name: normalizedName,
+      color: normalizeLabelColor(rawOption?.color),
+      description: typeof rawOption?.description === 'string' && rawOption.description.trim() !== ''
+        ? rawOption.description.trim()
+        : null,
+    })
+  }
+
+  return Array.from(labelCatalog.values()).sort((leftOption, rightOption) => (
+    leftOption.name.localeCompare(rightOption.name, 'pt-BR', { sensitivity: 'base' })
+  ))
+})
+
+const selectedLabelsModel = computed({
+  get() {
+    return sanitizeSelectedLabels(props.selectedLabels)
+  },
+  set(nextSelectedLabels) {
+    emit('update:selectedLabels', sanitizeSelectedLabels(nextSelectedLabels))
+  },
+})
+
 function updateFieldValue(fieldKey, nextValue) {
   emit('update:fieldValues', {
     ...(props.fieldValues || {}),
     [fieldKey]: nextValue,
   })
+}
+
+function sanitizeSelectedLabels(rawSelectedLabels) {
+  if (!Array.isArray(rawSelectedLabels)) {
+    return []
+  }
+
+  const sanitizedSelectedLabels = []
+  const seenLabelKeys = new Set()
+
+  for (const rawSelectedLabel of rawSelectedLabels) {
+    const normalizedLabel = normalizeSelectedLabel(rawSelectedLabel)
+    const normalizedLabelKey = buildLabelNameKey(normalizedLabel.name)
+    if (normalizedLabelKey === '' || seenLabelKeys.has(normalizedLabelKey)) {
+      continue
+    }
+
+    seenLabelKeys.add(normalizedLabelKey)
+    sanitizedSelectedLabels.push({
+      ...normalizedLabel,
+      isNew: normalizedLabel.id === '',
+    })
+  }
+
+  return sanitizedSelectedLabels
+}
+
+function normalizeSelectedLabel(rawLabel) {
+  return {
+    id: String(rawLabel?.id || '').trim(),
+    name: normalizeLabelName(rawLabel?.name),
+    color: normalizeLabelColor(rawLabel?.color),
+    description: typeof rawLabel?.description === 'string' && rawLabel.description.trim() !== ''
+      ? rawLabel.description.trim()
+      : null,
+  }
+}
+
+function normalizeLabelName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function buildLabelNameKey(value) {
+  return normalizeLabelName(value).toLocaleLowerCase()
+}
+
+function normalizeLabelColor(value) {
+  const normalizedValue = String(value || '').trim().replace(/^#/, '')
+  return /^[0-9a-fA-F]{6}$/.test(normalizedValue) ? normalizedValue.toUpperCase() : '94A3B8'
 }
 </script>
 
@@ -175,24 +261,6 @@ function updateFieldValue(fieldKey, nextValue) {
         />
       </label>
 
-      <label v-if="showLabelField" class="field">
-        <span>Tags</span>
-        <MultiSelect
-          :model-value="selectedLabels"
-          :options="labelOptions"
-          search-placeholder="Pesquisar ou criar tag"
-          helper-text="Pesquise tags existentes ou crie uma nova no proprio campo."
-          selected-count-suffix="selecionada(s)"
-          create-label-prefix="Criar tag"
-          create-helper-text="A tag sera criada no GitHub ao enviar a issue."
-          existing-option-helper-text="Tag existente no repositorio"
-          empty-options-text="Nenhuma tag cadastrada. Digite para criar a primeira."
-          empty-search-text="Nenhuma tag encontrada para essa busca."
-          empty-idle-text="Digite para pesquisar tags existentes."
-          new-option-badge="Nova"
-          @update:model-value="$emit('update:selectedLabels', $event)"
-        />
-      </label>
     </template>
 
     <div v-else class="field-grid field-grid-two">
@@ -246,6 +314,27 @@ function updateFieldValue(fieldKey, nextValue) {
         </label>
       </template>
     </div>
+
+    <label v-if="showLabelField" class="field">
+      <span>Tags</span>
+      <MultiSelect
+        v-model="selectedLabelsModel"
+        :options="normalizedLabelOptions"
+        option-label-key="name"
+        option-value-key="id"
+        option-color-key="color"
+        option-description-key="description"
+        search-placeholder="Pesquisar tags padrao"
+        helper-text="Use a busca para filtrar tags. Tambem e possivel criar novas tags."
+        selected-count-suffix="tag(s) selecionada(s)"
+        create-label-prefix="Criar tag"
+        create-helper-text="A nova tag sera criada ao salvar."
+        existing-option-helper-text="Tag existente"
+        empty-idle-text="Digite para buscar tags ou criar uma nova."
+        empty-search-text="Nenhuma tag encontrada para essa busca."
+        empty-create-text="Pressione Enter para criar essa tag."
+      />
+    </label>
 
     <div class="form-actions">
       <button type="submit" class="primary-action" :disabled="submitting">

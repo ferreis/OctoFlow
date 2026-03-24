@@ -93,7 +93,7 @@ const labelOptions = computed(() => labels.value
         :field-values="composer?.fieldValues || {}"
         :selected-labels="composer?.selectedLabels || []"
         :label-options="labelOptions"
-        :show-label-field="selectedTemplate?.key === 'feature-request'"
+        :show-label-field="true"
         :submit-error="submitError"
         :submitting="submitting"
         submit-label="Criar issue no GitHub"

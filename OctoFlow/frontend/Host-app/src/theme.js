@@ -2,6 +2,8 @@ export const DEFAULT_APP_THEME_KEY = 'original'
 export const DEFAULT_COLOR_VISION_MODE = 'none'
 export const DEFAULT_COLOR_VISION_INTENSITY = 100
 export const DEFAULT_FONT_SCALE = 'default'
+export const DEFAULT_LAYOUT_DENSITY_MODE = 'comfortable'
+export const DEFAULT_LAYOUT_DENSITY_SCALE = 100
 export const CUSTOM_THEME_KEY = 'personalizado'
 export const CUSTOM_THEME_COLOR_KEYS = Object.freeze(['primary', 'secondary', 'accent', 'bg', 'text'])
 export const DEFAULT_CUSTOM_THEME_PALETTE = Object.freeze({
@@ -140,12 +142,32 @@ export const FONT_SCALE_OPTIONS = [
   },
 ]
 
+export const LAYOUT_DENSITY_MODE_OPTIONS = [
+  {
+    key: DEFAULT_LAYOUT_DENSITY_MODE,
+    label: 'Confortavel',
+    description: 'Espacamento padrao da interface.',
+  },
+  {
+    key: 'compact',
+    label: 'Compacto',
+    description: 'Reduz espacamento e tamanho visual para mostrar mais conteudo.',
+  },
+  {
+    key: 'custom',
+    label: 'Personalizado',
+    description: 'Permite definir o nivel de compactacao manualmente.',
+  },
+]
+
 export const DEFAULT_UI_SETTINGS = Object.freeze({
   themeKey: DEFAULT_APP_THEME_KEY,
   colorVisionMode: DEFAULT_COLOR_VISION_MODE,
   colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
   highContrastEnabled: false,
   fontScale: DEFAULT_FONT_SCALE,
+  layoutDensityMode: DEFAULT_LAYOUT_DENSITY_MODE,
+  layoutDensityScale: DEFAULT_LAYOUT_DENSITY_SCALE,
   customThemePalette: { ...DEFAULT_CUSTOM_THEME_PALETTE },
 })
 
@@ -186,6 +208,7 @@ const COLOR_VISION_TARGET_MATRICES = {
 const themeMap = new Map(APP_THEME_OPTIONS.map((theme) => [theme.key, theme]))
 const colorVisionModeMap = new Map(COLOR_VISION_MODE_OPTIONS.map((option) => [option.key, option]))
 const fontScaleMap = new Map(FONT_SCALE_OPTIONS.map((option) => [option.key, option]))
+const layoutDensityModeMap = new Map(LAYOUT_DENSITY_MODE_OPTIONS.map((option) => [option.key, option]))
 const UI_SETTINGS_STORAGE_PREFIX = 'octoflow.ui-settings.user.'
 const UI_SETTINGS_SESSION_PREFIX = 'octoflow.ui-settings.session.user.'
 const HEX_COLOR_PATTERN = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
@@ -267,6 +290,20 @@ export function normalizeFontScale(value) {
   return fontScaleMap.has(normalizedValue) ? normalizedValue : DEFAULT_FONT_SCALE
 }
 
+export function normalizeLayoutDensityMode(value) {
+  const normalizedValue = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return layoutDensityModeMap.has(normalizedValue) ? normalizedValue : DEFAULT_LAYOUT_DENSITY_MODE
+}
+
+export function normalizeLayoutDensityScale(value) {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_LAYOUT_DENSITY_SCALE
+  }
+
+  return Math.min(110, Math.max(70, Math.round(numericValue)))
+}
+
 export function normalizeCustomThemePalette(value = {}, basePalette = DEFAULT_CUSTOM_THEME_PALETTE) {
   const nextPaletteCandidate = value && typeof value === 'object' ? value : {}
   const fallbackPalette = basePalette && typeof basePalette === 'object'
@@ -296,6 +333,8 @@ export function normalizeUiSettingsPayload(settings = {}, baseSettings = DEFAULT
     colorVisionIntensity: normalizeColorVisionIntensity(nextSettings?.colorVisionIntensity ?? fallbackSettings?.colorVisionIntensity ?? DEFAULT_COLOR_VISION_INTENSITY),
     highContrastEnabled: normalizeHighContrastEnabled(nextSettings?.highContrastEnabled ?? fallbackSettings?.highContrastEnabled ?? false),
     fontScale: normalizeFontScale(nextSettings?.fontScale ?? fallbackSettings?.fontScale ?? DEFAULT_FONT_SCALE),
+    layoutDensityMode: normalizeLayoutDensityMode(nextSettings?.layoutDensityMode ?? fallbackSettings?.layoutDensityMode ?? DEFAULT_LAYOUT_DENSITY_MODE),
+    layoutDensityScale: normalizeLayoutDensityScale(nextSettings?.layoutDensityScale ?? fallbackSettings?.layoutDensityScale ?? DEFAULT_LAYOUT_DENSITY_SCALE),
     customThemePalette: normalizeCustomThemePalette(
       nextSettings?.customThemePalette,
       fallbackSettings?.customThemePalette ?? DEFAULT_CUSTOM_THEME_PALETTE,
@@ -313,6 +352,10 @@ export function getColorVisionModeDefinition(mode) {
 
 export function getFontScaleDefinition(fontScale) {
   return fontScaleMap.get(normalizeFontScale(fontScale)) || FONT_SCALE_OPTIONS[0]
+}
+
+export function getLayoutDensityModeDefinition(layoutDensityMode) {
+  return layoutDensityModeMap.get(normalizeLayoutDensityMode(layoutDensityMode)) || LAYOUT_DENSITY_MODE_OPTIONS[0]
 }
 
 function resolveUserScopeKey(user) {
@@ -472,11 +515,32 @@ export function applyAccessibilityToDocument(settings = DEFAULT_UI_SETTINGS) {
   const nextSettings = normalizeUiSettingsPayload(settings)
   const root = document.documentElement
   const fontScale = getFontScaleDefinition(nextSettings.fontScale).factor
+  const layoutDensityScale = resolveLayoutDensityScale(nextSettings.layoutDensityMode, nextSettings.layoutDensityScale)
+  const layoutDensityFactor = layoutDensityScale / 100
+  const layoutDensityFontFactor = Math.min(1.06, Math.max(0.84, layoutDensityFactor))
 
   root.dataset.colorVisionMode = nextSettings.colorVisionMode
   root.dataset.highContrast = nextSettings.highContrastEnabled ? 'true' : 'false'
   root.dataset.fontScale = nextSettings.fontScale
+  root.dataset.layoutDensityMode = nextSettings.layoutDensityMode
   root.style.setProperty('--app-font-scale', String(fontScale))
   root.style.setProperty('--app-font-px-scale', String(fontScale))
   root.style.setProperty('--app-color-vision-mix', `${nextSettings.colorVisionIntensity}%`)
+  root.style.setProperty('--app-layout-density-scale', String(layoutDensityScale))
+  root.style.setProperty('--app-layout-density-factor', String(layoutDensityFactor))
+  root.style.setProperty('--app-layout-density-font-factor', String(layoutDensityFontFactor))
+}
+
+function resolveLayoutDensityScale(layoutDensityMode, layoutDensityScale) {
+  const normalizedLayoutDensityMode = normalizeLayoutDensityMode(layoutDensityMode)
+
+  if (normalizedLayoutDensityMode === 'compact') {
+    return 88
+  }
+
+  if (normalizedLayoutDensityMode === DEFAULT_LAYOUT_DENSITY_MODE) {
+    return DEFAULT_LAYOUT_DENSITY_SCALE
+  }
+
+  return normalizeLayoutDensityScale(layoutDensityScale)
 }

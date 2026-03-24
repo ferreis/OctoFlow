@@ -6,7 +6,7 @@ return [
     'description' => 'Estrutura para novas funcionalidades com descricao, regra de negocio e criterios de aceitacao.',
     'access' => [],
     'titlePrefix' => 'feat',
-    'defaultLabels' => ['enhancement'],
+    'defaultLabels' => ['feature'],
     'fields' => [
         [
             'key' => 'description',

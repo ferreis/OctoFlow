@@ -286,12 +286,18 @@ GRAPHQL;
             $repositorySelection['repositoryOwner'],
             $repositorySelection['repositoryName']
         );
+        $resolvedLabelIds = $this->resolveLabelIds(
+            $token,
+            $repository,
+            $payload['labelIds'] ?? [],
+            $payload['newLabelNames'] ?? []
+        );
 
         $issueData = $this->graphqlClient->query($token, self::CREATE_ISSUE_MUTATION, [
             'repositoryId' => (string) ($repository['id'] ?? ''),
             'title' => $title,
             'body' => $body,
-            'labelIds' => [],
+            'labelIds' => $resolvedLabelIds,
         ]);
 
         $issue = $issueData['createIssue']['issue'] ?? null;

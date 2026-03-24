@@ -68,7 +68,7 @@ const availableThemes = APP_THEME_OPTIONS
 const screenAuthValidationInProgress = ref(false)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
-const effectiveSidebarExpanded = computed(() => isCompactViewport.value || sidebarExpanded.value)
+const effectiveSidebarExpanded = computed(() => !isCompactViewport.value && sidebarExpanded.value)
 
 let viewportMediaQuery = null
 let removeViewportListener = null
@@ -639,7 +639,7 @@ async function updateUiSettings(partialSettings = {}, options = {}) {
   const currentSettingsUser = currentUser.value
   const payload = {}
 
-  for (const fieldKey of ['themeKey', 'colorVisionMode', 'colorVisionIntensity', 'highContrastEnabled', 'fontScale', 'customThemePalette']) {
+  for (const fieldKey of ['themeKey', 'colorVisionMode', 'colorVisionIntensity', 'highContrastEnabled', 'fontScale', 'layoutDensityMode', 'layoutDensityScale', 'customThemePalette']) {
     if (Object.prototype.hasOwnProperty.call(partialSettings, fieldKey)) {
       payload[fieldKey] = nextSettings[fieldKey]
     }

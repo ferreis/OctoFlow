@@ -6,7 +6,7 @@ return [
     'description' => 'Template para atendimento, duvidas operacionais e apoio funcional.',
     'access' => [],
     'titlePrefix' => 'support',
-    'defaultLabels' => ['question'],
+    'defaultLabels' => ['qa'],
     'fields' => [
         [
             'key' => 'requestArea',

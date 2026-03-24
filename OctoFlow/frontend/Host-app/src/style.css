@@ -8,6 +8,9 @@
   --app-font-scale: 1;
   --app-font-px-scale: 1;
   --app-color-vision-mix: 0%;
+  --app-layout-density-scale: 100;
+  --app-layout-density-factor: 1;
+  --app-layout-density-font-factor: 1;
   font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
   font-synthesis: none;
   line-height: 1.5;
@@ -494,7 +497,7 @@
 }
 
 html {
-  font-size: calc(16px * var(--app-font-scale));
+  font-size: calc(16px * var(--app-font-scale) * var(--app-layout-density-font-factor));
 }
 
 html,
@@ -1181,7 +1184,11 @@ select optgroup {
 @media (max-width: 1180px) {
   .app-shell,
   .app-shell.collapsed {
-    grid-template-columns: 1fr;
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .app-shell.no-sidebar {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .app-main {

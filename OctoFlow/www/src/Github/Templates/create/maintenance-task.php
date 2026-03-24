@@ -6,7 +6,7 @@ return [
     'description' => 'Template para rotinas tecnicas, ajustes internos e manutencoes planejadas.',
     'access' => [],
     'titlePrefix' => 'chore',
-    'defaultLabels' => [],
+    'defaultLabels' => ['improvement'],
     'fields' => [
         [
             'key' => 'scope',

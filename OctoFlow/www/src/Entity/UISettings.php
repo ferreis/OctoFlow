@@ -11,6 +11,7 @@ class UISettings
 {
     public const COLOR_VISION_MODE_NONE = 'none';
     public const FONT_SCALE_DEFAULT = 'default';
+    public const LAYOUT_DENSITY_MODE_COMFORTABLE = 'comfortable';
 
     /**
      * @var list<string>
@@ -31,6 +32,15 @@ class UISettings
         'medium',
         'large',
         'extra-large',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    public const ALLOWED_LAYOUT_DENSITY_MODES = [
+        self::LAYOUT_DENSITY_MODE_COMFORTABLE,
+        'compact',
+        'custom',
     ];
 
     /**
@@ -67,6 +77,12 @@ class UISettings
 
     #[ORM\Column(length: 32, options: ['default' => self::FONT_SCALE_DEFAULT])]
     private string $fontScale = self::FONT_SCALE_DEFAULT;
+
+    #[ORM\Column(length: 32, options: ['default' => self::LAYOUT_DENSITY_MODE_COMFORTABLE])]
+    private string $layoutDensityMode = self::LAYOUT_DENSITY_MODE_COMFORTABLE;
+
+    #[ORM\Column(options: ['default' => 100])]
+    private int $layoutDensityScale = 100;
 
     /**
      * @var array<string, string>|null
@@ -193,6 +209,37 @@ class UISettings
     public function getUpdatedAt(): \DateTimeImmutable
     {
         return $this->updatedAt;
+    }
+
+    public function getLayoutDensityMode(): string
+    {
+        return $this->layoutDensityMode;
+    }
+
+    public function setLayoutDensityMode(string $layoutDensityMode): self
+    {
+        $normalizedMode = strtolower(trim($layoutDensityMode));
+        if (!in_array($normalizedMode, self::ALLOWED_LAYOUT_DENSITY_MODES, true)) {
+            throw new \InvalidArgumentException('The selected layout density mode is invalid.');
+        }
+
+        $this->layoutDensityMode = $normalizedMode;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getLayoutDensityScale(): int
+    {
+        return $this->layoutDensityScale;
+    }
+
+    public function setLayoutDensityScale(int $layoutDensityScale): self
+    {
+        $this->layoutDensityScale = min(110, max(70, $layoutDensityScale));
+        $this->touch();
+
+        return $this;
     }
 
     /**

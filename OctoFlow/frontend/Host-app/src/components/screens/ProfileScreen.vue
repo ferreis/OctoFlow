@@ -21,14 +21,20 @@ import {
   DEFAULT_COLOR_VISION_MODE,
   DEFAULT_CUSTOM_THEME_PALETTE,
   DEFAULT_FONT_SCALE,
+  DEFAULT_LAYOUT_DENSITY_MODE,
+  DEFAULT_LAYOUT_DENSITY_SCALE,
   FONT_SCALE_OPTIONS,
   getColorVisionModeDefinition,
   getFontScaleDefinition,
+  getLayoutDensityModeDefinition,
+  LAYOUT_DENSITY_MODE_OPTIONS,
   normalizeColorVisionIntensity,
   normalizeColorVisionMode,
   normalizeCustomThemePalette,
   normalizeFontScale,
   normalizeHighContrastEnabled,
+  normalizeLayoutDensityMode,
+  normalizeLayoutDensityScale,
   normalizeUiSettingsPayload,
 } from '../../theme'
 
@@ -106,6 +112,8 @@ const accessibilityForm = reactive({
   colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
   highContrastEnabled: false,
   fontScale: DEFAULT_FONT_SCALE,
+  layoutDensityMode: DEFAULT_LAYOUT_DENSITY_MODE,
+  layoutDensityScale: DEFAULT_LAYOUT_DENSITY_SCALE,
 })
 const customThemeForm = reactive({
   ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -128,12 +136,15 @@ const defaultRepositoryLabel = computed(() => {
 })
 const colorVisionModeOptions = COLOR_VISION_MODE_OPTIONS
 const fontScaleOptions = FONT_SCALE_OPTIONS
+const layoutDensityModeOptions = LAYOUT_DENSITY_MODE_OPTIONS
 const normalizedUiSettings = computed(() => normalizeUiSettingsPayload(props.uiSettings || {}))
 const savedCustomThemePalette = computed(() => normalizeCustomThemePalette(normalizedUiSettings.value.customThemePalette))
 const savedColorVisionMode = computed(() => normalizeColorVisionMode(normalizedUiSettings.value.colorVisionMode))
 const savedColorVisionIntensity = computed(() => normalizeColorVisionIntensity(normalizedUiSettings.value.colorVisionIntensity))
 const savedHighContrastEnabled = computed(() => normalizeHighContrastEnabled(normalizedUiSettings.value.highContrastEnabled))
 const savedFontScale = computed(() => normalizeFontScale(normalizedUiSettings.value.fontScale))
+const savedLayoutDensityMode = computed(() => normalizeLayoutDensityMode(normalizedUiSettings.value.layoutDensityMode))
+const savedLayoutDensityScale = computed(() => normalizeLayoutDensityScale(normalizedUiSettings.value.layoutDensityScale))
 const customThemeColorPickers = [
   { key: 'primary', label: 'Primaria' },
   { key: 'secondary', label: 'Secundaria' },
@@ -148,22 +159,34 @@ const hasCustomThemeChanges = computed(() => CUSTOM_THEME_COLOR_KEYS.some((color
 const canSaveCustomTheme = computed(() => hasCustomThemeChanges.value || !isCustomThemeActive.value)
 const selectedColorVisionDefinition = computed(() => getColorVisionModeDefinition(accessibilityForm.colorVisionMode))
 const selectedFontScaleDefinition = computed(() => getFontScaleDefinition(accessibilityForm.fontScale))
+const selectedLayoutDensityDefinition = computed(() => getLayoutDensityModeDefinition(accessibilityForm.layoutDensityMode))
 const accessibilityIntensityLabel = computed(() => (
   accessibilityForm.colorVisionMode === DEFAULT_COLOR_VISION_MODE
     ? 'Desativado'
     : `${accessibilityForm.colorVisionIntensity}%`
+))
+const layoutDensityScaleLabel = computed(() => (
+  accessibilityForm.layoutDensityMode === DEFAULT_LAYOUT_DENSITY_MODE
+    ? 'Padrao'
+    : accessibilityForm.layoutDensityMode === 'compact'
+      ? 'Compacto automatico'
+      : `${accessibilityForm.layoutDensityScale}%`
 ))
 const hasAccessibilityChanges = computed(() => (
   accessibilityForm.colorVisionMode !== savedColorVisionMode.value
   || accessibilityForm.colorVisionIntensity !== savedColorVisionIntensity.value
   || accessibilityForm.highContrastEnabled !== savedHighContrastEnabled.value
   || accessibilityForm.fontScale !== savedFontScale.value
+  || accessibilityForm.layoutDensityMode !== savedLayoutDensityMode.value
+  || accessibilityForm.layoutDensityScale !== savedLayoutDensityScale.value
 ))
 const isDefaultAccessibilityForm = computed(() => (
   accessibilityForm.colorVisionMode === DEFAULT_COLOR_VISION_MODE
   && accessibilityForm.colorVisionIntensity === DEFAULT_COLOR_VISION_INTENSITY
   && accessibilityForm.highContrastEnabled === false
   && accessibilityForm.fontScale === DEFAULT_FONT_SCALE
+  && accessibilityForm.layoutDensityMode === DEFAULT_LAYOUT_DENSITY_MODE
+  && accessibilityForm.layoutDensityScale === DEFAULT_LAYOUT_DENSITY_SCALE
 ))
 
 onMounted(async () => {
@@ -374,6 +397,8 @@ function syncAccessibilityForm() {
   accessibilityForm.colorVisionIntensity = savedColorVisionIntensity.value
   accessibilityForm.highContrastEnabled = savedHighContrastEnabled.value
   accessibilityForm.fontScale = savedFontScale.value
+  accessibilityForm.layoutDensityMode = savedLayoutDensityMode.value
+  accessibilityForm.layoutDensityScale = savedLayoutDensityScale.value
 }
 
 function syncCustomThemeForm() {
@@ -617,6 +642,8 @@ async function saveAccessibilitySettings() {
         colorVisionIntensity: accessibilityForm.colorVisionIntensity,
         highContrastEnabled: accessibilityForm.highContrastEnabled,
         fontScale: accessibilityForm.fontScale,
+        layoutDensityMode: accessibilityForm.layoutDensityMode,
+        layoutDensityScale: accessibilityForm.layoutDensityScale,
       },
       {
         successMessage: 'Preferencias de acessibilidade atualizadas.',
@@ -641,6 +668,8 @@ async function restoreAccessibilityDefaults() {
         colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
         highContrastEnabled: false,
         fontScale: DEFAULT_FONT_SCALE,
+        layoutDensityMode: DEFAULT_LAYOUT_DENSITY_MODE,
+        layoutDensityScale: DEFAULT_LAYOUT_DENSITY_SCALE,
       },
       {
         successMessage: 'Acessibilidade restaurada para o padrao.',
@@ -1203,6 +1232,14 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
             <span>Fonte</span>
             <strong>{{ selectedFontScaleDefinition.label }}</strong>
           </div>
+          <div class="stat-chip">
+            <span>Layout</span>
+            <strong>{{ selectedLayoutDensityDefinition.label }}</strong>
+          </div>
+          <div class="stat-chip">
+            <span>Compactacao</span>
+            <strong>{{ layoutDensityScaleLabel }}</strong>
+          </div>
         </div>
 
         <p class="inline-note accessibility-note">
@@ -1230,6 +1267,16 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
               </select>
               <small class="field-help">Ajusta a tipografia de toda a interface mantendo o layout responsivo.</small>
             </label>
+
+            <label class="field">
+              <span>Densidade do layout</span>
+              <select v-model="accessibilityForm.layoutDensityMode">
+                <option v-for="option in layoutDensityModeOptions" :key="option.key" :value="option.key">
+                  {{ option.label }}
+                </option>
+              </select>
+              <small class="field-help">{{ selectedLayoutDensityDefinition.description }}</small>
+            </label>
           </div>
 
           <label class="field">
@@ -1248,6 +1295,25 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
             </div>
             <small class="field-help">
               0 remove o filtro. 100 aplica a adaptacao visual completa para o modo selecionado.
+            </small>
+          </label>
+
+          <label class="field">
+            <span>Escala personalizada do layout</span>
+            <div class="slider-row">
+              <input
+                v-model.number="accessibilityForm.layoutDensityScale"
+                class="range-input"
+                type="range"
+                min="70"
+                max="110"
+                step="1"
+                :disabled="accessibilityForm.layoutDensityMode !== 'custom'"
+              >
+              <strong>{{ layoutDensityScaleLabel }}</strong>
+            </div>
+            <small class="field-help">
+              Funciona quando a densidade estiver em Personalizado. Valores menores deixam o layout mais compacto.
             </small>
           </label>
 
@@ -1323,8 +1389,9 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 
 <style scoped>
 .screen-grid {
+  --profile-density-factor: var(--app-layout-density-factor, 1);
   display: grid;
-  gap: 18px;
+  gap: calc(18px * var(--profile-density-factor));
 }
 
 .profile-summary-card,
@@ -1333,13 +1400,13 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .profile-accessibility-card,
 .profile-emails-card {
   display: grid;
-  gap: 18px;
+  gap: calc(18px * var(--profile-density-factor));
 }
 
 .github-section-stack,
 .github-accounts-grid {
   display: grid;
-  gap: 18px;
+  gap: calc(18px * var(--profile-density-factor));
 }
 
 .github-account-create-card,
@@ -1347,10 +1414,10 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .repository-group-card {
   background: var(--surface-muted);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: calc(24px * var(--profile-density-factor));
   display: grid;
-  gap: 18px;
-  padding: 18px;
+  gap: calc(18px * var(--profile-density-factor));
+  padding: calc(18px * var(--profile-density-factor));
 }
 
 .github-account-panel {
@@ -1364,7 +1431,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .profile-hero {
   align-items: center;
   display: flex;
-  gap: 16px;
+  gap: calc(16px * var(--profile-density-factor));
 }
 
 .profile-avatar {
@@ -1375,29 +1442,29 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
     color-mix(in srgb, var(--color-secondary) 18%, transparent)
   );
   border: 1px solid color-mix(in srgb, var(--color-primary) 22%, transparent);
-  border-radius: 22px;
+  border-radius: calc(22px * var(--profile-density-factor));
   color: var(--ink);
   display: inline-flex;
   font-size: 1.6rem;
   font-weight: 900;
-  height: 68px;
+  height: calc(68px * var(--profile-density-factor));
   justify-content: center;
-  width: 68px;
+  width: calc(68px * var(--profile-density-factor));
 }
 
 .profile-stats {
   display: grid;
-  gap: 12px;
+  gap: calc(12px * var(--profile-density-factor));
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .stat-chip {
   background: var(--surface-muted);
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: calc(20px * var(--profile-density-factor));
   display: grid;
-  gap: 6px;
-  padding: 16px;
+  gap: calc(6px * var(--profile-density-factor));
+  padding: calc(16px * var(--profile-density-factor));
 }
 
 .stat-chip span {
@@ -1408,7 +1475,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .role-cluster {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: calc(10px * var(--profile-density-factor));
 }
 
 .role-pill {
@@ -1417,27 +1484,27 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   color: var(--accent-strong);
   font-size: 0.8rem;
   font-weight: 800;
-  padding: 8px 12px;
+  padding: calc(8px * var(--profile-density-factor)) calc(12px * var(--profile-density-factor));
 }
 
 .theme-grid {
   display: grid;
-  gap: 14px;
+  gap: calc(14px * var(--profile-density-factor));
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .theme-stack {
   display: grid;
-  gap: 16px;
+  gap: calc(16px * var(--profile-density-factor));
 }
 
 .custom-theme-card {
   background: var(--surface-muted);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: calc(24px * var(--profile-density-factor));
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: calc(14px * var(--profile-density-factor));
+  padding: calc(16px * var(--profile-density-factor));
 }
 
 .custom-theme-card h3 {
@@ -1446,7 +1513,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 
 .custom-theme-grid {
   display: grid;
-  gap: 12px;
+  gap: calc(12px * var(--profile-density-factor));
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
@@ -1457,17 +1524,17 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .custom-theme-color-row {
   align-items: center;
   display: flex;
-  gap: 10px;
+  gap: calc(10px * var(--profile-density-factor));
 }
 
 .custom-theme-color-picker {
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--profile-density-factor));
   cursor: pointer;
-  height: 42px;
+  height: calc(42px * var(--profile-density-factor));
   padding: 4px;
-  width: 52px;
+  width: calc(52px * var(--profile-density-factor));
 }
 
 .custom-theme-color-value {
@@ -1479,8 +1546,8 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: calc(34px * var(--profile-density-factor));
+  padding: 0 calc(12px * var(--profile-density-factor));
   text-transform: lowercase;
   align-items: center;
 }
@@ -1490,7 +1557,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 }
 
 .accessibility-form {
-  gap: 18px;
+  gap: calc(18px * var(--profile-density-factor));
 }
 
 .accessibility-grid {
@@ -1506,7 +1573,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .slider-row {
   align-items: center;
   display: grid;
-  gap: 14px;
+  gap: calc(14px * var(--profile-density-factor));
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
@@ -1524,8 +1591,8 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .accessibility-checkbox {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 14px 16px;
+  border-radius: calc(16px * var(--profile-density-factor));
+  padding: calc(14px * var(--profile-density-factor)) calc(16px * var(--profile-density-factor));
 }
 
 .accessibility-note {
@@ -1606,7 +1673,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   align-items: start;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: calc(12px * var(--profile-density-factor));
   justify-content: space-between;
 }
 
@@ -1625,8 +1692,8 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   display: inline-flex;
   font-size: 0.84rem;
   font-weight: 700;
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: calc(40px * var(--profile-density-factor));
+  padding: 0 calc(14px * var(--profile-density-factor));
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
@@ -1638,12 +1705,12 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 
 .settings-form {
   display: grid;
-  gap: 16px;
+  gap: calc(16px * var(--profile-density-factor));
 }
 
 .field-grid {
   display: grid;
-  gap: 14px;
+  gap: calc(14px * var(--profile-density-factor));
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -1674,37 +1741,37 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .checkbox-row {
   align-items: center;
   display: flex;
-  gap: 10px;
+  gap: calc(10px * var(--profile-density-factor));
 }
 
 .form-actions-inline {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: calc(10px * var(--profile-density-factor));
 }
 
 .form-actions-between {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: calc(12px * var(--profile-density-factor));
   justify-content: space-between;
 }
 
 .repository-list {
   display: grid;
-  gap: 12px;
+  gap: calc(12px * var(--profile-density-factor));
 }
 
 .repository-row {
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: calc(20px * var(--profile-density-factor));
   display: grid;
-  gap: 14px;
+  gap: calc(14px * var(--profile-density-factor));
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
-  padding: 16px;
+  padding: calc(16px * var(--profile-density-factor));
 }
 
 .repository-copy,
@@ -1735,7 +1802,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   display: inline-flex;
   font-size: 0.76rem;
   font-weight: 800;
-  padding: 8px 12px;
+  padding: calc(8px * var(--profile-density-factor)) calc(12px * var(--profile-density-factor));
   white-space: nowrap;
 }
 
@@ -1747,7 +1814,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .repository-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: calc(10px * var(--profile-density-factor));
   justify-content: flex-end;
 }
 
@@ -1769,7 +1836,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: calc(12px * var(--profile-density-factor));
   justify-content: space-between;
 }
 
@@ -1783,7 +1850,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: calc(10px * var(--profile-density-factor));
 }
 
 .pagination-button {

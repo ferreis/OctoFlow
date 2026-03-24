@@ -6,7 +6,7 @@ return [
     'description' => 'Template para indisponibilidade, degradacao ou falha critica em producao.',
     'access' => [],
     'titlePrefix' => 'incident',
-    'defaultLabels' => ['bug'],
+    'defaultLabels' => ['bug', 'blocked'],
     'fields' => [
         [
             'key' => 'affectedService',

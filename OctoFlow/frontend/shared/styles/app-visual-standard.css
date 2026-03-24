@@ -160,7 +160,7 @@
 .app-field-control {
   background: var(--app-field-bg);
   border: 1px solid var(--app-field-border);
-  border-radius: 16px;
+  border-radius: calc(16px * var(--app-layout-density-factor, 1));
   color: var(--ink, #0f172a);
   outline: none;
   transition:
@@ -207,7 +207,7 @@ select.app-field-control optgroup {
 .app-choice-card {
   background: var(--app-choice-bg);
   border: 1px solid var(--app-choice-border);
-  border-radius: 20px;
+  border-radius: calc(20px * var(--app-layout-density-factor, 1));
   transition:
     background-color 0.2s ease,
     border-color 0.2s ease,
@@ -251,9 +251,9 @@ select.app-field-control optgroup {
 
 .app-feedback {
   border: 1px solid transparent;
-  border-radius: 16px;
+  border-radius: calc(16px * var(--app-layout-density-factor, 1));
   font-weight: 600;
-  padding: 0.65rem 0.85rem;
+  padding: calc(0.65rem * var(--app-layout-density-factor, 1)) calc(0.85rem * var(--app-layout-density-factor, 1));
 }
 
 .app-feedback--info {
@@ -291,12 +291,12 @@ select.app-field-control optgroup {
   border: 1px solid transparent;
   border-radius: 999px;
   display: inline-flex;
-  font-size: 0.76rem;
+  font-size: calc(0.76rem * var(--app-layout-density-font-factor, 1));
   font-weight: 700;
   gap: 0.3rem;
   letter-spacing: 0.02em;
   line-height: 1.2;
-  padding: 0.35rem 0.7rem;
+  padding: calc(0.35rem * var(--app-layout-density-factor, 1)) calc(0.7rem * var(--app-layout-density-factor, 1));
 }
 
 .app-status-badge--compact {
@@ -351,7 +351,7 @@ select.app-field-control optgroup {
   background: var(--app-modal-overlay-bg);
   backdrop-filter: blur(4px);
   inset: 0;
-  padding: 1.5rem 1rem;
+  padding: calc(1.5rem * var(--app-layout-density-factor, 1)) calc(1rem * var(--app-layout-density-factor, 1));
   position: fixed;
   z-index: 50;
 }
@@ -359,7 +359,7 @@ select.app-field-control optgroup {
 .app-modal-frame {
   background: var(--modal-surface, var(--app-panel-bg));
   border: 1px solid var(--app-modal-border);
-  border-radius: 32px;
+  border-radius: calc(32px * var(--app-layout-density-factor, 1));
   box-shadow: var(--app-modal-shadow);
 }
 

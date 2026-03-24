@@ -54,11 +54,14 @@ final class LocalTaskServiceTest extends TestCase
             'templateKey' => 'feature-request',
             'title' => '[feat] Painel local',
             'body' => 'Conteudo da tarefa local',
+            'labelNames' => ['frontend', 'api', 'frontend'],
         ]);
 
         $this->assertSame('[feat] Painel local', $item['title']);
         $this->assertSame(LocalTask::SYNC_STATE_PENDING, $item['syncState']);
         $this->assertNull($item['repositoryKey']);
+        $this->assertSame(['frontend', 'api'], $item['labelNames']);
+        $this->assertSame([], $item['historyEntries']);
     }
 
     public function testSyncPendingTasksMarksTaskAsSynced(): void
@@ -73,6 +76,7 @@ final class LocalTaskServiceTest extends TestCase
             ->setTemplateKey('feature-request')
             ->setTitle('[feat] Painel local')
             ->setBody('Conteudo da tarefa local')
+            ->setLabelNames(['frontend', 'api'])
             ->markPending();
 
         $this->localTaskRepository
@@ -87,6 +91,7 @@ final class LocalTaskServiceTest extends TestCase
             ->with($user, [
                 'title' => '[feat] Painel local',
                 'body' => 'Conteudo da tarefa local',
+                'newLabelNames' => ['frontend', 'api'],
                 'repositoryOwner' => null,
                 'repositoryName' => null,
             ])
@@ -121,6 +126,7 @@ final class LocalTaskServiceTest extends TestCase
             ->setTemplateKey('feature-request')
             ->setTitle('[feat] Painel local')
             ->setBody('Conteudo antigo')
+            ->setLabelNames(['frontend'])
             ->markPending();
 
         $this->localTaskRepository
@@ -137,6 +143,7 @@ final class LocalTaskServiceTest extends TestCase
             'title' => '[feat] Painel local revisado',
             'body' => 'Conteudo novo',
             'templateKey' => 'feature-request',
+            'labelNames' => ['backend', 'ci/cd', 'backend'],
             'repositoryOwner' => 'acme',
             'repositoryName' => 'delivery-desk',
         ]);
@@ -145,6 +152,10 @@ final class LocalTaskServiceTest extends TestCase
         $this->assertSame('Conteudo novo', $updated['body']);
         $this->assertSame('acme/delivery-desk', $updated['repositoryKey']);
         $this->assertSame(LocalTask::SYNC_STATE_PENDING, $updated['syncState']);
+        $this->assertSame(['backend', 'ci/cd'], $updated['labelNames']);
+        $this->assertCount(2, $updated['historyEntries']);
+        $this->assertSame('label-added', $updated['historyEntries'][0]['kind']);
+        $this->assertSame('label-removed', $updated['historyEntries'][1]['kind']);
     }
 
     public function testSyncTaskToGithubRequiresRepositorySelection(): void
@@ -158,6 +169,7 @@ final class LocalTaskServiceTest extends TestCase
             ->setTemplateKey('feature-request')
             ->setTitle('[feat] Painel local')
             ->setBody('Conteudo da tarefa local')
+            ->setLabelNames(['frontend', 'api'])
             ->markPending();
 
         $this->localTaskRepository
@@ -188,6 +200,7 @@ final class LocalTaskServiceTest extends TestCase
             ->setTemplateKey('feature-request')
             ->setTitle('[feat] Painel local')
             ->setBody('Conteudo da tarefa local')
+            ->setLabelNames(['frontend', 'api'])
             ->markPending();
 
         $this->localTaskRepository
@@ -202,6 +215,7 @@ final class LocalTaskServiceTest extends TestCase
             ->with($user, [
                 'title' => '[feat] Painel local',
                 'body' => 'Conteudo da tarefa local',
+                'newLabelNames' => ['frontend', 'api'],
                 'repositoryOwner' => 'acme',
                 'repositoryName' => 'delivery-desk',
             ])

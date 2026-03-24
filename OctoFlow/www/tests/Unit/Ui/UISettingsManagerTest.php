@@ -18,6 +18,8 @@ final class UISettingsManagerTest extends TestCase
             ->setColorVisionIntensity(73)
             ->setHighContrastEnabled(true)
             ->setFontScale('large')
+            ->setLayoutDensityMode('compact')
+            ->setLayoutDensityScale(88)
             ->setCustomThemePalette([
                 'primary' => '#112233',
                 'secondary' => '#223344',
@@ -33,6 +35,8 @@ final class UISettingsManagerTest extends TestCase
         $this->assertSame(73, $payload['colorVisionIntensity']);
         $this->assertTrue($payload['highContrastEnabled']);
         $this->assertSame('large', $payload['fontScale']);
+        $this->assertSame('compact', $payload['layoutDensityMode']);
+        $this->assertSame(88, $payload['layoutDensityScale']);
         $this->assertSame([
             'primary' => '#112233',
             'secondary' => '#223344',
@@ -54,6 +58,8 @@ final class UISettingsManagerTest extends TestCase
             'colorVisionIntensity' => '84',
             'highContrastEnabled' => 'true',
             'fontScale' => 'extra-large',
+            'layoutDensityMode' => 'CUSTOM',
+            'layoutDensityScale' => '77',
             'customThemePalette' => [
                 'primary' => '#123456',
                 'secondary' => '#abcdef',
@@ -68,6 +74,8 @@ final class UISettingsManagerTest extends TestCase
         $this->assertSame(84, $settings->getColorVisionIntensity());
         $this->assertTrue($settings->isHighContrastEnabled());
         $this->assertSame('extra-large', $settings->getFontScale());
+        $this->assertSame('custom', $settings->getLayoutDensityMode());
+        $this->assertSame(77, $settings->getLayoutDensityScale());
         $this->assertSame([
             'primary' => '#123456',
             'secondary' => '#abcdef',
@@ -86,6 +94,18 @@ final class UISettingsManagerTest extends TestCase
 
         $manager->updateFromPayload(new UISettings(), [
             'colorVisionMode' => 'sepia',
+        ]);
+    }
+
+    public function testUpdateFromPayloadRejectsInvalidLayoutDensityMode(): void
+    {
+        $manager = new UISettingsManager($this->createMock(EntityManagerInterface::class));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The selected layout density mode is invalid.');
+
+        $manager->updateFromPayload(new UISettings(), [
+            'layoutDensityMode' => 'minimal',
         ]);
     }
 

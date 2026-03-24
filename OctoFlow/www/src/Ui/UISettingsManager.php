@@ -36,6 +36,8 @@ final class UISettingsManager
      *     colorVisionIntensity: int,
      *     highContrastEnabled: bool,
      *     fontScale: string,
+     *     layoutDensityMode: string,
+     *     layoutDensityScale: int,
      *     customThemePalette: array<string, string>|null,
      *     updatedAt: string
      * }
@@ -48,6 +50,8 @@ final class UISettingsManager
             'colorVisionIntensity' => $settings->getColorVisionIntensity(),
             'highContrastEnabled' => $settings->isHighContrastEnabled(),
             'fontScale' => $settings->getFontScale(),
+            'layoutDensityMode' => $settings->getLayoutDensityMode(),
+            'layoutDensityScale' => $settings->getLayoutDensityScale(),
             'customThemePalette' => $settings->getCustomThemePalette(),
             'updatedAt' => $settings->getUpdatedAt()->format(\DATE_ATOM),
         ];
@@ -76,6 +80,14 @@ final class UISettingsManager
 
         if (array_key_exists('fontScale', $payload)) {
             $settings->setFontScale((string) $payload['fontScale']);
+        }
+
+        if (array_key_exists('layoutDensityMode', $payload)) {
+            $settings->setLayoutDensityMode((string) $payload['layoutDensityMode']);
+        }
+
+        if (array_key_exists('layoutDensityScale', $payload)) {
+            $settings->setLayoutDensityScale($this->normalizeLayoutDensityScale($payload['layoutDensityScale']));
         }
 
         if (array_key_exists('customThemePalette', $payload)) {
@@ -117,6 +129,23 @@ final class UISettingsManager
         }
 
         throw new \InvalidArgumentException('The color vision intensity must be a number between 0 and 100.');
+    }
+
+    private function normalizeLayoutDensityScale(mixed $value): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value)) {
+            return (int) round($value);
+        }
+
+        if (is_string($value) && is_numeric(trim($value))) {
+            return (int) round((float) trim($value));
+        }
+
+        throw new \InvalidArgumentException('The layout density scale must be a number between 70 and 110.');
     }
 
     private function normalizeBoolean(mixed $value): bool

@@ -64,6 +64,7 @@ final class LocalTaskService implements LocalTaskSyncInterface
         $templateKey = trim((string) ($payload['templateKey'] ?? ''));
         $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
         $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
+        $labelNames = $this->normalizeLabelNames($payload['labelNames'] ?? []);
 
         if ($title === '') {
             throw new \InvalidArgumentException('The local task title is required.');
@@ -93,6 +94,7 @@ final class LocalTaskService implements LocalTaskSyncInterface
             ->setTemplateKey($templateKey !== '' ? $templateKey : null)
             ->setTitle($title)
             ->setBody($body)
+            ->setLabelNames($labelNames)
             ->setRepositoryOwner($repositoryOwner !== '' ? $repositoryOwner : null)
             ->setRepositoryName($repositoryName !== '' ? $repositoryName : null)
             ->markPending();
@@ -123,11 +125,13 @@ final class LocalTaskService implements LocalTaskSyncInterface
             throw new \InvalidArgumentException('This local task has already been synchronized with GitHub.');
         }
 
+        $previousLabelNames = $task->getLabelNames();
         $title = trim((string) ($payload['title'] ?? ''));
         $body = trim((string) ($payload['body'] ?? ''));
         $templateKey = trim((string) ($payload['templateKey'] ?? ''));
         $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
         $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
+        $labelNames = $this->normalizeLabelNames($payload['labelNames'] ?? []);
 
         if ($title === '') {
             throw new \InvalidArgumentException('The local task title is required.');
@@ -156,10 +160,12 @@ final class LocalTaskService implements LocalTaskSyncInterface
             ->setTemplateKey($templateKey !== '' ? $templateKey : null)
             ->setTitle($title)
             ->setBody($body)
+            ->setLabelNames($labelNames)
             ->setRepositoryOwner($repositoryOwner !== '' ? $repositoryOwner : null)
             ->setRepositoryName($repositoryName !== '' ? $repositoryName : null)
             ->markPending();
 
+        $this->appendLabelHistoryEntries($task, $previousLabelNames, $labelNames);
         $this->entityManager->flush();
 
         return $this->normalizeTask($task);
@@ -192,6 +198,7 @@ final class LocalTaskService implements LocalTaskSyncInterface
             $result = $this->issuePublisher->createDraftIssue($user, [
                 'title' => $task->getTitle(),
                 'body' => $task->getBody(),
+                'newLabelNames' => $task->getLabelNames(),
                 'repositoryOwner' => $repositoryOwner,
                 'repositoryName' => $repositoryName,
             ]);
@@ -241,6 +248,7 @@ final class LocalTaskService implements LocalTaskSyncInterface
                 $result = $this->issuePublisher->createDraftIssue($user, [
                     'title' => $task->getTitle(),
                     'body' => $task->getBody(),
+                    'newLabelNames' => $task->getLabelNames(),
                     'repositoryOwner' => $task->getRepositoryOwner(),
                     'repositoryName' => $task->getRepositoryName(),
                 ]);
@@ -280,6 +288,8 @@ final class LocalTaskService implements LocalTaskSyncInterface
             'repositoryOwner' => $task->getRepositoryOwner(),
             'repositoryName' => $task->getRepositoryName(),
             'repositoryKey' => $repositoryKey,
+            'labelNames' => $task->getLabelNames(),
+            'historyEntries' => $task->getHistoryEntries(),
             'githubIssueId' => $task->getGithubIssueId(),
             'githubIssueNumber' => $task->getGithubIssueNumber(),
             'githubIssueUrl' => $task->getGithubIssueUrl(),
@@ -287,6 +297,93 @@ final class LocalTaskService implements LocalTaskSyncInterface
             'updatedAt' => $task->getUpdatedAt()->format(DATE_ATOM),
             'syncedAt' => $task->getSyncedAt()?->format(DATE_ATOM),
         ];
+    }
+
+    /**
+     * @param list<string> $previousLabelNames
+     * @param list<string> $nextLabelNames
+     */
+    private function appendLabelHistoryEntries(LocalTask $task, array $previousLabelNames, array $nextLabelNames): void
+    {
+        $normalizedPreviousLabelMap = [];
+        foreach ($this->normalizeLabelNames($previousLabelNames) as $previousLabelName) {
+            $normalizedPreviousLabelMap[strtolower($previousLabelName)] = $previousLabelName;
+        }
+
+        $normalizedNextLabelMap = [];
+        foreach ($this->normalizeLabelNames($nextLabelNames) as $nextLabelName) {
+            $normalizedNextLabelMap[strtolower($nextLabelName)] = $nextLabelName;
+        }
+
+        $addedLabelNames = [];
+        foreach ($normalizedNextLabelMap as $normalizedKey => $normalizedLabelName) {
+            if (!array_key_exists($normalizedKey, $normalizedPreviousLabelMap)) {
+                $addedLabelNames[] = $normalizedLabelName;
+            }
+        }
+
+        $removedLabelNames = [];
+        foreach ($normalizedPreviousLabelMap as $normalizedKey => $normalizedLabelName) {
+            if (!array_key_exists($normalizedKey, $normalizedNextLabelMap)) {
+                $removedLabelNames[] = $normalizedLabelName;
+            }
+        }
+
+        if ($addedLabelNames !== []) {
+            $addedLabelList = implode(', ', $addedLabelNames);
+            $task->appendHistoryEntry(
+                'label-added',
+                count($addedLabelNames) === 1 ? 'Tag adicionada' : 'Tags adicionadas',
+                count($addedLabelNames) === 1
+                    ? sprintf('Tag adicionada: %s.', $addedLabelList)
+                    : sprintf('Tags adicionadas: %s.', $addedLabelList)
+            );
+        }
+
+        if ($removedLabelNames !== []) {
+            $removedLabelList = implode(', ', $removedLabelNames);
+            $task->appendHistoryEntry(
+                'label-removed',
+                count($removedLabelNames) === 1 ? 'Tag removida' : 'Tags removidas',
+                count($removedLabelNames) === 1
+                    ? sprintf('Tag removida: %s.', $removedLabelList)
+                    : sprintf('Tags removidas: %s.', $removedLabelList)
+            );
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normalizeLabelNames(mixed $rawLabelNames): array
+    {
+        if ($rawLabelNames === null) {
+            return [];
+        }
+
+        if (!is_array($rawLabelNames)) {
+            throw new \InvalidArgumentException('The local task labels payload is invalid.');
+        }
+
+        $normalizedLabelNames = [];
+        $seenLabelKeys = [];
+
+        foreach ($rawLabelNames as $rawLabelName) {
+            $normalizedLabelName = preg_replace('/\s+/', ' ', trim((string) $rawLabelName));
+            if (!is_string($normalizedLabelName) || $normalizedLabelName === '') {
+                continue;
+            }
+
+            $normalizedLabelKey = strtolower($normalizedLabelName);
+            if (isset($seenLabelKeys[$normalizedLabelKey])) {
+                continue;
+            }
+
+            $seenLabelKeys[$normalizedLabelKey] = true;
+            $normalizedLabelNames[] = $normalizedLabelName;
+        }
+
+        return $normalizedLabelNames;
     }
 
     private function requireTask(User $user, int $taskId): LocalTask

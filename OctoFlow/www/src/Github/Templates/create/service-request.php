@@ -6,7 +6,7 @@ return [
     'description' => 'Template para ajustes operacionais, acessos e demandas recorrentes.',
     'access' => [],
     'titlePrefix' => 'service',
-    'defaultLabels' => [],
+    'defaultLabels' => ['improvement'],
     'fields' => [
         [
             'key' => 'requestType',

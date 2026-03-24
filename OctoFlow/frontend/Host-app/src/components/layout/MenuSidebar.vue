@@ -30,7 +30,7 @@ const props = defineProps({
 
 const emit = defineEmits(['navigate', 'refresh', 'logout', 'expand', 'collapse'])
 
-const sidebarExpanded = computed(() => props.compact || props.expanded)
+const sidebarExpanded = computed(() => Boolean(props.expanded))
 
 const primaryItems = computed(() => {
   return props.items.filter((item) => item.key !== 'profile')
@@ -192,6 +192,7 @@ function handleMouseLeave() {
   border-right: 1px solid var(--nav-border);
   background-color: var(--nav-bg);
   color: var(--nav-text);
+  z-index: 40;
 }
 
 .menu-sidebar-panel {
