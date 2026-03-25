@@ -8,6 +8,7 @@ import {
 } from '../../federation/remoteComponents'
 import {
   createFinanceBankAccount,
+  createFinanceDebtPlan,
   createFinanceEntry,
   createFinanceExport,
   createFinanceInstallmentPlan,
@@ -19,6 +20,7 @@ import {
   fetchFinanceDashboardCashflow,
   fetchFinanceDashboardCategories,
   fetchFinanceDashboardSummary,
+  fetchFinanceDebtPlans,
   fetchFinanceCurrencies,
   fetchFinanceCurrencyRates,
   fetchFinanceEntries,
@@ -28,6 +30,7 @@ import {
   fetchFinanceOpenFinanceProviders,
   fetchFinanceRecurringRules,
   fetchFinanceRecurringTypes,
+  previewFinanceDebtPlan,
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
   updateFinanceBankAccountStatus,
@@ -77,6 +80,7 @@ const sectionToTabKey = {
   accounts: 'accounts',
   banks: 'banks',
   investments: 'investments',
+  debts: 'debts',
   currencies: 'currencies',
   reports: 'reports',
 }
@@ -101,6 +105,7 @@ const loadingState = reactive({
   recurring: false,
   installments: false,
   investments: false,
+  debts: false,
   currencies: false,
   exports: false,
   catalogs: false,
@@ -117,6 +122,8 @@ const entriesMeta = ref({ page: 1, itemsPerPage: 20, total: 0 })
 const recurringRules = ref([])
 const installmentPlans = ref([])
 const investmentPlans = ref([])
+const debtPlans = ref([])
+const debtPreview = ref(null)
 const currenciesCatalog = ref([])
 const currencyRates = ref([])
 const exportJobs = ref([])
@@ -216,6 +223,27 @@ const convertPlanForm = reactive({
 
 const exportForm = reactive({
   exportType: 'MONTHLY_SUMMARY',
+})
+
+const debtForm = reactive({
+  title: '',
+  creditorName: '',
+  totalAmountBrl: '',
+  negotiatedAmountBrl: '',
+  proposedAmountBrl: '',
+  downPaymentBrl: '0',
+  monthlyIncomeBrl: '',
+  maxCommitmentPercent: '40',
+  desiredInstallmentsCount: 12,
+  settlementMode: 'INSTALLMENT',
+  selectedInstallmentsCount: 12,
+  firstDueDate: '',
+  categoryId: '',
+  defaultBankAccountId: '',
+  negotiationNote: '',
+  proposalNote: '',
+  notes: '',
+  allowExceedLimit: false,
 })
 
 const currencyForm = reactive({
@@ -367,6 +395,11 @@ const selectedCurrenciesLabel = computed(() => {
   return `${selectedCount} moedas selecionadas`
 })
 
+const debtPreviewSuggestions = computed(() => {
+  const suggestions = debtPreview.value?.suggestions
+  return Array.isArray(suggestions) ? suggestions : []
+})
+
 onMounted(async () => {
   await loadInitialData()
 })
@@ -419,6 +452,14 @@ watch(activeTab, async (nextTabKey) => {
     return
   }
 
+  if (nextTabKey === 'debts') {
+    await Promise.all([
+      loadDebtPlans(),
+      loadCatalogs(),
+    ])
+    return
+  }
+
   if (nextTabKey === 'currencies') {
     await refreshCurrencyData()
     return
@@ -467,6 +508,7 @@ async function loadInitialData() {
     loadRecurringRules(),
     loadInstallments(),
     loadInvestments(),
+    loadDebtPlans(),
     loadExports(),
     loadOpenFinance(),
   ])
@@ -485,6 +527,8 @@ function resetLocalState() {
   recurringRules.value = []
   installmentPlans.value = []
   investmentPlans.value = []
+  debtPlans.value = []
+  debtPreview.value = null
   currenciesCatalog.value = []
   currencyRates.value = []
   exportJobs.value = []
@@ -596,6 +640,95 @@ async function loadInvestments() {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar planos de investimento.'), 'error')
   } finally {
     loadingState.investments = false
+  }
+}
+
+async function loadDebtPlans() {
+  loadingState.debts = true
+
+  try {
+    const response = await fetchFinanceDebtPlans(props.request)
+    debtPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar planos de dívida.'), 'error')
+  } finally {
+    loadingState.debts = false
+  }
+}
+
+async function previewDebtPlan() {
+  try {
+    const response = await previewFinanceDebtPlan(props.request, {
+      title: debtForm.title,
+      creditorName: debtForm.creditorName || null,
+      totalAmountBrl: Number(debtForm.totalAmountBrl),
+      negotiatedAmountBrl: debtForm.negotiatedAmountBrl === '' ? null : Number(debtForm.negotiatedAmountBrl),
+      proposedAmountBrl: debtForm.proposedAmountBrl === '' ? null : Number(debtForm.proposedAmountBrl),
+      downPaymentBrl: Number(debtForm.downPaymentBrl || 0),
+      monthlyIncomeBrl: debtForm.monthlyIncomeBrl === '' ? null : Number(debtForm.monthlyIncomeBrl),
+      maxCommitmentPercent: Number(debtForm.maxCommitmentPercent || 40),
+      desiredInstallmentsCount: Number(debtForm.desiredInstallmentsCount || 0),
+      firstDueDate: debtForm.firstDueDate || null,
+      categoryId: normalizeOptionalNumber(debtForm.categoryId),
+      defaultBankAccountId: normalizeOptionalNumber(debtForm.defaultBankAccountId),
+      settlementMode: debtForm.settlementMode,
+      negotiationNote: debtForm.negotiationNote || null,
+      proposalNote: debtForm.proposalNote || null,
+      notes: debtForm.notes || null,
+    })
+
+    debtPreview.value = response.data?.item || null
+
+    const suggestedInstallmentsCount = Number(debtPreview.value?.recommendedOption?.installmentsCount || 0)
+    if (suggestedInstallmentsCount > 1) {
+      debtForm.selectedInstallmentsCount = suggestedInstallmentsCount
+      debtForm.settlementMode = 'INSTALLMENT'
+    } else if (suggestedInstallmentsCount === 1) {
+      debtForm.selectedInstallmentsCount = 1
+      debtForm.settlementMode = 'FULL'
+    }
+
+    notifyUser('Simulação de dívida atualizada.', 'success')
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível simular o plano de dívida.'), 'error')
+  }
+}
+
+async function submitDebtPlan() {
+  if (!debtPreview.value) {
+    notifyUser('Execute a simulação antes de criar o plano de dívida.', 'warning')
+    return
+  }
+
+  try {
+    const response = await createFinanceDebtPlan(props.request, {
+      title: debtForm.title,
+      creditorName: debtForm.creditorName || null,
+      totalAmountBrl: Number(debtForm.totalAmountBrl),
+      negotiatedAmountBrl: debtForm.negotiatedAmountBrl === '' ? null : Number(debtForm.negotiatedAmountBrl),
+      proposedAmountBrl: debtForm.proposedAmountBrl === '' ? null : Number(debtForm.proposedAmountBrl),
+      downPaymentBrl: Number(debtForm.downPaymentBrl || 0),
+      monthlyIncomeBrl: debtForm.monthlyIncomeBrl === '' ? null : Number(debtForm.monthlyIncomeBrl),
+      maxCommitmentPercent: Number(debtForm.maxCommitmentPercent || 40),
+      desiredInstallmentsCount: Number(debtForm.desiredInstallmentsCount || 0),
+      selectedInstallmentsCount: Number(debtForm.selectedInstallmentsCount || 0),
+      firstDueDate: debtForm.firstDueDate || null,
+      categoryId: normalizeOptionalNumber(debtForm.categoryId),
+      defaultBankAccountId: normalizeOptionalNumber(debtForm.defaultBankAccountId),
+      settlementMode: debtForm.settlementMode,
+      negotiationNote: debtForm.negotiationNote || null,
+      proposalNote: debtForm.proposalNote || null,
+      notes: debtForm.notes || null,
+      allowExceedLimit: Boolean(debtForm.allowExceedLimit),
+    })
+
+    if (response.data?.item) {
+      debtPlans.value = [response.data.item, ...debtPlans.value]
+    }
+
+    notifyUser('Plano de dívida criado com sucesso.', 'success')
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o plano de dívida.'), 'error')
   }
 }
 
@@ -986,6 +1119,26 @@ function getFinanceExportTypeLabel(exportTypeCode, fallbackLabel = '-') {
 
 function getFinanceExportStatusLabel(exportStatusCode, fallbackLabel = '-') {
   return translateFinanceExportStatus(exportStatusCode, fallbackLabel)
+}
+
+function getDebtReferenceTypeLabel(referenceTypeCode) {
+  if (referenceTypeCode === 'NEGOTIATED') {
+    return 'Negociado'
+  }
+
+  if (referenceTypeCode === 'PROPOSED') {
+    return 'Proposta'
+  }
+
+  return 'Valor original'
+}
+
+function getDebtSettlementModeLabel(settlementModeCode) {
+  if (settlementModeCode === 'FULL') {
+    return 'À vista'
+  }
+
+  return 'Parcelado'
 }
 
 function applyAccountsDirectionContext() {
@@ -1751,6 +1904,223 @@ function applyAccountsDirectionContext() {
           v-else
           title="Sem planos de investimento"
           description="Gere uma simulação e converta para criar o primeiro plano real."
+        />
+      </article>
+    </section>
+
+    <section v-if="activeTab === 'debts'" class="finance-section">
+      <article class="finance-panel">
+        <header>
+          <h3>Planejador de dívidas</h3>
+          <small>O sistema recomenda parcelas para tentar manter até 40% da renda mensal.</small>
+        </header>
+
+        <form class="finance-form-grid" @submit.prevent="previewDebtPlan">
+          <label>
+            <span>Título da dívida</span>
+            <input v-model="debtForm.title" type="text" required>
+          </label>
+
+          <label>
+            <span>Credor</span>
+            <input v-model="debtForm.creditorName" type="text" placeholder="Banco, loja ou pessoa">
+          </label>
+
+          <label>
+            <span>Valor total da dívida (BRL)</span>
+            <input v-model="debtForm.totalAmountBrl" type="number" step="0.01" min="0.01" required>
+          </label>
+
+          <label>
+            <span>Valor negociado (opcional)</span>
+            <input v-model="debtForm.negotiatedAmountBrl" type="number" step="0.01" min="0">
+          </label>
+
+          <label>
+            <span>Valor de proposta (opcional)</span>
+            <input v-model="debtForm.proposedAmountBrl" type="number" step="0.01" min="0">
+          </label>
+
+          <label>
+            <span>Entrada (opcional)</span>
+            <input v-model="debtForm.downPaymentBrl" type="number" step="0.01" min="0">
+          </label>
+
+          <label>
+            <span>Renda mensal (opcional)</span>
+            <input v-model="debtForm.monthlyIncomeBrl" type="number" step="0.01" min="0" placeholder="Se vazio, o sistema estima">
+          </label>
+
+          <label>
+            <span>Limite da renda (%)</span>
+            <input v-model="debtForm.maxCommitmentPercent" type="number" step="0.01" min="5" max="90">
+          </label>
+
+          <label>
+            <span>Quantidade desejada de parcelas</span>
+            <input v-model="debtForm.desiredInstallmentsCount" type="number" min="1" max="120">
+          </label>
+
+          <label>
+            <span>Vencimento inicial</span>
+            <input v-model="debtForm.firstDueDate" type="date">
+          </label>
+
+          <label>
+            <span>Categoria</span>
+            <select v-model="debtForm.categoryId">
+              <option value="">Sem categoria</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Conta bancária</span>
+            <select v-model="debtForm.defaultBankAccountId">
+              <option value="">Sem conta</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Modo de quitação</span>
+            <select v-model="debtForm.settlementMode">
+              <option value="INSTALLMENT">Parcelado</option>
+              <option value="FULL">À vista</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Parcelas escolhidas</span>
+            <input v-model="debtForm.selectedInstallmentsCount" type="number" min="1" max="120">
+          </label>
+
+          <label>
+            <span>Observação da negociação</span>
+            <input v-model="debtForm.negotiationNote" type="text" placeholder="Descreva o acordo">
+          </label>
+
+          <label>
+            <span>Observação da proposta</span>
+            <input v-model="debtForm.proposalNote" type="text" placeholder="Descreva a proposta">
+          </label>
+
+          <label>
+            <span>Observações gerais</span>
+            <input v-model="debtForm.notes" type="text" placeholder="Notas adicionais">
+          </label>
+
+          <label class="finance-toggle-label">
+            <input v-model="debtForm.allowExceedLimit" type="checkbox">
+            <span>Permitir criar plano acima do limite de renda</span>
+          </label>
+
+          <button class="finance-action-button" type="submit">Simular plano</button>
+          <button class="finance-action-button" type="button" @click="submitDebtPlan">Criar plano</button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Resultado da simulação</h3>
+          <small v-if="debtPreview">Base para decisão de pagamento</small>
+        </header>
+
+        <div v-if="debtPreview" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <tbody>
+              <tr>
+                <th>Base escolhida</th>
+                <td>{{ getDebtReferenceTypeLabel(debtPreview.selectedReferenceType) }}</td>
+              </tr>
+              <tr>
+                <th>Valor planejado</th>
+                <td>{{ formatCurrency(debtPreview.plannedTotalAmountBrl) }}</td>
+              </tr>
+              <tr>
+                <th>Renda mensal usada</th>
+                <td>{{ formatCurrency(debtPreview.monthlyIncomeBrl) }} ({{ debtPreview.monthlyIncomeSource === 'INPUT' ? 'informada' : 'estimada' }})</td>
+              </tr>
+              <tr>
+                <th>Limite de parcela</th>
+                <td>{{ formatCurrency(debtPreview.maxRecommendedPaymentBrl) }} ({{ formatPercent(debtPreview.maxCommitmentPercent) }})</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem simulação"
+          description="Preencha o formulário e clique em simular para receber sugestões de pagamento."
+        />
+
+        <div v-if="debtPreviewSuggestions.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Opção</th>
+                <th>Modo</th>
+                <th>Parcelas</th>
+                <th>Parcela mensal</th>
+                <th>Comprometimento</th>
+                <th>Dentro do limite</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="suggestion in debtPreviewSuggestions" :key="suggestion.key">
+                <td>{{ suggestion.label }}</td>
+                <td>{{ getDebtSettlementModeLabel(suggestion.settlementMode) }}</td>
+                <td>{{ suggestion.installmentsCount }}</td>
+                <td>{{ formatCurrency(suggestion.monthlyPaymentBrl) }}</td>
+                <td>{{ suggestion.commitmentPercent !== null ? formatPercent(suggestion.commitmentPercent) : '-' }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="suggestion.withinLimit ? 'PAID' : 'OVERDUE'"
+                    :label="suggestion.withinLimit ? 'Sim' : 'Não'"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Planos de dívida cadastrados</h3>
+          <small v-if="loadingState.debts">Atualizando...</small>
+        </header>
+
+        <div v-if="debtPlans.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Título</th>
+                <th>Credor</th>
+                <th>Modo</th>
+                <th>Valor planejado</th>
+                <th>Parcela mensal</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="debtPlan in debtPlans" :key="debtPlan.id">
+                <td>{{ debtPlan.title }}</td>
+                <td>{{ debtPlan.creditorName || '-' }}</td>
+                <td>{{ getDebtSettlementModeLabel(debtPlan.settlementMode) }}</td>
+                <td>{{ formatCurrency(debtPlan.plannedTotalAmountBrl) }}</td>
+                <td>{{ formatCurrency(debtPlan.selectedMonthlyPaymentBrl) }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge :status="debtPlan.status" :label="getFinanceLabel(debtPlan.status)" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem planos de dívida"
+          description="Crie seu primeiro plano de pagamento de dívidas para acompanhar negociações e parcelas."
         />
       </article>
     </section>

@@ -72,6 +72,8 @@ const FINANCE_EXPORT_STATUS_LABEL_BY_CODE = Object.freeze({
 const FINANCE_ADDITIONAL_LABEL_BY_CODE = Object.freeze({
   ACTIVE: 'Ativo',
   INACTIVE: 'Inativo',
+  PLANNED: 'Planejado',
+  DONE: 'Concluído',
   REVOKED: 'Revogado',
   CHECKING: 'Conta corrente',
   SAVINGS: 'Poupança',

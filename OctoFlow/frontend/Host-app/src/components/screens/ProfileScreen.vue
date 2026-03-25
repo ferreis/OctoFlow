@@ -1601,15 +1601,15 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
     color-mix(in srgb, var(--color-secondary) 18%, transparent)
   );
   border: 1px solid color-mix(in srgb, var(--color-primary) 22%, transparent);
-  border-radius: calc(22px * var(--profile-density-factor));
+  border-radius: calc(75px * var(--profile-density-factor));
   color: var(--ink);
   display: inline-flex;
   font-size: 1.6rem;
   font-weight: 900;
-  height: calc(68px * var(--profile-density-factor));
+  height: calc(150px * var(--profile-density-factor));
   justify-content: center;
   overflow: hidden;
-  width: calc(68px * var(--profile-density-factor));
+  width: calc(150px * var(--profile-density-factor));
 }
 
 .profile-avatar-image {

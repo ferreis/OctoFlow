@@ -196,6 +196,31 @@ export function createFinanceInstallmentPlan(request, payload) {
   })
 }
 
+export function fetchFinanceDebtPlans(request) {
+  return request({
+    url: '/finance/debt-plans',
+    method: 'GET',
+  })
+}
+
+export function previewFinanceDebtPlan(request, payload) {
+  return request({
+    url: '/finance/debt-plans/preview',
+    method: 'POST',
+    csrfActionId: 'finance.debt-plans.preview',
+    data: payload,
+  })
+}
+
+export function createFinanceDebtPlan(request, payload) {
+  return request({
+    url: '/finance/debt-plans',
+    method: 'POST',
+    csrfActionId: 'finance.debt-plans.create',
+    data: payload,
+  })
+}
+
 export function renegotiateFinanceInstallmentPlan(request, planId, payload) {
   return request({
     url: `/finance/installment-plans/${encodeURIComponent(planId)}/renegotiate`,

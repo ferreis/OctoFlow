@@ -37,6 +37,11 @@ export const navigationItems = [
         label: 'Investimentos',
       },
       {
+        key: 'finance.debts',
+        short: 'DV',
+        label: 'Dívidas',
+      },
+      {
         key: 'finance.currencies',
         short: 'MO',
         label: 'Moedas',
