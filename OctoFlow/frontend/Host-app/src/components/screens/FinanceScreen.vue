@@ -8,12 +8,14 @@ import {
 } from '../../federation/remoteComponents'
 import {
   createFinanceBankAccount,
+  createFinanceCategory,
   createFinanceDebtPlan,
   createFinanceEntry,
   createFinanceExport,
   createFinanceInstallmentPlan,
   createFinanceOpenFinanceConnection,
   createFinanceRecurringRule,
+  createFinanceRecurringType,
   createFinanceSettlement,
   fetchFinanceBankAccounts,
   fetchFinanceCategories,
@@ -33,7 +35,9 @@ import {
   previewFinanceDebtPlan,
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
+  updateFinanceCategory,
   updateFinanceBankAccountStatus,
+  updateFinanceRecurringType,
 } from '../../services/finance'
 import {
   convertFinanceSimulationToPlan,
@@ -43,6 +47,7 @@ import {
 import {
   FINANCE_BANK_ACCOUNT_TYPE_OPTIONS,
   FINANCE_DIRECTION_OPTIONS,
+  FINANCE_ENTRY_TYPE_OPTIONS,
   FINANCE_ENTRY_STATUS_OPTIONS,
   FINANCE_EXPORT_TYPE_OPTIONS,
   FINANCE_INVESTMENT_TYPE_OPTIONS,
@@ -80,8 +85,9 @@ const sectionToTabKey = {
   accounts: 'accounts',
   banks: 'banks',
   investments: 'investments',
-  debts: 'debts',
-  currencies: 'currencies',
+  debts: 'accounts',
+  settings: 'settings',
+  currencies: 'settings',
   reports: 'reports',
 }
 
@@ -90,9 +96,13 @@ const accountsTabOptions = [
   { key: 'overview', label: 'Visão Geral' },
   { key: 'payable', label: 'Contas a Pagar' },
   { key: 'receivable', label: 'Contas a Receber' },
+  { key: 'debts', label: 'Dívidas' },
 ]
 const activeAccountsTab = ref('overview')
 const directionOptions = FINANCE_DIRECTION_OPTIONS
+const manualEntryTypeOptions = FINANCE_ENTRY_TYPE_OPTIONS.filter((entryTypeOption) => (
+  ['ONE_OFF', 'DEBT', 'ADJUSTMENT'].includes(entryTypeOption.value)
+))
 const entryStatusOptions = FINANCE_ENTRY_STATUS_OPTIONS
 const investmentTypeOptions = FINANCE_INVESTMENT_TYPE_OPTIONS
 const investmentYieldModeOptions = FINANCE_INVESTMENT_YIELD_MODE_OPTIONS
@@ -147,11 +157,22 @@ const entryFilters = reactive({
 
 const entryForm = reactive({
   direction: 'PAYABLE',
+  entryType: 'ONE_OFF',
   title: '',
   expectedAmountBrl: '',
   dueDate: '',
   categoryId: '',
   bankAccountId: '',
+})
+
+const categoryForm = reactive({
+  name: '',
+  kind: 'BOTH',
+})
+
+const recurringTypeCatalogForm = reactive({
+  name: '',
+  description: '',
 })
 
 const bankAccountForm = reactive({
@@ -257,6 +278,13 @@ const openFinanceForm = reactive({
   createMockData: false,
 })
 
+const categoryKindOptions = [
+  { value: 'BOTH', label: 'Ambos (pagar e receber)' },
+  { value: 'PAYABLE', label: 'Somente pagar' },
+  { value: 'RECEIVABLE', label: 'Somente receber' },
+  { value: 'INVESTMENT', label: 'Investimento' },
+]
+
 const kpiCards = computed(() => {
   if (!dashboardSummary.value) {
     return []
@@ -348,6 +376,12 @@ const accountsEntriesTitle = computed(() => {
   return 'Lançamentos'
 })
 
+const entryTypeOptionsForForm = computed(() => (
+  entryForm.direction === 'RECEIVABLE'
+    ? manualEntryTypeOptions.filter((entryTypeOption) => entryTypeOption.value !== 'DEBT')
+    : manualEntryTypeOptions
+))
+
 const accountsOverviewComparisonRows = computed(() => {
   const summary = dashboardSummary.value
   if (!summary) {
@@ -425,6 +459,10 @@ watch(
     if (activeTab.value !== mappedTabKey) {
       activeTab.value = mappedTabKey
     }
+
+    if (nextSection === 'debts') {
+      activeAccountsTab.value = 'debts'
+    }
   },
   { immediate: true },
 )
@@ -432,6 +470,13 @@ watch(
 watch(activeTab, async (nextTabKey) => {
   if (nextTabKey === 'accounts') {
     applyAccountsDirectionContext()
+    if (activeAccountsTab.value === 'debts') {
+      await Promise.all([
+        loadDebtPlans(),
+        loadCatalogs(),
+      ])
+      return
+    }
 
     const accountRequests = [loadEntries()]
     if (activeAccountsTab.value === 'overview') {
@@ -452,16 +497,11 @@ watch(activeTab, async (nextTabKey) => {
     return
   }
 
-  if (nextTabKey === 'debts') {
+  if (nextTabKey === 'settings') {
     await Promise.all([
-      loadDebtPlans(),
       loadCatalogs(),
+      refreshCurrencyData(),
     ])
-    return
-  }
-
-  if (nextTabKey === 'currencies') {
-    await refreshCurrencyData()
     return
   }
 
@@ -482,6 +522,15 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
   applyAccountsDirectionContext()
   entryFilters.page = 1
 
+  if (nextAccountsTab === 'debts') {
+    await Promise.all([
+      loadDebtPlans(),
+      loadCatalogs(),
+    ])
+
+    return
+  }
+
   if (nextAccountsTab === 'overview') {
     await Promise.all([
       loadDashboard(),
@@ -495,6 +544,15 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
 
   await loadEntries()
 })
+
+watch(
+  () => entryForm.direction,
+  (nextDirection) => {
+    if (nextDirection === 'RECEIVABLE' && entryForm.entryType === 'DEBT') {
+      entryForm.entryType = 'ONE_OFF'
+    }
+  },
+)
 
 async function loadInitialData() {
   if (!props.currentUser?.id) {
@@ -513,7 +571,7 @@ async function loadInitialData() {
     loadOpenFinance(),
   ])
 
-  if (activeTab.value === 'currencies') {
+  if (activeTab.value === 'settings') {
     await refreshCurrencyData()
   }
 }
@@ -807,6 +865,7 @@ async function submitEntry() {
   try {
     await createFinanceEntry(props.request, {
       direction: entryForm.direction,
+      entryType: entryForm.entryType,
       title: entryForm.title,
       expectedAmountBrl: Number(entryForm.expectedAmountBrl),
       dueDate: entryForm.dueDate || null,
@@ -817,11 +876,80 @@ async function submitEntry() {
     entryForm.title = ''
     entryForm.expectedAmountBrl = ''
     entryForm.dueDate = ''
+    entryForm.entryType = 'ONE_OFF'
 
     notifyUser('Lançamento criado com sucesso.', 'success')
     await Promise.all([loadEntries(), loadDashboard()])
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o lançamento.'), 'error')
+  }
+}
+
+async function submitCategory() {
+  try {
+    await createFinanceCategory(props.request, {
+      name: categoryForm.name,
+      kind: categoryForm.kind,
+    })
+
+    categoryForm.name = ''
+    categoryForm.kind = 'BOTH'
+
+    notifyUser('Categoria criada com sucesso.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar a categoria.'), 'error')
+  }
+}
+
+async function toggleCategoryStatus(categoryItem) {
+  if (!categoryItem?.id) {
+    return
+  }
+
+  try {
+    await updateFinanceCategory(props.request, categoryItem.id, {
+      isActive: !Boolean(categoryItem.isActive),
+    })
+
+    notifyUser('Status da categoria atualizado.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível atualizar a categoria.'), 'error')
+  }
+}
+
+async function submitRecurringTypeCatalog() {
+  try {
+    await createFinanceRecurringType(props.request, {
+      name: recurringTypeCatalogForm.name,
+      description: recurringTypeCatalogForm.description || null,
+    })
+
+    recurringTypeCatalogForm.name = ''
+    recurringTypeCatalogForm.description = ''
+
+    notifyUser('Tipo de recorrência criado com sucesso.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o tipo de recorrência.'), 'error')
+  }
+}
+
+async function toggleRecurringTypeStatus(recurringTypeItem) {
+  if (!recurringTypeItem?.id) {
+    return
+  }
+
+  try {
+    await updateFinanceRecurringType(props.request, recurringTypeItem.id, {
+      isActive: !Boolean(recurringTypeItem.isActive),
+    })
+
+    notifyUser('Status do tipo recorrente atualizado.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível atualizar o tipo recorrente.'), 'error')
   }
 }
 
@@ -1146,6 +1274,10 @@ function applyAccountsDirectionContext() {
   if (accountsDirectionByTab.value !== '') {
     entryForm.direction = accountsDirectionByTab.value
   }
+
+  if (entryForm.direction === 'RECEIVABLE' && entryForm.entryType === 'DEBT') {
+    entryForm.entryType = 'ONE_OFF'
+  }
 }
 </script>
 
@@ -1276,7 +1408,7 @@ function applyAccountsDirectionContext() {
         />
       </article>
 
-      <article class="finance-panel">
+      <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
         <header>
           <h3>Novo lançamento</h3>
         </header>
@@ -1303,6 +1435,19 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Título</span>
             <input v-model="entryForm.title" type="text" required>
+          </label>
+
+          <label>
+            <span>Tipo de lançamento</span>
+            <select v-model="entryForm.entryType">
+              <option
+                v-for="entryTypeOption in entryTypeOptionsForForm"
+                :key="entryTypeOption.value"
+                :value="entryTypeOption.value"
+              >
+                {{ entryTypeOption.label }}
+              </option>
+            </select>
           </label>
 
           <label>
@@ -1335,7 +1480,7 @@ function applyAccountsDirectionContext() {
         </form>
       </article>
 
-      <article class="finance-panel">
+      <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
         <header>
           <h3>Baixa de lançamento</h3>
         </header>
@@ -1371,7 +1516,7 @@ function applyAccountsDirectionContext() {
         </form>
       </article>
 
-      <article class="finance-panel">
+      <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
         <header>
           <h3>{{ accountsEntriesTitle }}</h3>
           <small>{{ totalsLabel }}</small>
@@ -1434,6 +1579,7 @@ function applyAccountsDirectionContext() {
             <thead>
               <tr>
                 <th>Título</th>
+                <th>Tipo</th>
                 <th>Status</th>
                 <th>Vencimento</th>
                 <th>Esperado</th>
@@ -1446,6 +1592,7 @@ function applyAccountsDirectionContext() {
                   <strong>{{ entry.title }}</strong>
                   <small class="finance-muted-block">{{ entry.categoryName || 'Sem categoria' }}</small>
                 </td>
+                <td>{{ getFinanceLabel(entry.entryType, '-') }}</td>
                 <td>
                   <RemoteFinanceStatusBadge
                     :status="entry.status"
@@ -1563,6 +1710,150 @@ function applyAccountsDirectionContext() {
           v-else
           title="Sem contas bancárias"
           description="Cadastre contas para vincular lançamentos e controlar saldo."
+        />
+      </article>
+    </section>
+
+    <section v-if="activeTab === 'settings'" class="finance-section">
+      <article class="finance-panel">
+        <header>
+          <h3>Nova categoria</h3>
+        </header>
+
+        <form class="finance-form-grid" @submit.prevent="submitCategory">
+          <label>
+            <span>Nome</span>
+            <input v-model="categoryForm.name" type="text" required>
+          </label>
+
+          <label>
+            <span>Aplicação</span>
+            <select v-model="categoryForm.kind">
+              <option
+                v-for="categoryKindOption in categoryKindOptions"
+                :key="categoryKindOption.value"
+                :value="categoryKindOption.value"
+              >
+                {{ categoryKindOption.label }}
+              </option>
+            </select>
+          </label>
+
+          <button class="finance-action-button" type="submit">Salvar categoria</button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Categorias financeiras</h3>
+        </header>
+
+        <div v-if="categories.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Categoria</th>
+                <th>Aplicação</th>
+                <th>Origem</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="category in categories" :key="category.id">
+                <td>{{ category.name }}</td>
+                <td>{{ getFinanceLabel(category.kind, category.kind || '-') }}</td>
+                <td>{{ category.isSystem ? 'Sistema' : 'Personalizada' }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="category.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="category.isActive ? 'Ativa' : 'Inativa'"
+                  />
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="toggleCategoryStatus(category)"
+                  >
+                    {{ category.isActive ? 'Inativar' : 'Ativar' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem categorias"
+          description="Cadastre categorias para padronizar análise financeira."
+        />
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Novo tipo de recorrência</h3>
+        </header>
+
+        <form class="finance-form-grid" @submit.prevent="submitRecurringTypeCatalog">
+          <label>
+            <span>Nome</span>
+            <input v-model="recurringTypeCatalogForm.name" type="text" required>
+          </label>
+
+          <label>
+            <span>Descrição</span>
+            <input v-model="recurringTypeCatalogForm.description" type="text">
+          </label>
+
+          <button class="finance-action-button" type="submit">Salvar tipo recorrente</button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Tipos de recorrência</h3>
+        </header>
+
+        <div v-if="recurringTypes.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Descrição</th>
+                <th>Origem</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="recurringType in recurringTypes" :key="recurringType.id">
+                <td>{{ recurringType.name }}</td>
+                <td>{{ recurringType.description || '-' }}</td>
+                <td>{{ recurringType.isSystem ? 'Sistema' : 'Personalizada' }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="recurringType.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="recurringType.isActive ? 'Ativo' : 'Inativo'"
+                  />
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="toggleRecurringTypeStatus(recurringType)"
+                  >
+                    {{ recurringType.isActive ? 'Inativar' : 'Ativar' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem tipos recorrentes"
+          description="Cadastre os tipos recorrentes para usar nas regras automáticas."
         />
       </article>
     </section>
@@ -1908,11 +2199,11 @@ function applyAccountsDirectionContext() {
       </article>
     </section>
 
-    <section v-if="activeTab === 'debts'" class="finance-section">
+    <section v-if="activeTab === 'accounts' && activeAccountsTab === 'debts'" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Planejador de dívidas</h3>
-          <small>O sistema recomenda parcelas para tentar manter até 40% da renda mensal.</small>
+          <small>O sistema cruza contas a pagar/receber e dívida atual para sugerir parcelas.</small>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="previewDebtPlan">
@@ -2042,6 +2333,22 @@ function applyAccountsDirectionContext() {
                 <td>{{ formatCurrency(debtPreview.monthlyIncomeBrl) }} ({{ debtPreview.monthlyIncomeSource === 'INPUT' ? 'informada' : 'estimada' }})</td>
               </tr>
               <tr>
+                <th>Média mensal de recebimentos</th>
+                <td>{{ formatCurrency(debtPreview.estimatedMonthlyReceivablesBrl) }}</td>
+              </tr>
+              <tr>
+                <th>Média mensal de pagamentos</th>
+                <td>{{ formatCurrency(debtPreview.estimatedMonthlyPayablesBrl) }}</td>
+              </tr>
+              <tr>
+                <th>Comprometimento atual com dívidas</th>
+                <td>{{ formatCurrency(debtPreview.existingDebtCommitmentBrl) }}</td>
+              </tr>
+              <tr>
+                <th>Renda livre mensal</th>
+                <td>{{ formatCurrency(debtPreview.monthlyDisposableIncomeBrl) }}</td>
+              </tr>
+              <tr>
                 <th>Limite de parcela</th>
                 <td>{{ formatCurrency(debtPreview.maxRecommendedPaymentBrl) }} ({{ formatPercent(debtPreview.maxCommitmentPercent) }})</td>
               </tr>
@@ -2125,7 +2432,7 @@ function applyAccountsDirectionContext() {
       </article>
     </section>
 
-    <section v-if="activeTab === 'currencies'" class="finance-section">
+    <section v-if="activeTab === 'settings'" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Moedas e câmbio (Bacen PTAX)</h3>
@@ -2492,7 +2799,7 @@ function applyAccountsDirectionContext() {
 .finance-action-button,
 .finance-inline-action {
   border: 1px solid var(--accent, #1d4ed8);
-  background: var(--button-gradient, var(--accent, #1d4ed8));
+  background: var(--accent, #1d4ed8);
   color: var(--button-primary-text, #ffffff);
   border-radius: 10px;
   min-height: 42px;

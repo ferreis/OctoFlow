@@ -40,7 +40,8 @@ const FINANCE_VIEW_TO_SECTION = {
   'finance.banks': 'banks',
   'finance.investments': 'investments',
   'finance.debts': 'debts',
-  'finance.currencies': 'currencies',
+  'finance.settings': 'settings',
+  'finance.currencies': 'settings',
   'finance.reports': 'reports',
 }
 
