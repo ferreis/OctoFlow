@@ -37,6 +37,11 @@ export const navigationItems = [
         label: 'Investimentos',
       },
       {
+        key: 'finance.currencies',
+        short: 'MO',
+        label: 'Moedas',
+      },
+      {
         key: 'finance.reports',
         short: 'RP',
         label: 'Relatórios',

@@ -19,6 +19,8 @@ import {
   fetchFinanceDashboardCashflow,
   fetchFinanceDashboardCategories,
   fetchFinanceDashboardSummary,
+  fetchFinanceCurrencies,
+  fetchFinanceCurrencyRates,
   fetchFinanceEntries,
   fetchFinanceExports,
   fetchFinanceInstallmentPlans,
@@ -75,6 +77,7 @@ const sectionToTabKey = {
   accounts: 'accounts',
   banks: 'banks',
   investments: 'investments',
+  currencies: 'currencies',
   reports: 'reports',
 }
 
@@ -98,6 +101,7 @@ const loadingState = reactive({
   recurring: false,
   installments: false,
   investments: false,
+  currencies: false,
   exports: false,
   catalogs: false,
   openFinance: false,
@@ -113,6 +117,8 @@ const entriesMeta = ref({ page: 1, itemsPerPage: 20, total: 0 })
 const recurringRules = ref([])
 const installmentPlans = ref([])
 const investmentPlans = ref([])
+const currenciesCatalog = ref([])
+const currencyRates = ref([])
 const exportJobs = ref([])
 const latestSimulation = ref(null)
 const openFinanceProviders = ref([])
@@ -212,6 +218,11 @@ const exportForm = reactive({
   exportType: 'MONTHLY_SUMMARY',
 })
 
+const currencyForm = reactive({
+  date: new Date().toISOString().slice(0, 10),
+  codes: ['USD', 'EUR', 'GBP', 'ARS'],
+})
+
 const openFinanceForm = reactive({
   providerId: '',
   status: 'ACTIVE',
@@ -309,6 +320,53 @@ const accountsEntriesTitle = computed(() => {
   return 'Lançamentos'
 })
 
+const accountsOverviewComparisonRows = computed(() => {
+  const summary = dashboardSummary.value
+  if (!summary) {
+    return []
+  }
+
+  const expectedIncomeBrl = Number(summary.expectedIncomeBrl || 0)
+  const realizedIncomeBrl = Number(summary.realizedIncomeBrl || 0)
+  const expectedExpenseBrl = Number(summary.expectedExpenseBrl || 0)
+  const realizedExpenseBrl = Number(summary.realizedExpenseBrl || 0)
+
+  const incomeRemainingBrl = Math.max(0, roundMoney(expectedIncomeBrl - realizedIncomeBrl))
+  const expenseRemainingBrl = Math.max(0, roundMoney(expectedExpenseBrl - realizedExpenseBrl))
+
+  return [
+    {
+      key: 'receivable',
+      label: 'Contas a receber',
+      expectedBrl: expectedIncomeBrl,
+      realizedBrl: realizedIncomeBrl,
+      remainingBrl: incomeRemainingBrl,
+      progressPercent: expectedIncomeBrl > 0 ? Math.min(100, roundMoney((realizedIncomeBrl / expectedIncomeBrl) * 100)) : 0,
+    },
+    {
+      key: 'payable',
+      label: 'Contas a pagar',
+      expectedBrl: expectedExpenseBrl,
+      realizedBrl: realizedExpenseBrl,
+      remainingBrl: expenseRemainingBrl,
+      progressPercent: expectedExpenseBrl > 0 ? Math.min(100, roundMoney((realizedExpenseBrl / expectedExpenseBrl) * 100)) : 0,
+    },
+  ]
+})
+
+const selectedCurrenciesLabel = computed(() => {
+  const selectedCount = Array.isArray(currencyForm.codes) ? currencyForm.codes.length : 0
+  if (selectedCount <= 0) {
+    return 'Nenhuma moeda selecionada'
+  }
+
+  if (selectedCount === 1) {
+    return '1 moeda selecionada'
+  }
+
+  return `${selectedCount} moedas selecionadas`
+})
+
 onMounted(async () => {
   await loadInitialData()
 })
@@ -344,7 +402,7 @@ watch(activeTab, async (nextTabKey) => {
 
     const accountRequests = [loadEntries()]
     if (activeAccountsTab.value === 'overview') {
-      accountRequests.push(loadRecurringRules(), loadInstallments())
+      accountRequests.push(loadDashboard(), loadRecurringRules(), loadInstallments())
     }
 
     await Promise.all(accountRequests)
@@ -358,6 +416,11 @@ watch(activeTab, async (nextTabKey) => {
 
   if (nextTabKey === 'investments') {
     await loadInvestments()
+    return
+  }
+
+  if (nextTabKey === 'currencies') {
+    await refreshCurrencyData()
     return
   }
 
@@ -380,6 +443,7 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
 
   if (nextAccountsTab === 'overview') {
     await Promise.all([
+      loadDashboard(),
       loadEntries(),
       loadRecurringRules(),
       loadInstallments(),
@@ -406,6 +470,10 @@ async function loadInitialData() {
     loadExports(),
     loadOpenFinance(),
   ])
+
+  if (activeTab.value === 'currencies') {
+    await refreshCurrencyData()
+  }
 }
 
 function resetLocalState() {
@@ -417,6 +485,8 @@ function resetLocalState() {
   recurringRules.value = []
   installmentPlans.value = []
   investmentPlans.value = []
+  currenciesCatalog.value = []
+  currencyRates.value = []
   exportJobs.value = []
   latestSimulation.value = null
   openFinanceProviders.value = []
@@ -529,6 +599,46 @@ async function loadInvestments() {
   }
 }
 
+async function loadCurrenciesCatalog() {
+  try {
+    const response = await fetchFinanceCurrencies(props.request)
+    currenciesCatalog.value = Array.isArray(response.data?.items) ? response.data.items : []
+
+    if (currencyForm.codes.length === 0 && currenciesCatalog.value.length > 0) {
+      currencyForm.codes = currenciesCatalog.value.slice(0, 4).map((currencyItem) => String(currencyItem.code))
+    }
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar catálogo de moedas.'), 'error')
+  }
+}
+
+async function loadCurrencyRates() {
+  loadingState.currencies = true
+
+  try {
+    const selectedCurrencyCodes = Array.isArray(currencyForm.codes) ? currencyForm.codes : []
+
+    const response = await fetchFinanceCurrencyRates(props.request, {
+      date: currencyForm.date || undefined,
+      codes: selectedCurrencyCodes.join(',') || undefined,
+    })
+
+    currencyRates.value = Array.isArray(response.data?.items) ? response.data.items : []
+    if (typeof response.data?.requestedDate === 'string' && response.data.requestedDate !== '') {
+      currencyForm.date = response.data.requestedDate
+    }
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar cotações de moedas.'), 'error')
+  } finally {
+    loadingState.currencies = false
+  }
+}
+
+async function refreshCurrencyData() {
+  await loadCurrenciesCatalog()
+  await loadCurrencyRates()
+}
+
 async function loadExports() {
   loadingState.exports = true
 
@@ -613,7 +723,7 @@ async function toggleBankAccountStatus(bankAccount) {
 
   try {
     await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
-      isActive: !Boolean(bankAccount.isActive),
+      isActive: !bankAccount.isActive,
     })
 
     notifyUser('Status da conta bancária atualizado.', 'success')
@@ -830,6 +940,10 @@ async function runOpenFinanceSync(connectionId) {
   }
 }
 
+function roundMoney(rawValue) {
+  return Math.round(Number(rawValue || 0) * 100) / 100
+}
+
 function formatCurrency(rawValue) {
   const numericValue = Number(rawValue || 0)
 
@@ -838,6 +952,20 @@ function formatCurrency(rawValue) {
     currency: 'BRL',
     minimumFractionDigits: 2,
   }).format(numericValue)
+}
+
+function formatPercent(rawValue) {
+  const numericValue = Number(rawValue || 0)
+  return `${numericValue.toFixed(1)}%`
+}
+
+function formatExchangeRate(rawValue) {
+  const numericValue = Number(rawValue)
+  if (!Number.isFinite(numericValue)) {
+    return '-'
+  }
+
+  return numericValue.toFixed(6)
 }
 
 function normalizeOptionalNumber(value) {
@@ -870,14 +998,6 @@ function applyAccountsDirectionContext() {
 
 <template>
   <section class="finance-screen">
-    <header class="finance-screen-header">
-      <div>
-        <p class="finance-eyebrow">Módulo Financeiro</p>
-        <h2>Controle financeiro pessoal</h2>
-        <p>Gestão prática de contas, recorrência, parcelamentos, investimentos e exportação.</p>
-      </div>
-    </header>
-
     <section v-if="activeTab === 'reports'" class="finance-section">
       <div class="finance-kpi-grid">
         <RemoteFinanceKpiCard
@@ -967,6 +1087,41 @@ function applyAccountsDirectionContext() {
           {{ accountsTabOption.label }}
         </button>
       </nav>
+
+      <article v-if="activeAccountsTab === 'overview'" class="finance-panel">
+        <header>
+          <h3>Resumo rápido: pagar x receber</h3>
+          <small>Análise simples para o dia a dia. Detalhes completos em Relatórios.</small>
+        </header>
+
+        <div v-if="accountsOverviewComparisonRows.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Previsto</th>
+                <th>Realizado</th>
+                <th>Restante</th>
+                <th>Execução</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="comparisonRow in accountsOverviewComparisonRows" :key="comparisonRow.key">
+                <td>{{ comparisonRow.label }}</td>
+                <td>{{ formatCurrency(comparisonRow.expectedBrl) }}</td>
+                <td>{{ formatCurrency(comparisonRow.realizedBrl) }}</td>
+                <td>{{ formatCurrency(comparisonRow.remainingBrl) }}</td>
+                <td>{{ formatPercent(comparisonRow.progressPercent) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem dados de análise"
+          description="Cadastre lançamentos para visualizar o comparativo entre pagar e receber."
+        />
+      </article>
 
       <article class="finance-panel">
         <header>
@@ -1600,6 +1755,69 @@ function applyAccountsDirectionContext() {
       </article>
     </section>
 
+    <section v-if="activeTab === 'currencies'" class="finance-section">
+      <article class="finance-panel">
+        <header>
+          <h3>Moedas e câmbio (Bacen PTAX)</h3>
+          <small>{{ selectedCurrenciesLabel }}</small>
+        </header>
+
+        <form class="finance-form-grid" @submit.prevent="loadCurrencyRates">
+          <label>
+            <span>Data de referência</span>
+            <input v-model="currencyForm.date" type="date">
+          </label>
+
+          <label class="finance-multi-select-field">
+            <span>Moedas</span>
+            <select v-model="currencyForm.codes" class="finance-multi-select" multiple>
+              <option v-for="currencyItem in currenciesCatalog" :key="currencyItem.code" :value="currencyItem.code">
+                {{ currencyItem.code }} - {{ currencyItem.name }}
+              </option>
+            </select>
+            <small class="finance-field-hint">Use Ctrl/Cmd para selecionar várias moedas.</small>
+          </label>
+
+          <button class="finance-action-button" type="submit">Atualizar cotações</button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Resultado das cotações</h3>
+          <small v-if="loadingState.currencies">Atualizando...</small>
+        </header>
+
+        <div v-if="currencyRates.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Moeda</th>
+                <th>Compra (BRL)</th>
+                <th>Venda (BRL)</th>
+                <th>Data da cotação</th>
+                <th>Data/hora da API</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="currencyRateItem in currencyRates" :key="currencyRateItem.code">
+                <td>{{ currencyRateItem.code }} - {{ currencyRateItem.name }}</td>
+                <td>{{ formatExchangeRate(currencyRateItem.buyRateBrl) }}</td>
+                <td>{{ formatExchangeRate(currencyRateItem.sellRateBrl) }}</td>
+                <td>{{ currencyRateItem.quoteDate || '-' }}</td>
+                <td>{{ currencyRateItem.quoteDateTime || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem cotações"
+          description="Selecione moedas e atualize para buscar cotações da API do Bacen."
+        />
+      </article>
+    </section>
+
     <section v-if="activeTab === 'reports'" class="finance-section">
       <article class="finance-panel">
         <header>
@@ -1884,6 +2102,21 @@ function applyAccountsDirectionContext() {
 .finance-form-grid select,
 .finance-filter-grid select {
   text-overflow: ellipsis;
+}
+
+.finance-multi-select-field {
+  align-self: stretch;
+}
+
+.finance-multi-select {
+  min-height: 132px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.finance-field-hint {
+  font-size: 0.73rem;
+  color: var(--muted, #64748b);
 }
 
 .finance-action-button,

@@ -229,6 +229,22 @@ export function fetchFinanceDashboardCategories(request, params = {}) {
   })
 }
 
+export function fetchFinanceCurrencies(request, params = {}) {
+  return request({
+    url: '/finance/currencies',
+    method: 'GET',
+    params,
+  })
+}
+
+export function fetchFinanceCurrencyRates(request, params = {}) {
+  return request({
+    url: '/finance/currencies/rates',
+    method: 'GET',
+    params,
+  })
+}
+
 export function createFinanceExport(request, payload) {
   return request({
     url: '/finance/exports',
