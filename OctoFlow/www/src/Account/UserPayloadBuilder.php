@@ -32,6 +32,8 @@ final class UserPayloadBuilder
             'githubLinked' => $this->userEmailManager->hasProvider($user, 'github'),
             'githubTokenConfigured' => $user->hasGithubTokenConfigured(),
             'linkedEmails' => $this->userEmailManager->buildPayload($user),
+            'avatarUrl' => $user->getAvatarPath(),
+            'avatarUpdatedAt' => $user->getAvatarUpdatedAt()?->format(\DateTimeInterface::ATOM),
         ];
     }
 }

@@ -51,6 +51,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $githubTokenEncrypted = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $avatarPath = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $avatarMimeType = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $avatarUpdatedAt = null;
+
     /**
      * @var list<string>
      */
@@ -166,6 +175,47 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         $normalized = $githubTokenEncrypted === null ? null : trim($githubTokenEncrypted);
         $this->githubTokenEncrypted = $normalized === '' ? null : $normalized;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getAvatarPath(): ?string
+    {
+        return $this->avatarPath;
+    }
+
+    public function setAvatarPath(?string $avatarPath): self
+    {
+        $normalized = $avatarPath === null ? null : trim($avatarPath);
+        $this->avatarPath = $normalized === '' ? null : $normalized;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getAvatarMimeType(): ?string
+    {
+        return $this->avatarMimeType;
+    }
+
+    public function setAvatarMimeType(?string $avatarMimeType): self
+    {
+        $normalized = $avatarMimeType === null ? null : trim($avatarMimeType);
+        $this->avatarMimeType = $normalized === '' ? null : $normalized;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getAvatarUpdatedAt(): ?\DateTimeImmutable
+    {
+        return $this->avatarUpdatedAt;
+    }
+
+    public function setAvatarUpdatedAt(?\DateTimeImmutable $avatarUpdatedAt): self
+    {
+        $this->avatarUpdatedAt = $avatarUpdatedAt;
         $this->touch();
 
         return $this;

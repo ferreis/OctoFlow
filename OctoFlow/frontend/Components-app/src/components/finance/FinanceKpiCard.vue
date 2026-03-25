@@ -48,8 +48,8 @@ const toneClass = computed(() => {
 <style scoped>
 .finance-kpi-card {
   border-radius: 14px;
-  border: 1px solid var(--app-border-color, #d1d5db);
-  background: var(--app-card-bg, #ffffff);
+  border: 1px solid var(--line, #d1d5db);
+  background: var(--surface-strong, #ffffff);
   padding: 14px;
   display: grid;
   gap: 8px;
@@ -60,7 +60,7 @@ const toneClass = computed(() => {
   font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--app-text-muted, #6b7280);
+  color: var(--muted, #6b7280);
   font-weight: 700;
 }
 
@@ -68,33 +68,33 @@ const toneClass = computed(() => {
   margin: 0;
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--app-text-color, #111827);
+  color: var(--ink, #111827);
   line-height: 1.1;
 }
 
 .finance-kpi-card-caption {
   margin: 0;
-  color: var(--app-text-muted, #6b7280);
+  color: var(--muted, #6b7280);
   font-size: 0.82rem;
 }
 
 .finance-kpi-card-positive {
-  border-color: #86efac;
-  background: #f0fdf4;
+  border-color: color-mix(in srgb, var(--success, #22c55e) 40%, var(--line, #d1d5db));
+  background: var(--success-bg, color-mix(in srgb, var(--success, #22c55e) 18%, transparent));
 }
 
 .finance-kpi-card-negative {
-  border-color: #fda4af;
-  background: #fff1f2;
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 40%, var(--line, #d1d5db));
+  background: var(--danger-bg, color-mix(in srgb, var(--danger, #ef4444) 16%, transparent));
 }
 
 .finance-kpi-card-warning {
-  border-color: #fcd34d;
-  background: #fffbeb;
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 40%, var(--line, #d1d5db));
+  background: var(--warning-bg, color-mix(in srgb, var(--warning, #f59e0b) 16%, transparent));
 }
 
 .finance-kpi-card-neutral {
-  border-color: var(--app-border-color, #d1d5db);
-  background: var(--app-card-bg, #ffffff);
+  border-color: var(--line, #d1d5db);
+  background: var(--surface-strong, #ffffff);
 }
 </style>

@@ -426,7 +426,7 @@ final class FinanceExportService
             FROM finance_entry entry
             WHERE {$whereSql}
               AND COALESCE(entry.competence_month, entry.due_date) IS NOT NULL
-            GROUP BY competence_month
+            GROUP BY TO_CHAR(COALESCE(entry.competence_month, entry.due_date), 'YYYY-MM-01')
             ORDER BY competence_month ASC
         SQL, $parameters);
 
@@ -474,7 +474,7 @@ final class FinanceExportService
             FROM finance_entry entry
             LEFT JOIN finance_category category ON category.id = entry.category_id
             WHERE {$whereSql}
-            GROUP BY category_name
+            GROUP BY COALESCE(category.name, 'Sem categoria')
             ORDER BY COALESCE(SUM(entry.expected_amount_brl), 0) DESC
         SQL, $parameters);
 
@@ -521,7 +521,7 @@ final class FinanceExportService
             FROM finance_entry entry
             WHERE {$whereSql}
               AND COALESCE(entry.competence_month, entry.due_date) IS NOT NULL
-            GROUP BY competence_month
+            GROUP BY TO_CHAR(COALESCE(entry.competence_month, entry.due_date), 'YYYY-MM-01')
             ORDER BY competence_month ASC
         SQL, $parameters);
 

@@ -19,6 +19,7 @@ security:
             jwt: ~
 
     access_control:
+        - { path: ^/uploads/avatars, roles: PUBLIC_ACCESS }
         - { path: ^/auth/csrf/challenge$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/login$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/register$, roles: PUBLIC_ACCESS }

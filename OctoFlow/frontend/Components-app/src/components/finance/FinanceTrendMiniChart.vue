@@ -86,8 +86,12 @@ const pathData = computed(() => {
   width: 100%;
   height: 72px;
   border-radius: 10px;
-  border: 1px solid #dbeafe;
-  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+  border: 1px solid color-mix(in srgb, var(--accent, #2563eb) 24%, var(--line, #dbeafe));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent, #2563eb) 12%, transparent) 0%,
+    var(--surface-strong, #ffffff) 100%
+  );
   padding: 6px;
 }
 

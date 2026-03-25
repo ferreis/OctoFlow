@@ -35,13 +35,16 @@ const PUBLIC_CSRF_ACTIONS = {
   'auth.refresh': { method: 'POST', path: '/auth/refresh' },
   'auth.logout': { method: 'POST', path: '/auth/logout' },
 }
+const FINANCE_VIEW_TO_SECTION = {
+  'finance.accounts': 'accounts',
+  'finance.banks': 'banks',
+  'finance.investments': 'investments',
+  'finance.reports': 'reports',
+}
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 const loginForm = reactive({
@@ -70,6 +73,8 @@ const screenAuthValidationInProgress = ref(false)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 const effectiveSidebarExpanded = computed(() => !isCompactViewport.value && sidebarExpanded.value)
+const isFinanceView = computed(() => activeView.value.startsWith('finance.'))
+const financeSectionByView = computed(() => FINANCE_VIEW_TO_SECTION[activeView.value] || 'accounts')
 
 let viewportMediaQuery = null
 let removeViewportListener = null
@@ -354,12 +359,14 @@ async function navigateTo(viewKey) {
     return
   }
 
-  const screenAuthIsValid = await verifyAuthForScreenEntry(viewKey)
+  const normalizedViewKey = viewKey === 'finance' ? 'finance.accounts' : viewKey
+
+  const screenAuthIsValid = await verifyAuthForScreenEntry(normalizedViewKey)
   if (!screenAuthIsValid) {
     return
   }
 
-  activeView.value = viewKey
+  activeView.value = normalizedViewKey
 }
 
 function expandSidebar() {
@@ -918,9 +925,10 @@ function clearNotification() {
         />
 
         <FinanceScreen
-          v-else-if="activeView === 'finance'"
+          v-else-if="isFinanceView"
           :request="authRequest"
           :current-user="currentUser"
+          :initial-section="financeSectionByView"
           :notify="showNotification"
         />
 

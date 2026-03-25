@@ -7,6 +7,7 @@ import {
   RemoteFinanceTrendMiniChart,
 } from '../../federation/remoteComponents'
 import {
+  createFinanceBankAccount,
   createFinanceEntry,
   createFinanceExport,
   createFinanceInstallmentPlan,
@@ -27,12 +28,25 @@ import {
   fetchFinanceRecurringTypes,
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
+  updateFinanceBankAccountStatus,
 } from '../../services/finance'
 import {
   convertFinanceSimulationToPlan,
   createFinanceSimulation,
   fetchFinanceInvestmentPlans,
 } from '../../services/financeInvestments'
+import {
+  FINANCE_BANK_ACCOUNT_TYPE_OPTIONS,
+  FINANCE_DIRECTION_OPTIONS,
+  FINANCE_ENTRY_STATUS_OPTIONS,
+  FINANCE_EXPORT_TYPE_OPTIONS,
+  FINANCE_INVESTMENT_TYPE_OPTIONS,
+  FINANCE_INVESTMENT_YIELD_MODE_OPTIONS,
+  OPEN_FINANCE_CONNECTION_STATUS_OPTIONS,
+  translateFinanceExportStatus,
+  translateFinanceExportType,
+  translateFinanceTerm,
+} from '../../constants/financeTerms'
 import { useNotification } from '../../composables/useNotification'
 import { extractHttpMessage } from '../../utils/httpErrors'
 
@@ -49,20 +63,35 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  initialSection: {
+    type: String,
+    default: 'accounts',
+  },
 })
 
 const { notifyUser } = useNotification(props.notify)
 
-const tabOptions = [
-  { key: 'overview', label: 'Visão geral' },
-  { key: 'entries', label: 'Lançamentos' },
-  { key: 'recurrence', label: 'Recorrências' },
-  { key: 'installments', label: 'Parcelamentos' },
-  { key: 'investments', label: 'Investimentos' },
-  { key: 'exports', label: 'Exportações' },
-]
+const sectionToTabKey = {
+  accounts: 'accounts',
+  banks: 'banks',
+  investments: 'investments',
+  reports: 'reports',
+}
 
-const activeTab = ref('overview')
+const activeTab = ref(sectionToTabKey[props.initialSection] || 'accounts')
+const accountsTabOptions = [
+  { key: 'overview', label: 'Visão Geral' },
+  { key: 'payable', label: 'Contas a Pagar' },
+  { key: 'receivable', label: 'Contas a Receber' },
+]
+const activeAccountsTab = ref('overview')
+const directionOptions = FINANCE_DIRECTION_OPTIONS
+const entryStatusOptions = FINANCE_ENTRY_STATUS_OPTIONS
+const investmentTypeOptions = FINANCE_INVESTMENT_TYPE_OPTIONS
+const investmentYieldModeOptions = FINANCE_INVESTMENT_YIELD_MODE_OPTIONS
+const exportTypeOptions = FINANCE_EXPORT_TYPE_OPTIONS
+const bankAccountTypeOptions = FINANCE_BANK_ACCOUNT_TYPE_OPTIONS
+const openFinanceConnectionStatusOptions = OPEN_FINANCE_CONNECTION_STATUS_OPTIONS
 const loadingState = reactive({
   dashboard: false,
   entries: false,
@@ -110,6 +139,15 @@ const entryForm = reactive({
   dueDate: '',
   categoryId: '',
   bankAccountId: '',
+})
+
+const bankAccountForm = reactive({
+  name: '',
+  bankName: '',
+  accountType: 'CHECKING',
+  currentBalanceBrl: '0',
+  colorHex: '',
+  iconKey: '',
 })
 
 const settlementForm = reactive({
@@ -241,6 +279,36 @@ const investmentSummary = computed(() => {
   }
 })
 
+const accountsDirectionByTab = computed(() => {
+  if (activeAccountsTab.value === 'payable') {
+    return 'PAYABLE'
+  }
+
+  if (activeAccountsTab.value === 'receivable') {
+    return 'RECEIVABLE'
+  }
+
+  return ''
+})
+
+const accountsCurrentDirectionLabel = computed(() => (
+  accountsDirectionByTab.value
+    ? translateFinanceTerm(accountsDirectionByTab.value, 'Todas as direções')
+    : 'Todas as direções'
+))
+
+const accountsEntriesTitle = computed(() => {
+  if (activeAccountsTab.value === 'payable') {
+    return 'Lançamentos - Contas a pagar'
+  }
+
+  if (activeAccountsTab.value === 'receivable') {
+    return 'Lançamentos - Contas a receber'
+  }
+
+  return 'Lançamentos'
+})
+
 onMounted(async () => {
   await loadInitialData()
 })
@@ -259,24 +327,32 @@ watch(
   },
 )
 
+watch(
+  () => props.initialSection,
+  (nextSection) => {
+    const mappedTabKey = sectionToTabKey[nextSection] || 'accounts'
+    if (activeTab.value !== mappedTabKey) {
+      activeTab.value = mappedTabKey
+    }
+  },
+  { immediate: true },
+)
+
 watch(activeTab, async (nextTabKey) => {
-  if (nextTabKey === 'overview') {
-    await loadDashboard()
+  if (nextTabKey === 'accounts') {
+    applyAccountsDirectionContext()
+
+    const accountRequests = [loadEntries()]
+    if (activeAccountsTab.value === 'overview') {
+      accountRequests.push(loadRecurringRules(), loadInstallments())
+    }
+
+    await Promise.all(accountRequests)
     return
   }
 
-  if (nextTabKey === 'entries') {
-    await loadEntries()
-    return
-  }
-
-  if (nextTabKey === 'recurrence') {
-    await loadRecurringRules()
-    return
-  }
-
-  if (nextTabKey === 'installments') {
-    await loadInstallments()
+  if (nextTabKey === 'banks') {
+    await loadCatalogs()
     return
   }
 
@@ -285,10 +361,34 @@ watch(activeTab, async (nextTabKey) => {
     return
   }
 
-  if (nextTabKey === 'exports') {
-    await loadExports()
-    await loadOpenFinance()
+  if (nextTabKey === 'reports') {
+    await Promise.all([
+      loadDashboard(),
+      loadExports(),
+      loadOpenFinance(),
+    ])
   }
+})
+
+watch(activeAccountsTab, async (nextAccountsTab) => {
+  if (activeTab.value !== 'accounts') {
+    return
+  }
+
+  applyAccountsDirectionContext()
+  entryFilters.page = 1
+
+  if (nextAccountsTab === 'overview') {
+    await Promise.all([
+      loadEntries(),
+      loadRecurringRules(),
+      loadInstallments(),
+    ])
+
+    return
+  }
+
+  await loadEntries()
 })
 
 async function loadInitialData() {
@@ -479,6 +579,47 @@ async function submitEntry() {
     await Promise.all([loadEntries(), loadDashboard()])
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o lançamento.'), 'error')
+  }
+}
+
+async function submitBankAccount() {
+  try {
+    await createFinanceBankAccount(props.request, {
+      name: bankAccountForm.name,
+      bankName: bankAccountForm.bankName,
+      accountType: bankAccountForm.accountType,
+      currentBalanceBrl: Number(bankAccountForm.currentBalanceBrl || 0),
+      colorHex: bankAccountForm.colorHex || null,
+      iconKey: bankAccountForm.iconKey || null,
+    })
+
+    bankAccountForm.name = ''
+    bankAccountForm.bankName = ''
+    bankAccountForm.currentBalanceBrl = '0'
+    bankAccountForm.colorHex = ''
+    bankAccountForm.iconKey = ''
+
+    notifyUser('Conta bancária criada com sucesso.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar a conta bancária.'), 'error')
+  }
+}
+
+async function toggleBankAccountStatus(bankAccount) {
+  if (!bankAccount?.id) {
+    return
+  }
+
+  try {
+    await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
+      isActive: !Boolean(bankAccount.isActive),
+    })
+
+    notifyUser('Status da conta bancária atualizado.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível atualizar o status da conta bancária.'), 'error')
   }
 }
 
@@ -706,6 +847,25 @@ function normalizeOptionalNumber(value) {
     ? normalizedValue
     : null
 }
+
+function getFinanceLabel(termCode, fallbackLabel = '-') {
+  return translateFinanceTerm(termCode, fallbackLabel)
+}
+
+function getFinanceExportTypeLabel(exportTypeCode, fallbackLabel = '-') {
+  return translateFinanceExportType(exportTypeCode, fallbackLabel)
+}
+
+function getFinanceExportStatusLabel(exportStatusCode, fallbackLabel = '-') {
+  return translateFinanceExportStatus(exportStatusCode, fallbackLabel)
+}
+
+function applyAccountsDirectionContext() {
+  entryFilters.direction = accountsDirectionByTab.value
+  if (accountsDirectionByTab.value !== '') {
+    entryForm.direction = accountsDirectionByTab.value
+  }
+}
 </script>
 
 <template>
@@ -718,20 +878,7 @@ function normalizeOptionalNumber(value) {
       </div>
     </header>
 
-    <nav class="finance-tabs" aria-label="Abas do financeiro">
-      <button
-        v-for="tabOption in tabOptions"
-        :key="tabOption.key"
-        type="button"
-        class="finance-tab-button"
-        :class="{ active: activeTab === tabOption.key }"
-        @click="activeTab = tabOption.key"
-      >
-        {{ tabOption.label }}
-      </button>
-    </nav>
-
-    <section v-if="activeTab === 'overview'" class="finance-section">
+    <section v-if="activeTab === 'reports'" class="finance-section">
       <div class="finance-kpi-grid">
         <RemoteFinanceKpiCard
           v-for="kpiCard in kpiCards"
@@ -807,19 +954,42 @@ function normalizeOptionalNumber(value) {
       </article>
     </section>
 
-    <section v-else-if="activeTab === 'entries'" class="finance-section">
+    <section v-if="activeTab === 'accounts'" class="finance-section">
+      <nav class="finance-subtabs" aria-label="Abas da tela de contas">
+        <button
+          v-for="accountsTabOption in accountsTabOptions"
+          :key="accountsTabOption.key"
+          type="button"
+          class="finance-subtab-button"
+          :class="{ active: activeAccountsTab === accountsTabOption.key }"
+          @click="activeAccountsTab = accountsTabOption.key"
+        >
+          {{ accountsTabOption.label }}
+        </button>
+      </nav>
+
       <article class="finance-panel">
         <header>
           <h3>Novo lançamento</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitEntry">
-          <label>
+          <label v-if="activeAccountsTab === 'overview'">
             <span>Direção</span>
             <select v-model="entryForm.direction">
-              <option value="PAYABLE">Contas a pagar</option>
-              <option value="RECEIVABLE">Contas a receber</option>
+              <option
+                v-for="directionOption in directionOptions"
+                :key="directionOption.value"
+                :value="directionOption.value"
+              >
+                {{ directionOption.label }}
+              </option>
             </select>
+          </label>
+
+          <label v-else>
+            <span>Direção</span>
+            <input :value="accountsCurrentDirectionLabel" type="text" readonly>
           </label>
 
           <label>
@@ -895,7 +1065,7 @@ function normalizeOptionalNumber(value) {
 
       <article class="finance-panel">
         <header>
-          <h3>Lançamentos</h3>
+          <h3>{{ accountsEntriesTitle }}</h3>
           <small>{{ totalsLabel }}</small>
         </header>
 
@@ -905,25 +1075,36 @@ function normalizeOptionalNumber(value) {
             <input v-model="entryFilters.search" type="text" placeholder="Título ou descrição">
           </label>
 
-          <label>
+          <label v-if="activeAccountsTab === 'overview'">
             <span>Direção</span>
             <select v-model="entryFilters.direction">
-              <option value="">Todas</option>
-              <option value="PAYABLE">Pagar</option>
-              <option value="RECEIVABLE">Receber</option>
+              <option value="">Todas as direções</option>
+              <option
+                v-for="directionOption in directionOptions"
+                :key="directionOption.value"
+                :value="directionOption.value"
+              >
+                {{ directionOption.label }}
+              </option>
             </select>
+          </label>
+
+          <label v-else>
+            <span>Direção atual</span>
+            <input :value="accountsCurrentDirectionLabel" type="text" readonly>
           </label>
 
           <label>
             <span>Status</span>
             <select v-model="entryFilters.status">
               <option value="">Todos</option>
-              <option value="PENDING">Pendente</option>
-              <option value="FORECAST">Previsto</option>
-              <option value="PARTIAL">Parcial</option>
-              <option value="OVERDUE">Atrasado</option>
-              <option value="PAID">Pago</option>
-              <option value="RECEIVED">Recebido</option>
+              <option
+                v-for="statusOption in entryStatusOptions"
+                :key="statusOption.value"
+                :value="statusOption.value"
+              >
+                {{ statusOption.label }}
+              </option>
             </select>
           </label>
 
@@ -958,7 +1139,10 @@ function normalizeOptionalNumber(value) {
                   <small class="finance-muted-block">{{ entry.categoryName || 'Sem categoria' }}</small>
                 </td>
                 <td>
-                  <RemoteFinanceStatusBadge :status="entry.status" />
+                  <RemoteFinanceStatusBadge
+                    :status="entry.status"
+                    :label="getFinanceLabel(entry.status)"
+                  />
                 </td>
                 <td>{{ entry.dueDate || '-' }}</td>
                 <td>{{ formatCurrency(entry.expectedAmountBrl) }}</td>
@@ -975,7 +1159,107 @@ function normalizeOptionalNumber(value) {
       </article>
     </section>
 
-    <section v-else-if="activeTab === 'recurrence'" class="finance-section">
+    <section v-if="activeTab === 'banks'" class="finance-section">
+      <article class="finance-panel">
+        <header>
+          <h3>Nova conta bancária</h3>
+        </header>
+
+        <form class="finance-form-grid" @submit.prevent="submitBankAccount">
+          <label>
+            <span>Nome da conta</span>
+            <input v-model="bankAccountForm.name" type="text" required>
+          </label>
+
+          <label>
+            <span>Banco</span>
+            <input v-model="bankAccountForm.bankName" type="text" required>
+          </label>
+
+          <label>
+            <span>Tipo</span>
+            <select v-model="bankAccountForm.accountType">
+              <option
+                v-for="bankAccountTypeOption in bankAccountTypeOptions"
+                :key="bankAccountTypeOption.value"
+                :value="bankAccountTypeOption.value"
+              >
+                {{ bankAccountTypeOption.label }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span>Saldo atual (BRL)</span>
+            <input v-model="bankAccountForm.currentBalanceBrl" type="number" step="0.01">
+          </label>
+
+          <label>
+            <span>Cor (hex)</span>
+            <input v-model="bankAccountForm.colorHex" type="text" placeholder="#2563eb">
+          </label>
+
+          <label>
+            <span>Ícone</span>
+            <input v-model="bankAccountForm.iconKey" type="text" placeholder="wallet">
+          </label>
+
+          <button class="finance-action-button" type="submit">Salvar conta bancária</button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Contas bancárias</h3>
+        </header>
+
+        <div v-if="bankAccounts.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Conta</th>
+                <th>Banco</th>
+                <th>Tipo</th>
+                <th>Saldo</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="bankAccount in bankAccounts" :key="bankAccount.id">
+                <td>{{ bankAccount.name }}</td>
+                <td>{{ bankAccount.bankName }}</td>
+                <td>{{ getFinanceLabel(bankAccount.accountType, '-') }}</td>
+                <td>{{ formatCurrency(bankAccount.currentBalanceBrl) }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="bankAccount.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="bankAccount.isActive ? 'Ativa' : 'Inativa'"
+                  />
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="toggleBankAccountStatus(bankAccount)"
+                  >
+                    {{ bankAccount.isActive ? 'Inativar' : 'Ativar' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem contas bancárias"
+          description="Cadastre contas para vincular lançamentos e controlar saldo."
+        />
+      </article>
+    </section>
+
+    <section v-if="activeTab === 'accounts' && activeAccountsTab === 'overview'" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Nova recorrência</h3>
@@ -985,8 +1269,13 @@ function normalizeOptionalNumber(value) {
           <label>
             <span>Direção</span>
             <select v-model="recurringForm.direction">
-              <option value="PAYABLE">Contas a pagar</option>
-              <option value="RECEIVABLE">Contas a receber</option>
+              <option
+                v-for="directionOption in directionOptions"
+                :key="directionOption.value"
+                :value="directionOption.value"
+              >
+                {{ directionOption.label }}
+              </option>
             </select>
           </label>
 
@@ -1055,7 +1344,7 @@ function normalizeOptionalNumber(value) {
       </article>
     </section>
 
-    <section v-else-if="activeTab === 'installments'" class="finance-section">
+    <section v-if="activeTab === 'accounts' && activeAccountsTab === 'overview'" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Novo parcelamento</h3>
@@ -1065,8 +1354,13 @@ function normalizeOptionalNumber(value) {
           <label>
             <span>Direção</span>
             <select v-model="installmentForm.direction">
-              <option value="PAYABLE">Contas a pagar</option>
-              <option value="RECEIVABLE">Contas a receber</option>
+              <option
+                v-for="directionOption in directionOptions"
+                :key="directionOption.value"
+                :value="directionOption.value"
+              >
+                {{ directionOption.label }}
+              </option>
             </select>
           </label>
 
@@ -1145,7 +1439,12 @@ function normalizeOptionalNumber(value) {
             <tbody>
               <tr v-for="plan in installmentPlans" :key="plan.id">
                 <td>{{ plan.title }}</td>
-                <td><RemoteFinanceStatusBadge :status="plan.status" /></td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="plan.status"
+                    :label="getFinanceLabel(plan.status)"
+                  />
+                </td>
                 <td>{{ formatCurrency(plan.totalAmountBrl) }}</td>
                 <td>{{ formatCurrency(plan.remainingAmountBrl) }}</td>
               </tr>
@@ -1160,7 +1459,7 @@ function normalizeOptionalNumber(value) {
       </article>
     </section>
 
-    <section v-else-if="activeTab === 'investments'" class="finance-section">
+    <section v-if="activeTab === 'investments'" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Simulador</h3>
@@ -1170,11 +1469,13 @@ function normalizeOptionalNumber(value) {
           <label>
             <span>Tipo</span>
             <select v-model="simulationForm.investmentType">
-              <option value="SELIC">Selic</option>
-              <option value="CDB">CDB</option>
-              <option value="CDI">CDI</option>
-              <option value="TESOURO">Tesouro</option>
-              <option value="CUSTOM">Customizado</option>
+              <option
+                v-for="investmentTypeOption in investmentTypeOptions"
+                :key="investmentTypeOption.value"
+                :value="investmentTypeOption.value"
+              >
+                {{ investmentTypeOption.label }}
+              </option>
             </select>
           </label>
 
@@ -1247,9 +1548,13 @@ function normalizeOptionalNumber(value) {
           <label>
             <span>Gerar lançamentos de rendimento</span>
             <select v-model="convertPlanForm.yieldMode">
-              <option value="NONE">Não gerar</option>
-              <option value="ESTIMATED">Estimado</option>
-              <option value="MANUAL">Manual</option>
+              <option
+                v-for="investmentYieldModeOption in investmentYieldModeOptions"
+                :key="investmentYieldModeOption.value"
+                :value="investmentYieldModeOption.value"
+              >
+                {{ investmentYieldModeOption.label }}
+              </option>
             </select>
           </label>
 
@@ -1275,7 +1580,12 @@ function normalizeOptionalNumber(value) {
             <tbody>
               <tr v-for="plan in investmentPlans" :key="plan.id">
                 <td>{{ plan.label }}</td>
-                <td><RemoteFinanceStatusBadge :status="plan.status" /></td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="plan.status"
+                    :label="getFinanceLabel(plan.status)"
+                  />
+                </td>
                 <td>{{ formatCurrency(plan.monthlyContributionBrl) }}</td>
                 <td>{{ Number(plan.effectiveMonthlyRate || 0).toFixed(6) }}</td>
               </tr>
@@ -1290,7 +1600,7 @@ function normalizeOptionalNumber(value) {
       </article>
     </section>
 
-    <section v-else class="finance-section">
+    <section v-if="activeTab === 'reports'" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Nova exportação XLSX</h3>
@@ -1300,12 +1610,13 @@ function normalizeOptionalNumber(value) {
           <label>
             <span>Tipo de exportação</span>
             <select v-model="exportForm.exportType">
-              <option value="PAYABLE">Contas a pagar</option>
-              <option value="RECEIVABLE">Contas a receber</option>
-              <option value="MONTHLY_SUMMARY">Resumo mensal</option>
-              <option value="CATEGORY">Categorias</option>
-              <option value="CASHFLOW">Fluxo financeiro</option>
-              <option value="INVESTMENT">Investimentos</option>
+              <option
+                v-for="exportTypeOption in exportTypeOptions"
+                :key="exportTypeOption.value"
+                :value="exportTypeOption.value"
+              >
+                {{ exportTypeOption.label }}
+              </option>
             </select>
           </label>
 
@@ -1330,8 +1641,13 @@ function normalizeOptionalNumber(value) {
             </thead>
             <tbody>
               <tr v-for="exportJob in exportJobs" :key="exportJob.id">
-                <td>{{ exportJob.exportType }}</td>
-                <td><RemoteFinanceStatusBadge :status="exportJob.status" /></td>
+                <td>{{ getFinanceExportTypeLabel(exportJob.exportType, '-') }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="exportJob.status"
+                    :label="getFinanceExportStatusLabel(exportJob.status)"
+                  />
+                </td>
                 <td>{{ exportJob.requestedAt }}</td>
                 <td>
                   <button
@@ -1371,9 +1687,13 @@ function normalizeOptionalNumber(value) {
           <label>
             <span>Status inicial</span>
             <select v-model="openFinanceForm.status">
-              <option value="ACTIVE">ACTIVE</option>
-              <option value="REVOKED">REVOKED</option>
-              <option value="EXPIRED">EXPIRED</option>
+              <option
+                v-for="connectionStatusOption in openFinanceConnectionStatusOptions"
+                :key="connectionStatusOption.value"
+                :value="connectionStatusOption.value"
+              >
+                {{ connectionStatusOption.label }}
+              </option>
             </select>
           </label>
 
@@ -1398,7 +1718,12 @@ function normalizeOptionalNumber(value) {
             <tbody>
               <tr v-for="connection in openFinanceConnections" :key="connection.id">
                 <td>{{ connection.providerName }}</td>
-                <td><RemoteFinanceStatusBadge :status="connection.status" /></td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="connection.status"
+                    :label="getFinanceLabel(connection.status)"
+                  />
+                </td>
                 <td>{{ connection.lastSyncAt || '-' }}</td>
                 <td>
                   <button type="button" class="finance-inline-action" @click="runOpenFinanceSync(connection.id)">Sincronizar</button>
@@ -1420,25 +1745,26 @@ function normalizeOptionalNumber(value) {
 <style scoped>
 .finance-screen {
   display: grid;
-  gap: 14px;
+  gap: 18px;
 }
 
 .finance-screen-header {
-  border: 1px solid var(--app-border-color, #cbd5e1);
+  border: 1px solid var(--line, #cbd5e1);
   border-radius: 14px;
-  padding: 16px;
-  background: linear-gradient(120deg, #ffffff 0%, #f8fafc 100%);
+  padding: 18px;
+  background: var(--soft-surface, linear-gradient(120deg, #ffffff 0%, #f8fafc 100%));
+  overflow: hidden;
 }
 
 .finance-screen-header h2 {
   margin: 2px 0 6px;
   font-size: 1.24rem;
-  color: var(--app-text-color, #0f172a);
+  color: var(--ink, #0f172a);
 }
 
 .finance-screen-header p {
   margin: 0;
-  color: var(--app-text-muted, #475569);
+  color: var(--muted, #475569);
 }
 
 .finance-eyebrow {
@@ -1446,90 +1772,98 @@ function normalizeOptionalNumber(value) {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.72rem;
-  color: #2563eb;
+  color: var(--accent, #2563eb);
   font-weight: 700;
 }
 
-.finance-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.finance-section {
+  display: grid;
+  gap: 16px;
 }
 
-.finance-tab-button {
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #334155;
-  border-radius: 999px;
-  padding: 0.4rem 0.8rem;
+.finance-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.finance-subtab-button {
+  border: 1px solid var(--line, #cbd5e1);
+  border-radius: 10px;
+  min-height: 38px;
+  padding: 0 14px;
+  background: var(--surface-strong, #ffffff);
+  color: var(--muted, #475569);
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
 }
 
-.finance-tab-button.active {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
-  color: #ffffff;
-}
-
-.finance-section {
-  display: grid;
-  gap: 12px;
+.finance-subtab-button.active {
+  border-color: var(--accent, #1d4ed8);
+  background: color-mix(in srgb, var(--accent, #1d4ed8) 14%, #ffffff);
+  color: var(--accent, #1d4ed8);
 }
 
 .finance-panel {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--line, #cbd5e1);
   border-radius: 14px;
-  background: #ffffff;
-  padding: 14px;
+  background: var(--surface-strong, #ffffff);
+  padding: 16px;
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  overflow: hidden;
 }
 
 .finance-panel header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .finance-panel h3 {
   margin: 0;
   font-size: 1rem;
-  color: #0f172a;
+  color: var(--ink, #0f172a);
 }
 
 .finance-panel small {
-  color: #475569;
+  color: var(--muted, #475569);
 }
 
 .finance-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .finance-form-grid,
 .finance-filter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 14px;
+  align-items: end;
 }
 
 .finance-form-grid label,
 .finance-filter-grid label {
   display: grid;
-  gap: 4px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .finance-form-grid label span,
 .finance-filter-grid label span {
-  font-size: 0.74rem;
-  color: #475569;
+  font-size: 0.78rem;
+  color: var(--muted, #475569);
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .finance-form-grid input,
@@ -1537,29 +1871,47 @@ function normalizeOptionalNumber(value) {
 .finance-form-grid select,
 .finance-filter-grid select {
   border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  min-height: 38px;
-  padding: 0 10px;
-  color: #0f172a;
-  background: #f8fafc;
+  border: 1px solid var(--line, #cbd5e1);
+  min-height: 42px;
+  padding: 0 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--ink, #0f172a);
+  background: var(--app-field-bg, color-mix(in srgb, var(--surface-strong, #ffffff) 88%, transparent));
+}
+
+.finance-form-grid select,
+.finance-filter-grid select {
+  text-overflow: ellipsis;
 }
 
 .finance-action-button,
 .finance-inline-action {
-  border: 1px solid #1d4ed8;
-  background: #1d4ed8;
-  color: #ffffff;
+  border: 1px solid var(--accent, #1d4ed8);
+  background: var(--button-gradient, var(--accent, #1d4ed8));
+  color: var(--button-primary-text, #ffffff);
   border-radius: 10px;
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 42px;
+  padding: 0 14px;
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.finance-form-grid > .finance-action-button,
+.finance-filter-grid > .finance-action-button {
+  justify-self: start;
+  width: auto;
+  min-width: 168px;
+  max-width: 100%;
 }
 
 .finance-inline-action:disabled {
-  border-color: #94a3b8;
-  background: #94a3b8;
+  border-color: var(--line, #94a3b8);
+  background: color-mix(in srgb, var(--muted, #94a3b8) 72%, transparent);
+  color: var(--ink, #0f172a);
   cursor: not-allowed;
 }
 
@@ -1576,32 +1928,34 @@ function normalizeOptionalNumber(value) {
 
 .finance-inline-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 .finance-inline-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
 }
 
 .finance-inline-table th,
 .finance-inline-table td {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--line, #e2e8f0);
   padding: 10px 8px;
   text-align: left;
   vertical-align: middle;
-  color: #0f172a;
+  color: var(--ink, #0f172a);
 }
 
 .finance-inline-table th {
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #475569;
+  color: var(--muted, #475569);
 }
 
 .finance-muted-block {
   display: block;
-  color: #64748b;
+  color: var(--muted, #64748b);
   font-size: 0.74rem;
 }
 
@@ -1612,6 +1966,17 @@ function normalizeOptionalNumber(value) {
 
   .finance-panel {
     padding: 12px;
+  }
+
+  .finance-form-grid,
+  .finance-filter-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .finance-form-grid > .finance-action-button,
+  .finance-filter-grid > .finance-action-button {
+    width: 100%;
   }
 }
 </style>

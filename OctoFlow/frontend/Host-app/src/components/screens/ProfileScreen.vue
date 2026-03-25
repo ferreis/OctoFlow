@@ -10,6 +10,7 @@ import {
   updateGithubAccount,
   updateGithubRepository,
 } from '../../services/githubWorkspace'
+import { removeProfileAvatar, uploadProfileAvatar } from '../../services/accountProfile'
 import { parseGithubRepositoryUrl } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
@@ -80,6 +81,9 @@ const props = defineProps({
 const emit = defineEmits(['session-updated'])
 
 const REPOSITORY_PAGE_SIZE = 10
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/OctoFlow/api').replace(/\/$/, '')
+const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
+const ALLOWED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const profile = ref(null)
 const profileLoading = ref(false)
@@ -93,6 +97,10 @@ const savingCustomTheme = ref(false)
 const savingRepositoryAccountId = ref(0)
 const savingRepositoryId = ref(0)
 const deletingRepositoryId = ref(0)
+const avatarFileInput = ref(null)
+const avatarUploading = ref(false)
+const avatarRemoving = ref(false)
+const avatarPreviewError = ref(false)
 const collapsedSections = reactive({
   summary: false,
   github: true,
@@ -122,6 +130,14 @@ const { notifyUser } = useNotification(props.notify)
 
 const displayEmail = computed(() => props.currentUser?.defaultEmail || props.currentUser?.email || 'Nao definido')
 const linkedEmailCount = computed(() => Array.isArray(props.currentUser?.linkedEmails) ? props.currentUser.linkedEmails.length : 0)
+const userAvatarUrl = computed(() => {
+  if (avatarPreviewError.value) {
+    return ''
+  }
+
+  return resolveAvatarUrl(props.currentUser?.avatarUrl)
+})
+const avatarActionLoading = computed(() => avatarUploading.value || avatarRemoving.value)
 const tokenConfigured = computed(() => Boolean(profile.value?.tokenConfigured))
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
 const themeOptions = computed(() => Array.isArray(props.availableThemes) ? props.availableThemes : [])
@@ -203,6 +219,13 @@ watch(
     }
 
     await loadProfile()
+  },
+)
+
+watch(
+  () => props.currentUser?.avatarUrl,
+  () => {
+    avatarPreviewError.value = false
   },
 )
 
@@ -571,6 +594,100 @@ async function removeRepository(repository) {
   }
 }
 
+function resolveAvatarUrl(rawAvatarUrl) {
+  const normalizedAvatarUrl = typeof rawAvatarUrl === 'string' ? rawAvatarUrl.trim() : ''
+  if (normalizedAvatarUrl === '') {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(normalizedAvatarUrl) || normalizedAvatarUrl.startsWith('data:')) {
+    return normalizedAvatarUrl
+  }
+
+  if (normalizedAvatarUrl.startsWith(API_BASE_URL)) {
+    return normalizedAvatarUrl
+  }
+
+  if (normalizedAvatarUrl.startsWith('/')) {
+    return `${API_BASE_URL}${normalizedAvatarUrl}`
+  }
+
+  return `${API_BASE_URL}/${normalizedAvatarUrl.replace(/^\/+/, '')}`
+}
+
+function triggerAvatarSelection() {
+  if (avatarActionLoading.value) {
+    return
+  }
+
+  avatarFileInput.value?.click()
+}
+
+function handleAvatarPreviewError() {
+  avatarPreviewError.value = true
+}
+
+async function handleAvatarFileChange(event) {
+  const selectedAvatarFile = event?.target?.files?.[0] || null
+  if (event?.target) {
+    event.target.value = ''
+  }
+
+  if (!selectedAvatarFile) {
+    return
+  }
+
+  if (!ALLOWED_AVATAR_MIME_TYPES.includes(selectedAvatarFile.type)) {
+    notifyUser('Formato invalido. Use JPG, PNG ou WEBP.', 'error')
+    return
+  }
+
+  if (selectedAvatarFile.size > MAX_AVATAR_SIZE_BYTES) {
+    notifyUser('A imagem deve ter no maximo 5 MB.', 'error')
+    return
+  }
+
+  avatarUploading.value = true
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  try {
+    const { data } = await uploadProfileAvatar(props.request, selectedAvatarFile)
+    forwardSessionUpdate({
+      user: data?.user || null,
+      token: data?.token || '',
+    })
+    profileSuccess.value = data?.message || 'Imagem de perfil atualizada com sucesso.'
+  } catch (error) {
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel atualizar a imagem de perfil.')
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+async function removeAvatar() {
+  if (avatarActionLoading.value || userAvatarUrl.value === '') {
+    return
+  }
+
+  avatarRemoving.value = true
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  try {
+    const { data } = await removeProfileAvatar(props.request)
+    forwardSessionUpdate({
+      user: data?.user || null,
+      token: data?.token || '',
+    })
+    profileSuccess.value = data?.message || 'Imagem de perfil removida com sucesso.'
+  } catch (error) {
+    profileError.value = extractHttpMessage(error, 'Nao foi possivel remover a imagem de perfil.')
+  } finally {
+    avatarRemoving.value = false
+  }
+}
+
 function forwardSessionUpdate(session) {
   emit('session-updated', session)
 }
@@ -727,10 +844,47 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 
       <template v-if="isSectionOpen('summary')">
         <div class="profile-hero">
-          <div class="profile-avatar">{{ displayEmail.slice(0, 1).toUpperCase() }}</div>
-          <div>
+          <div class="profile-avatar">
+            <img
+              v-if="userAvatarUrl"
+              :src="userAvatarUrl"
+              alt="Avatar do usuário"
+              class="profile-avatar-image"
+              @error="handleAvatarPreviewError"
+            >
+            <span v-else>{{ displayEmail.slice(0, 1).toUpperCase() }}</span>
+          </div>
+          <div class="profile-hero-copy">
             <strong>{{ displayEmail }}</strong>
             <p class="muted-copy">Conta autenticada no momento.</p>
+            <div class="profile-avatar-actions">
+              <input
+                ref="avatarFileInput"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                class="profile-avatar-input"
+                @change="handleAvatarFileChange"
+              >
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="avatarActionLoading"
+                @click="triggerAvatarSelection"
+              >
+                {{ avatarUploading ? 'Enviando...' : 'Trocar foto' }}
+              </button>
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="avatarActionLoading || userAvatarUrl === ''"
+                @click="removeAvatar"
+              >
+                {{ avatarRemoving ? 'Removendo...' : 'Remover foto' }}
+              </button>
+            </div>
+            <small class="profile-avatar-help">
+              JPG, PNG ou WEBP ate 5 MB. A imagem e otimizada automaticamente.
+            </small>
           </div>
         </div>
 
@@ -1434,6 +1588,11 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   gap: calc(16px * var(--profile-density-factor));
 }
 
+.profile-hero-copy {
+  display: grid;
+  gap: calc(8px * var(--profile-density-factor));
+}
+
 .profile-avatar {
   align-items: center;
   background: linear-gradient(
@@ -1449,7 +1608,30 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
   font-weight: 900;
   height: calc(68px * var(--profile-density-factor));
   justify-content: center;
+  overflow: hidden;
   width: calc(68px * var(--profile-density-factor));
+}
+
+.profile-avatar-image {
+  border-radius: inherit;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.profile-avatar-input {
+  display: none;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(8px * var(--profile-density-factor));
+}
+
+.profile-avatar-help {
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .profile-stats {

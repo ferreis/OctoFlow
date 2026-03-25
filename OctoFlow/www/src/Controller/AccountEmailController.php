@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Account\Exception\UserEmailConflictException;
 use App\Account\UserEmailManager;
+use App\Account\UserAvatarManager;
 use App\Account\UserPayloadBuilder;
 use App\Entity\User;
 use App\Repository\UserRepository;
@@ -15,6 +16,7 @@ use App\Security\Google\GoogleIdentityVerifier;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -31,6 +33,7 @@ final class AccountEmailController
         private readonly EntityManagerInterface $entityManager,
         private readonly UserRepository $userRepository,
         private readonly UserEmailManager $userEmailManager,
+        private readonly UserAvatarManager $userAvatarManager,
         private readonly UserPayloadBuilder $userPayloadBuilder,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
         private readonly JWTTokenManagerInterface $jwtTokenManager,
@@ -119,6 +122,59 @@ final class AccountEmailController
 
         return new JsonResponse([
             'message' => 'Google account linked successfully.',
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/profile/avatar', name: 'auth_profile_avatar_upload', methods: ['POST'])]
+    public function uploadAvatar(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $uploadedAvatar = $request->files->get('avatar');
+        if (!$uploadedAvatar instanceof UploadedFile) {
+            return new JsonResponse(['message' => 'Envie a imagem no campo avatar.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $this->userAvatarManager->storeUploadedAvatar($user, $uploadedAvatar);
+            $this->entityManager->flush();
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (\RuntimeException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return new JsonResponse([
+            'message' => 'Imagem de perfil atualizada com sucesso.',
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/profile/avatar', name: 'auth_profile_avatar_delete', methods: ['DELETE'])]
+    public function deleteAvatar(#[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        try {
+            $this->userAvatarManager->removeAvatar($user);
+            $this->entityManager->flush();
+        } catch (\RuntimeException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return new JsonResponse([
+            'message' => 'Imagem de perfil removida com sucesso.',
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
         ]);
     }

@@ -58,7 +58,7 @@
   --warning: var(--theme-warning);
   --warning-bg: rgba(245, 158, 11, 0.16);
   --shadow-lg: 0 22px 60px rgba(2, 6, 23, 0.28);
-  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 54%, var(--color-accent) 100%);
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 14px 30px rgba(6, 182, 212, 0.22);
   --button-primary-text: #f8fafc;
   --nav-bg: rgba(2, 6, 23, 0.9);
@@ -117,7 +117,7 @@
   --warning: var(--theme-warning);
   --warning-bg: rgba(250, 204, 21, 0.16);
   --shadow-lg: 0 22px 60px rgba(2, 6, 23, 0.34);
-  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 54%, var(--color-accent) 100%);
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 14px 30px rgba(34, 211, 238, 0.24);
   --button-primary-text: #e0f2fe;
   --nav-bg: rgba(2, 6, 23, 0.94);
@@ -176,7 +176,7 @@
   --warning: var(--theme-warning);
   --warning-bg: #fffbeb;
   --shadow-lg: 0 22px 60px rgba(15, 23, 42, 0.1);
-  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 52%, var(--color-accent) 100%);
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 14px 30px rgba(37, 99, 235, 0.16);
   --button-primary-text: #f8fafc;
   --nav-bg: rgba(255, 255, 255, 0.9);
@@ -235,7 +235,7 @@
   --warning: var(--theme-warning);
   --warning-bg: rgba(245, 158, 11, 0.16);
   --shadow-lg: 0 22px 60px rgba(2, 6, 23, 0.34);
-  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 50%, var(--color-accent) 100%);
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 14px 30px rgba(67, 56, 202, 0.22);
   --button-primary-text: #eef2ff;
   --nav-bg: rgba(2, 6, 23, 0.94);
@@ -294,7 +294,7 @@
   --warning: var(--theme-warning);
   --warning-bg: rgba(244, 114, 182, 0.16);
   --shadow-lg: 0 22px 60px rgba(15, 23, 42, 0.32);
-  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 52%, var(--color-accent) 100%);
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 14px 30px rgba(168, 85, 247, 0.22);
   --button-primary-text: #ffffff;
   --nav-bg: rgba(15, 23, 42, 0.94);
@@ -358,7 +358,7 @@
   --warning: var(--theme-warning);
   --warning-bg: color-mix(in srgb, var(--theme-warning) 16%, transparent);
   --shadow-lg: 0 22px 60px color-mix(in srgb, var(--theme-bg) 66%, transparent);
-  --button-gradient: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 52%, var(--color-accent) 100%);
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 14px 30px color-mix(in srgb, var(--color-secondary) 24%, transparent);
   --button-primary-text: color-mix(in srgb, var(--theme-text) 92%, var(--theme-bg) 8%);
   --nav-bg: color-mix(in srgb, var(--theme-bg) 90%, transparent);
@@ -408,12 +408,7 @@
   --danger-bg: color-mix(in srgb, var(--danger) 22%, transparent);
   --success-bg: color-mix(in srgb, var(--success) 22%, transparent);
   --warning-bg: color-mix(in srgb, var(--warning) 22%, transparent);
-  --button-gradient: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary) 90%, var(--color-bg) 10%) 0%,
-    color-mix(in srgb, var(--color-secondary) 90%, var(--color-bg) 10%) 52%,
-    color-mix(in srgb, var(--color-accent) 90%, var(--color-bg) 10%) 100%
-  );
+  --button-gradient: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 90%, white 10%) 0%, color-mix(in srgb, var(--color-primary) 92%, black 8%) 100%);
   --button-shadow: 0 0 0 1px color-mix(in srgb, var(--color-text) 22%, transparent);
   --nav-card: color-mix(in srgb, var(--color-bg) 82%, var(--color-text) 18%);
   --nav-card-hover: color-mix(in srgb, var(--color-bg) 74%, var(--color-text) 26%);
@@ -510,7 +505,12 @@ body,
 }
 
 body {
-  background: var(--bg-canvas);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-bg) 96%, white 4%) 0%,
+      color-mix(in srgb, var(--color-bg) 92%, black 8%) 100%
+    );
   min-width: 320px;
 }
 
