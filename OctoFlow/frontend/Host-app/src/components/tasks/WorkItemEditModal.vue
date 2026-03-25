@@ -20,6 +20,13 @@ import {
   buildMergedProjectLabelOptions,
   mapLabelNamesToSelectedOptions,
 } from '../../utils/projectLabels'
+import {
+  readDraft,
+  removeDraft,
+  TASK_DRAFT_MAX_AGE_MS,
+  TASK_DRAFT_MAX_ITEMS,
+  writeDraft,
+} from '../../utils/draftStorage'
 import { resolveHistoryBadgeToneClass } from '../../utils/statusTone'
 import {
   buildInitialFieldState,
@@ -77,7 +84,7 @@ const githubBaselineSnapshot = ref('')
 const localBaselineSnapshot = ref('')
 const shouldPersistWorkItemDraftOnUnmount = ref(true)
 
-const WORK_ITEM_DRAFT_STORAGE_PREFIX = 'octoflow.tasks.work-item-draft.'
+const TASK_DRAFT_STORAGE_PREFIX = 'octoflow.tasks.'
 
 watch(
   () => props.mode,
@@ -173,13 +180,15 @@ const activeWorkItemId = computed(() => {
 
   return ''
 })
+const draftScopeIdentifier = computed(() => resolveDraftScope(props.currentUser))
+const workItemDraftScopePrefix = computed(() => `${TASK_DRAFT_STORAGE_PREFIX}${draftScopeIdentifier.value}.`)
 const workItemDraftStorageKey = computed(() => {
   const itemId = activeWorkItemId.value
   if (itemId === '') {
     return ''
   }
 
-  return `${WORK_ITEM_DRAFT_STORAGE_PREFIX}${resolveDraftScope(props.currentUser)}.${props.mode}.${itemId}`
+  return `${workItemDraftScopePrefix.value}work-item.${props.mode}.${itemId}`
 })
 const hasGithubUnsavedChanges = computed(() => {
   if (!isGithubMode.value || activePanel.value !== 'edit' || githubBaselineSnapshot.value === '') {
@@ -1349,25 +1358,19 @@ function captureLocalBaselineSnapshot() {
 }
 
 function readStoredWorkItemDraft() {
-  if (typeof window === 'undefined' || workItemDraftStorageKey.value === '') {
+  if (workItemDraftStorageKey.value === '') {
     return null
   }
 
-  const rawStoredDraft = window.localStorage.getItem(workItemDraftStorageKey.value)
-  if (typeof rawStoredDraft !== 'string' || rawStoredDraft.trim() === '') {
-    return null
-  }
-
-  try {
-    const parsedDraft = JSON.parse(rawStoredDraft)
-    return parsedDraft && typeof parsedDraft === 'object' ? parsedDraft : null
-  } catch {
-    return null
-  }
+  return readDraft(workItemDraftStorageKey.value, {
+    scopePrefix: workItemDraftScopePrefix.value,
+    maxAgeMs: TASK_DRAFT_MAX_AGE_MS,
+    maxDraftItems: TASK_DRAFT_MAX_ITEMS,
+  })
 }
 
 function persistWorkItemDraft() {
-  if (typeof window === 'undefined' || workItemDraftStorageKey.value === '' || applyingStoredWorkItemDraft.value) {
+  if (workItemDraftStorageKey.value === '' || applyingStoredWorkItemDraft.value) {
     return
   }
 
@@ -1413,19 +1416,19 @@ function persistWorkItemDraft() {
     return
   }
 
-  try {
-    window.localStorage.setItem(workItemDraftStorageKey.value, JSON.stringify(draftPayload))
-  } catch {
-    // Silencioso: nao bloqueia o fluxo principal de edicao.
-  }
+  writeDraft(workItemDraftStorageKey.value, draftPayload, {
+    scopePrefix: workItemDraftScopePrefix.value,
+    maxAgeMs: TASK_DRAFT_MAX_AGE_MS,
+    maxDraftItems: TASK_DRAFT_MAX_ITEMS,
+  })
 }
 
 function clearStoredWorkItemDraft() {
-  if (typeof window === 'undefined' || workItemDraftStorageKey.value === '') {
+  if (workItemDraftStorageKey.value === '') {
     return
   }
 
-  window.localStorage.removeItem(workItemDraftStorageKey.value)
+  removeDraft(workItemDraftStorageKey.value)
 }
 
 function restoreStoredWorkItemDraft() {

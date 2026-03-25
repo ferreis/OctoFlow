@@ -19,6 +19,13 @@ import {
   buildMergedProjectLabelOptions,
   mapLabelNamesToSelectedOptions,
 } from '../../utils/projectLabels'
+import {
+  readDraft,
+  removeDraft,
+  TASK_DRAFT_MAX_AGE_MS,
+  TASK_DRAFT_MAX_ITEMS,
+  writeDraft,
+} from '../../utils/draftStorage'
 import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
@@ -58,7 +65,7 @@ const templatePickerMode = ref('select')
 const applyingStoredDraft = ref(false)
 const shouldPersistDraftOnUnmount = ref(true)
 
-const CREATE_DRAFT_STORAGE_PREFIX = 'octoflow.tasks.create-draft.'
+const TASK_DRAFT_STORAGE_PREFIX = 'octoflow.tasks.'
 
 const availableRepositories = computed(() => {
   const catalog = new Map()
@@ -120,7 +127,9 @@ const previewTitle = computed(() => formatTemplateTitle(selectedTemplate.value, 
 const previewBody = computed(() => renderPreview(selectedTemplate.value, buildSubmissionFields(selectedTemplate.value, fieldValues), requesterEmail.value))
 const activeError = computed(() => isLocalMode.value ? templatesError.value : workspaceError.value)
 const createModalBusy = computed(() => submitting.value || loadingWorkspace.value || loadingTemplates.value)
-const createDraftStorageKey = computed(() => `${CREATE_DRAFT_STORAGE_PREFIX}${resolveDraftScope(props.currentUser)}`)
+const draftScopeIdentifier = computed(() => resolveDraftScope(props.currentUser))
+const createDraftScopePrefix = computed(() => `${TASK_DRAFT_STORAGE_PREFIX}${draftScopeIdentifier.value}.`)
+const createDraftStorageKey = computed(() => `${createDraftScopePrefix.value}create`)
 const hasUnsavedCreateInput = computed(() => {
   const normalizedTitle = String(title.value || '').trim()
   const selectedLabelNames = buildLabelNamesFromSelection(selectedLabels.value)
@@ -429,25 +438,15 @@ function resolveDraftScope(currentUser) {
 }
 
 function readStoredCreateDraft() {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  const rawStoredDraft = window.localStorage.getItem(createDraftStorageKey.value)
-  if (typeof rawStoredDraft !== 'string' || rawStoredDraft.trim() === '') {
-    return null
-  }
-
-  try {
-    const parsedDraft = JSON.parse(rawStoredDraft)
-    return parsedDraft && typeof parsedDraft === 'object' ? parsedDraft : null
-  } catch {
-    return null
-  }
+  return readDraft(createDraftStorageKey.value, {
+    scopePrefix: createDraftScopePrefix.value,
+    maxAgeMs: TASK_DRAFT_MAX_AGE_MS,
+    maxDraftItems: TASK_DRAFT_MAX_ITEMS,
+  })
 }
 
 function persistCreateDraft() {
-  if (typeof window === 'undefined' || applyingStoredDraft.value) {
+  if (applyingStoredDraft.value) {
     return
   }
 
@@ -464,19 +463,15 @@ function persistCreateDraft() {
     fieldValues: normalizeDraftFieldValues(fieldValues),
   }
 
-  try {
-    window.localStorage.setItem(createDraftStorageKey.value, JSON.stringify(draftPayload))
-  } catch {
-    // Silencioso: nao bloqueia o fluxo principal de criacao.
-  }
+  writeDraft(createDraftStorageKey.value, draftPayload, {
+    scopePrefix: createDraftScopePrefix.value,
+    maxAgeMs: TASK_DRAFT_MAX_AGE_MS,
+    maxDraftItems: TASK_DRAFT_MAX_ITEMS,
+  })
 }
 
 function clearCreateDraft() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.removeItem(createDraftStorageKey.value)
+  removeDraft(createDraftStorageKey.value)
 }
 
 function restoreStoredCreateDraft() {
