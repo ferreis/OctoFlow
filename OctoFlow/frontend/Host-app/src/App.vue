@@ -5,6 +5,7 @@ import AppFooter from './components/layout/AppFooter.vue'
 import AppNotification from './components/layout/AppNotification.vue'
 import MenuSidebar from './components/layout/MenuSidebar.vue'
 import DashboardScreen from './components/screens/DashboardScreen.vue'
+import FinanceScreen from './components/screens/FinanceScreen.vue'
 import ProfileScreen from './components/screens/ProfileScreen.vue'
 import TasksScreen from './components/screens/TasksScreen.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
@@ -911,6 +912,13 @@ function clearNotification() {
 
         <TasksScreen
           v-else-if="activeView === 'tasks'"
+          :request="authRequest"
+          :current-user="currentUser"
+          :notify="showNotification"
+        />
+
+        <FinanceScreen
+          v-else-if="activeView === 'finance'"
           :request="authRequest"
           :current-user="currentUser"
           :notify="showNotification"

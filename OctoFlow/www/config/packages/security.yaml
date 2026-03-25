@@ -32,6 +32,7 @@ security:
         - { path: ^/auth/me$, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/github, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/ui, roles: IS_AUTHENTICATED_FULLY }
+        - { path: ^/finance, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/api/admin, roles: ROLE_ADMIN }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/auth, roles: IS_AUTHENTICATED_FULLY }

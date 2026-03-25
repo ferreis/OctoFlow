@@ -6,7 +6,7 @@ ARG GID=www-data
 RUN export DEBIAN_FRONTEND=noninteractive 
 
 RUN apt-get update -y
-RUN apt-get install -y --force-yes libssl-dev curl libcurl4-gnutls-dev libxml2-dev libicu-dev libmcrypt4 libmemcached11 openssl
+RUN apt-get install -y --force-yes libssl-dev curl libcurl4-gnutls-dev libxml2-dev libicu-dev libmcrypt4 libmemcached11 openssl libzip-dev
 RUN apt-get install -y ca-certificates
 
 RUN apt-get install -y gnupg gnupg2 apt-transport-https wget
@@ -20,7 +20,7 @@ RUN docker-php-ext-install opcache
 
 #LIBS EXTRAS
 RUN apt-get install -y libpq-dev libicu-dev libbz2-dev
-RUN docker-php-ext-install bcmath bz2 intl curl xml exif pgsql pdo_pgsql
+RUN docker-php-ext-install bcmath bz2 intl curl xml exif pgsql pdo_pgsql zip
 
 # INSTALAÇÃO DO COMPOSER
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer

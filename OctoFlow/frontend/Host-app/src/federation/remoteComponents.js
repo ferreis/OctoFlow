@@ -14,3 +14,7 @@ export const RemoteMarkdownPreview = createRemoteComponent(() => import('remoteA
 export const RemoteMultiSelect = createRemoteComponent(() => import('remoteApp/MultiSelect'))
 export const RemoteIssueTemplateForm = createRemoteComponent(() => import('remoteApp/IssueTemplateForm'))
 export const RemoteIssueTemplatePreview = createRemoteComponent(() => import('remoteApp/IssueTemplatePreview'))
+export const RemoteFinanceKpiCard = createRemoteComponent(() => import('remoteApp/FinanceKpiCard'))
+export const RemoteFinanceStatusBadge = createRemoteComponent(() => import('remoteApp/FinanceStatusBadge'))
+export const RemoteFinanceEmptyState = createRemoteComponent(() => import('remoteApp/FinanceEmptyState'))
+export const RemoteFinanceTrendMiniChart = createRemoteComponent(() => import('remoteApp/FinanceTrendMiniChart'))

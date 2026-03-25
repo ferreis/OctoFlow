@@ -18,6 +18,15 @@ export const navigationItems = [
     descriptionLong: 'Alterne entre suas issues atribuidas e todas as issues do repositorio, com troca rapida entre repositorios acessiveis.',
   },
   {
+    key: 'finance',
+    short: 'FN',
+    label: 'Financeiro',
+    description: 'Lançamentos, recorrência, investimentos e exportações',
+    eyebrow: 'Financeiro',
+    title: 'Controle financeiro pessoal',
+    descriptionLong: 'Gerencie contas a pagar e receber, parcelamentos, simulações e exportações do fluxo financeiro.',
+  },
+  {
     key: 'profile',
     short: 'PR',
     label: 'Perfil',
