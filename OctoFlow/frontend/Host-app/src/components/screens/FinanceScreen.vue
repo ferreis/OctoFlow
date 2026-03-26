@@ -290,6 +290,17 @@ const kpiCards = computed(() => {
     return []
   }
 
+  const expectedIncomeBrl = Number(dashboardSummary.value.expectedIncomeBrl || 0)
+  const expectedExpenseBrl = Number(dashboardSummary.value.expectedExpenseBrl || 0)
+  const realizedIncomeBrl = Number(dashboardSummary.value.realizedIncomeBrl || 0)
+  const realizedExpenseBrl = Number(dashboardSummary.value.realizedExpenseBrl || 0)
+  const expectedSettlementPercent = expectedIncomeBrl > 0
+    ? roundMoney((realizedIncomeBrl / expectedIncomeBrl) * 100)
+    : 0
+  const expectedExpenseExecutionPercent = expectedExpenseBrl > 0
+    ? roundMoney((realizedExpenseBrl / expectedExpenseBrl) * 100)
+    : 0
+
   return [
     {
       key: 'expectedNet',
@@ -318,6 +329,275 @@ const kpiCards = computed(() => {
       value: String(dashboardSummary.value.overdueEntriesCount || 0),
       caption: 'Lançamentos vencidos não quitados',
       tone: Number(dashboardSummary.value.overdueEntriesCount || 0) > 0 ? 'negative' : 'neutral',
+    },
+    {
+      key: 'expectedIncome',
+      label: 'Receita prevista',
+      value: formatCurrency(expectedIncomeBrl),
+      caption: 'Total de entradas previstas no período',
+      tone: 'positive',
+    },
+    {
+      key: 'expectedExpense',
+      label: 'Despesa prevista',
+      value: formatCurrency(expectedExpenseBrl),
+      caption: 'Total de saídas previstas no período',
+      tone: 'warning',
+    },
+    {
+      key: 'accountsBalance',
+      label: 'Saldo em contas',
+      value: formatCurrency(dashboardSummary.value.accountsBalanceBrl),
+      caption: 'Soma das contas bancárias ativas',
+      tone: Number(dashboardSummary.value.accountsBalanceBrl) >= 0 ? 'positive' : 'negative',
+    },
+    {
+      key: 'incomeSettlement',
+      label: 'Execução de recebimentos',
+      value: formatPercent(expectedSettlementPercent),
+      caption: 'Percentual realizado sobre o previsto',
+      tone: expectedSettlementPercent >= 100 ? 'positive' : 'neutral',
+    },
+    {
+      key: 'expenseExecution',
+      label: 'Execução de pagamentos',
+      value: formatPercent(expectedExpenseExecutionPercent),
+      caption: 'Percentual pago sobre o previsto',
+      tone: expectedExpenseExecutionPercent > 100 ? 'negative' : 'neutral',
+    },
+  ]
+})
+
+const dashboardCashflowSeries = computed(() => {
+  const cashflowItems = Array.isArray(dashboardCashflow.value) ? dashboardCashflow.value : []
+
+  return {
+    monthLabels: cashflowItems.map((cashflowItem) => String(cashflowItem.competenceMonth || '-')),
+    expectedIncomeSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.expectedIncomeBrl || 0)),
+    expectedExpenseSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.expectedExpenseBrl || 0)),
+    expectedNetSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.expectedNetBrl || 0)),
+    realizedIncomeSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.realizedIncomeBrl || 0)),
+    realizedExpenseSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.realizedExpenseBrl || 0)),
+    realizedNetSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.realizedNetBrl || 0)),
+    netGapSeries: cashflowItems.map((cashflowItem) => roundMoney(
+      Number(cashflowItem.expectedNetBrl || 0) - Number(cashflowItem.realizedNetBrl || 0),
+    )),
+  }
+})
+
+const dashboardCashflowMonthsLegend = computed(() => {
+  const monthLabels = dashboardCashflowSeries.value.monthLabels
+  if (monthLabels.length === 0) {
+    return ''
+  }
+
+  const visibleMonthLabels = monthLabels.slice(-8)
+  const hiddenMonthsCount = Math.max(0, monthLabels.length - visibleMonthLabels.length)
+
+  if (hiddenMonthsCount > 0) {
+    return `Período: ${visibleMonthLabels.join(' • ')} (+${hiddenMonthsCount} meses anteriores)`
+  }
+
+  return `Período: ${visibleMonthLabels.join(' • ')}`
+})
+
+const dashboardCashflowChartRows = computed(() => {
+  const cashflowSeries = dashboardCashflowSeries.value
+  if (cashflowSeries.monthLabels.length === 0) {
+    return []
+  }
+
+  return [
+    {
+      key: 'cashflow-net',
+      columns: 2,
+      charts: [
+        {
+          key: 'expected-net-monthly',
+          title: 'Saldo previsto por mês',
+          caption: 'Entradas previstas menos saídas previstas.',
+          points: cashflowSeries.expectedNetSeries,
+          strokeColor: '#2563eb',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(cashflowSeries.expectedNetSeries))}`,
+          secondaryLabel: `Último mês: ${formatCurrency(getLastSeriesValue(cashflowSeries.expectedNetSeries))}`,
+        },
+        {
+          key: 'realized-net-monthly',
+          title: 'Saldo realizado por mês',
+          caption: 'Entradas recebidas menos pagamentos efetivos.',
+          points: cashflowSeries.realizedNetSeries,
+          strokeColor: '#16a34a',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(cashflowSeries.realizedNetSeries))}`,
+          secondaryLabel: `Último mês: ${formatCurrency(getLastSeriesValue(cashflowSeries.realizedNetSeries))}`,
+        },
+      ],
+    },
+    {
+      key: 'cashflow-expected',
+      columns: 2,
+      charts: [
+        {
+          key: 'expected-income-monthly',
+          title: 'Receitas previstas',
+          caption: 'Evolução mensal do que ainda deve entrar.',
+          points: cashflowSeries.expectedIncomeSeries,
+          strokeColor: '#0284c7',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(cashflowSeries.expectedIncomeSeries))}`,
+          secondaryLabel: `Média mensal: ${formatCurrency(averageSeriesValue(cashflowSeries.expectedIncomeSeries))}`,
+        },
+        {
+          key: 'expected-expense-monthly',
+          title: 'Despesas previstas',
+          caption: 'Evolução mensal do que ainda deve sair.',
+          points: cashflowSeries.expectedExpenseSeries,
+          strokeColor: '#f97316',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(cashflowSeries.expectedExpenseSeries))}`,
+          secondaryLabel: `Média mensal: ${formatCurrency(averageSeriesValue(cashflowSeries.expectedExpenseSeries))}`,
+        },
+      ],
+    },
+    {
+      key: 'cashflow-realized',
+      columns: 2,
+      charts: [
+        {
+          key: 'realized-income-monthly',
+          title: 'Receitas realizadas',
+          caption: 'Entradas que já foram efetivamente recebidas.',
+          points: cashflowSeries.realizedIncomeSeries,
+          strokeColor: '#0369a1',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(cashflowSeries.realizedIncomeSeries))}`,
+          secondaryLabel: `Média mensal: ${formatCurrency(averageSeriesValue(cashflowSeries.realizedIncomeSeries))}`,
+        },
+        {
+          key: 'realized-expense-monthly',
+          title: 'Despesas realizadas',
+          caption: 'Pagamentos que já foram efetivamente quitados.',
+          points: cashflowSeries.realizedExpenseSeries,
+          strokeColor: '#ea580c',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(cashflowSeries.realizedExpenseSeries))}`,
+          secondaryLabel: `Média mensal: ${formatCurrency(averageSeriesValue(cashflowSeries.realizedExpenseSeries))}`,
+        },
+      ],
+    },
+    {
+      key: 'cashflow-gap',
+      columns: 1,
+      charts: [
+        {
+          key: 'gap-net-monthly',
+          title: 'Gap mensal entre previsto e realizado',
+          caption: 'Positivo: previsão acima do realizado. Negativo: realizado acima da previsão.',
+          points: cashflowSeries.netGapSeries,
+          strokeColor: '#7c3aed',
+          summaryLabel: `Média mensal: ${formatCurrency(averageSeriesValue(cashflowSeries.netGapSeries))}`,
+          secondaryLabel: `Maior desvio: ${formatCurrency(getMaxAbsoluteSeriesValue(cashflowSeries.netGapSeries))}`,
+        },
+      ],
+    },
+  ]
+})
+
+const dashboardCategorySeries = computed(() => {
+  const categoryItems = Array.isArray(dashboardCategories.value) ? dashboardCategories.value : []
+
+  return {
+    categoryNames: categoryItems.map((categoryItem) => String(categoryItem.categoryName || 'Sem categoria')),
+    entriesCountSeries: categoryItems.map((categoryItem) => Number(categoryItem.entriesCount || 0)),
+    expectedIncomeSeries: categoryItems.map((categoryItem) => Number(categoryItem.expectedIncomeBrl || 0)),
+    expectedExpenseSeries: categoryItems.map((categoryItem) => Number(categoryItem.expectedExpenseBrl || 0)),
+    expectedNetSeries: categoryItems.map((categoryItem) => Number(categoryItem.expectedNetBrl || 0)),
+    realizedIncomeSeries: categoryItems.map((categoryItem) => Number(categoryItem.realizedIncomeBrl || 0)),
+    realizedExpenseSeries: categoryItems.map((categoryItem) => Number(categoryItem.realizedExpenseBrl || 0)),
+    realizedNetSeries: categoryItems.map((categoryItem) => Number(categoryItem.realizedNetBrl || 0)),
+  }
+})
+
+const dashboardCategoriesLegend = computed(() => {
+  const categoryNames = dashboardCategorySeries.value.categoryNames
+  if (categoryNames.length === 0) {
+    return ''
+  }
+
+  const visibleCategoryNames = categoryNames.slice(0, 8)
+  const hiddenCategoriesCount = Math.max(0, categoryNames.length - visibleCategoryNames.length)
+
+  if (hiddenCategoriesCount > 0) {
+    return `Categorias: ${visibleCategoryNames.join(' • ')} (+${hiddenCategoriesCount} categorias)`
+  }
+
+  return `Categorias: ${visibleCategoryNames.join(' • ')}`
+})
+
+const dashboardCategoryChartRows = computed(() => {
+  const categorySeries = dashboardCategorySeries.value
+  if (categorySeries.categoryNames.length === 0) {
+    return []
+  }
+
+  return [
+    {
+      key: 'categories-net',
+      columns: 2,
+      charts: [
+        {
+          key: 'categories-expected-net',
+          title: 'Saldo previsto por categoria',
+          caption: 'Entradas previstas menos saídas previstas em cada categoria.',
+          points: categorySeries.expectedNetSeries,
+          strokeColor: '#1d4ed8',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(categorySeries.expectedNetSeries))}`,
+          secondaryLabel: `Maior valor: ${formatCurrency(getMaxSeriesValue(categorySeries.expectedNetSeries))}`,
+        },
+        {
+          key: 'categories-realized-net',
+          title: 'Saldo realizado por categoria',
+          caption: 'Entradas recebidas menos pagamentos em cada categoria.',
+          points: categorySeries.realizedNetSeries,
+          strokeColor: '#16a34a',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(categorySeries.realizedNetSeries))}`,
+          secondaryLabel: `Maior valor: ${formatCurrency(getMaxSeriesValue(categorySeries.realizedNetSeries))}`,
+        },
+      ],
+    },
+    {
+      key: 'categories-movements',
+      columns: 2,
+      charts: [
+        {
+          key: 'categories-expected-expense',
+          title: 'Despesas previstas por categoria',
+          caption: 'Volume de saídas planejadas em cada categoria.',
+          points: categorySeries.expectedExpenseSeries,
+          strokeColor: '#f97316',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(categorySeries.expectedExpenseSeries))}`,
+          secondaryLabel: `Maior valor: ${formatCurrency(getMaxSeriesValue(categorySeries.expectedExpenseSeries))}`,
+        },
+        {
+          key: 'categories-realized-expense',
+          title: 'Despesas realizadas por categoria',
+          caption: 'Volume de saídas efetivamente pagas por categoria.',
+          points: categorySeries.realizedExpenseSeries,
+          strokeColor: '#ea580c',
+          summaryLabel: `Acumulado: ${formatCurrency(sumSeriesValues(categorySeries.realizedExpenseSeries))}`,
+          secondaryLabel: `Maior valor: ${formatCurrency(getMaxSeriesValue(categorySeries.realizedExpenseSeries))}`,
+        },
+      ],
+    },
+    {
+      key: 'categories-volume',
+      columns: 1,
+      charts: [
+        {
+          key: 'categories-entries-volume',
+          title: 'Quantidade de lançamentos por categoria',
+          caption: 'Mostra onde existe maior concentração de movimentações.',
+          points: categorySeries.entriesCountSeries,
+          strokeColor: '#9333ea',
+          summaryLabel: `Total: ${formatInteger(sumCountValues(categorySeries.entriesCountSeries))} lançamentos`,
+          secondaryLabel: `Maior volume: ${formatInteger(getMaxSeriesValue(categorySeries.entriesCountSeries))} lançamentos`,
+        },
+      ],
     },
   ]
 })
@@ -909,7 +1189,7 @@ async function toggleCategoryStatus(categoryItem) {
 
   try {
     await updateFinanceCategory(props.request, categoryItem.id, {
-      isActive: !Boolean(categoryItem.isActive),
+      isActive: !categoryItem.isActive,
     })
 
     notifyUser('Status da categoria atualizado.', 'success')
@@ -943,7 +1223,7 @@ async function toggleRecurringTypeStatus(recurringTypeItem) {
 
   try {
     await updateFinanceRecurringType(props.request, recurringTypeItem.id, {
-      isActive: !Boolean(recurringTypeItem.isActive),
+      isActive: !recurringTypeItem.isActive,
     })
 
     notifyUser('Status do tipo recorrente atualizado.', 'success')
@@ -1205,6 +1485,62 @@ function roundMoney(rawValue) {
   return Math.round(Number(rawValue || 0) * 100) / 100
 }
 
+function sumSeriesValues(seriesValues) {
+  if (!Array.isArray(seriesValues)) {
+    return 0
+  }
+
+  const totalValue = seriesValues.reduce((accumulatedValue, seriesValue) => (
+    accumulatedValue + Number(seriesValue || 0)
+  ), 0)
+
+  return roundMoney(totalValue)
+}
+
+function averageSeriesValue(seriesValues) {
+  if (!Array.isArray(seriesValues) || seriesValues.length === 0) {
+    return 0
+  }
+
+  return roundMoney(sumSeriesValues(seriesValues) / seriesValues.length)
+}
+
+function getLastSeriesValue(seriesValues) {
+  if (!Array.isArray(seriesValues) || seriesValues.length === 0) {
+    return 0
+  }
+
+  return Number(seriesValues[seriesValues.length - 1] || 0)
+}
+
+function getMaxSeriesValue(seriesValues) {
+  if (!Array.isArray(seriesValues) || seriesValues.length === 0) {
+    return 0
+  }
+
+  const normalizedSeriesValues = seriesValues.map((seriesValue) => Number(seriesValue || 0))
+  return Math.max(...normalizedSeriesValues)
+}
+
+function getMaxAbsoluteSeriesValue(seriesValues) {
+  if (!Array.isArray(seriesValues) || seriesValues.length === 0) {
+    return 0
+  }
+
+  const normalizedSeriesValues = seriesValues.map((seriesValue) => Math.abs(Number(seriesValue || 0)))
+  return Math.max(...normalizedSeriesValues)
+}
+
+function sumCountValues(seriesValues) {
+  if (!Array.isArray(seriesValues)) {
+    return 0
+  }
+
+  return seriesValues.reduce((accumulatedCount, seriesValue) => (
+    accumulatedCount + Math.max(0, Math.round(Number(seriesValue || 0)))
+  ), 0)
+}
+
 function formatCurrency(rawValue) {
   const numericValue = Number(rawValue || 0)
 
@@ -1218,6 +1554,14 @@ function formatCurrency(rawValue) {
 function formatPercent(rawValue) {
   const numericValue = Number(rawValue || 0)
   return `${numericValue.toFixed(1)}%`
+}
+
+function formatInteger(rawValue) {
+  const numericValue = Number(rawValue || 0)
+
+  return new Intl.NumberFormat('pt-BR', {
+    maximumFractionDigits: 0,
+  }).format(numericValue)
 }
 
 function formatExchangeRate(rawValue) {
@@ -1297,29 +1641,40 @@ function applyAccountsDirectionContext() {
 
       <article class="finance-panel">
         <header>
-          <h3>Fluxo mensal</h3>
+          <h3>Painel de tendências - fluxo mensal</h3>
           <small v-if="loadingState.dashboard">Atualizando...</small>
         </header>
 
-        <RemoteFinanceTrendMiniChart :points="dashboardCashflow" />
+        <div v-if="dashboardCashflowChartRows.length" class="finance-dashboard-chart-stack">
+          <div
+            v-for="chartRow in dashboardCashflowChartRows"
+            :key="chartRow.key"
+            class="finance-dashboard-chart-row"
+            :class="chartRow.columns === 1 ? 'finance-dashboard-chart-row-single' : 'finance-dashboard-chart-row-double'"
+          >
+            <article
+              v-for="chartCard in chartRow.charts"
+              :key="chartCard.key"
+              class="finance-dashboard-chart-card"
+            >
+              <div class="finance-dashboard-chart-card-header">
+                <h4>{{ chartCard.title }}</h4>
+                <small>{{ chartCard.summaryLabel }}</small>
+              </div>
 
-        <div v-if="dashboardCashflow.length" class="finance-inline-table-wrap">
-          <table class="finance-inline-table">
-            <thead>
-              <tr>
-                <th>Mês</th>
-                <th>Previsto</th>
-                <th>Realizado</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="cashflowItem in dashboardCashflow" :key="cashflowItem.competenceMonth">
-                <td>{{ cashflowItem.competenceMonth }}</td>
-                <td>{{ formatCurrency(cashflowItem.expectedNetBrl) }}</td>
-                <td>{{ formatCurrency(cashflowItem.realizedNetBrl) }}</td>
-              </tr>
-            </tbody>
-          </table>
+              <RemoteFinanceTrendMiniChart
+                :points="chartCard.points"
+                :stroke-color="chartCard.strokeColor"
+              />
+
+              <p class="finance-dashboard-chart-caption">{{ chartCard.caption }}</p>
+              <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
+            </article>
+          </div>
+
+          <small v-if="dashboardCashflowMonthsLegend" class="finance-dashboard-legend">
+            {{ dashboardCashflowMonthsLegend }}
+          </small>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -1330,7 +1685,88 @@ function applyAccountsDirectionContext() {
 
       <article class="finance-panel">
         <header>
-          <h3>Top categorias</h3>
+          <h3>Painel de tendências por categoria</h3>
+        </header>
+
+        <div v-if="dashboardCategoryChartRows.length" class="finance-dashboard-chart-stack">
+          <div
+            v-for="chartRow in dashboardCategoryChartRows"
+            :key="chartRow.key"
+            class="finance-dashboard-chart-row"
+            :class="chartRow.columns === 1 ? 'finance-dashboard-chart-row-single' : 'finance-dashboard-chart-row-double'"
+          >
+            <article
+              v-for="chartCard in chartRow.charts"
+              :key="chartCard.key"
+              class="finance-dashboard-chart-card"
+            >
+              <div class="finance-dashboard-chart-card-header">
+                <h4>{{ chartCard.title }}</h4>
+                <small>{{ chartCard.summaryLabel }}</small>
+              </div>
+
+              <RemoteFinanceTrendMiniChart
+                :points="chartCard.points"
+                :stroke-color="chartCard.strokeColor"
+              />
+
+              <p class="finance-dashboard-chart-caption">{{ chartCard.caption }}</p>
+              <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
+            </article>
+          </div>
+
+          <small v-if="dashboardCategoriesLegend" class="finance-dashboard-legend">
+            {{ dashboardCategoriesLegend }}
+          </small>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem categorias no período"
+          description="Nenhum lançamento encontrado para montar análise por categoria."
+        />
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Detalhamento do fluxo mensal</h3>
+        </header>
+
+        <div v-if="dashboardCashflow.length" class="finance-inline-table-wrap">
+          <table class="finance-inline-table">
+            <thead>
+              <tr>
+                <th>Mês</th>
+                <th>Receita prevista</th>
+                <th>Despesa prevista</th>
+                <th>Saldo previsto</th>
+                <th>Receita realizada</th>
+                <th>Despesa realizada</th>
+                <th>Saldo realizado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cashflowItem in dashboardCashflow" :key="cashflowItem.competenceMonth">
+                <td>{{ cashflowItem.competenceMonth }}</td>
+                <td>{{ formatCurrency(cashflowItem.expectedIncomeBrl) }}</td>
+                <td>{{ formatCurrency(cashflowItem.expectedExpenseBrl) }}</td>
+                <td>{{ formatCurrency(cashflowItem.expectedNetBrl) }}</td>
+                <td>{{ formatCurrency(cashflowItem.realizedIncomeBrl) }}</td>
+                <td>{{ formatCurrency(cashflowItem.realizedExpenseBrl) }}</td>
+                <td>{{ formatCurrency(cashflowItem.realizedNetBrl) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <RemoteFinanceEmptyState
+          v-else
+          title="Sem detalhamento de fluxo"
+          description="Cadastre lançamentos para visualizar o histórico mensal completo."
+        />
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Detalhamento por categoria</h3>
         </header>
 
         <div v-if="dashboardCategories.length" class="finance-inline-table-wrap">
@@ -1338,14 +1774,24 @@ function applyAccountsDirectionContext() {
             <thead>
               <tr>
                 <th>Categoria</th>
-                <th>Previsto</th>
-                <th>Realizado</th>
+                <th>Lançamentos</th>
+                <th>Receita prevista</th>
+                <th>Despesa prevista</th>
+                <th>Saldo previsto</th>
+                <th>Receita realizada</th>
+                <th>Despesa realizada</th>
+                <th>Saldo realizado</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="categoryItem in dashboardCategories" :key="`${categoryItem.categoryId || 'none'}-${categoryItem.categoryName}`">
                 <td>{{ categoryItem.categoryName }}</td>
+                <td>{{ formatInteger(categoryItem.entriesCount) }}</td>
+                <td>{{ formatCurrency(categoryItem.expectedIncomeBrl) }}</td>
+                <td>{{ formatCurrency(categoryItem.expectedExpenseBrl) }}</td>
                 <td>{{ formatCurrency(categoryItem.expectedNetBrl) }}</td>
+                <td>{{ formatCurrency(categoryItem.realizedIncomeBrl) }}</td>
+                <td>{{ formatCurrency(categoryItem.realizedExpenseBrl) }}</td>
                 <td>{{ formatCurrency(categoryItem.realizedNetBrl) }}</td>
               </tr>
             </tbody>
@@ -2735,6 +3181,65 @@ function applyAccountsDirectionContext() {
   gap: 12px;
 }
 
+.finance-dashboard-chart-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.finance-dashboard-chart-row {
+  display: grid;
+  gap: 12px;
+}
+
+.finance-dashboard-chart-row-double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.finance-dashboard-chart-row-single {
+  grid-template-columns: 1fr;
+}
+
+.finance-dashboard-chart-card {
+  border: 1px solid color-mix(in srgb, var(--accent, #1d4ed8) 24%, var(--line, #cbd5e1));
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--soft-surface, linear-gradient(120deg, #ffffff 0%, #f8fafc 100%));
+  display: grid;
+  gap: 10px;
+}
+
+.finance-dashboard-chart-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.finance-dashboard-chart-card h4 {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink, #0f172a);
+}
+
+.finance-dashboard-chart-caption {
+  margin: 0;
+  color: var(--muted, #475569);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.finance-dashboard-chart-secondary {
+  font-size: 0.72rem;
+  color: var(--muted, #64748b);
+}
+
+.finance-dashboard-legend {
+  display: block;
+  font-size: 0.73rem;
+  color: var(--muted, #64748b);
+}
+
 .finance-form-grid,
 .finance-filter-grid {
   display: grid;
@@ -2876,6 +3381,10 @@ function applyAccountsDirectionContext() {
 
   .finance-panel {
     padding: 12px;
+  }
+
+  .finance-dashboard-chart-row-double {
+    grid-template-columns: 1fr;
   }
 
   .finance-form-grid,
