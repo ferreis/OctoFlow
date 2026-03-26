@@ -36,6 +36,7 @@ import {
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
   updateFinanceCategory,
+  updateFinanceBankAccount,
   updateFinanceBankAccountStatus,
   updateFinanceRecurringType,
 } from '../../services/finance'
@@ -177,12 +178,12 @@ const recurringTypeCatalogForm = reactive({
 
 const bankAccountForm = reactive({
   name: '',
-  bankName: '',
+  branch: '',
+  accountNumber: '',
   accountType: 'CHECKING',
   currentBalanceBrl: '0',
-  colorHex: '',
-  iconKey: '',
 })
+const bankAccountEditingId = ref(null)
 
 const settlementForm = reactive({
   entryId: '',
@@ -1143,6 +1144,37 @@ async function loadOpenFinance() {
 
 async function submitEntry() {
   try {
+    if (shouldCreateSalaryRecurringRuleFromEntry()) {
+      const recurringTypeId = resolveSalaryRecurringTypeId()
+      if (!recurringTypeId) {
+        notifyUser('Nao foi possivel localizar um tipo de recorrencia para salario.', 'warning')
+        return
+      }
+
+      const dueDate = entryForm.dueDate || new Date().toISOString().slice(0, 10)
+      const dueDay = Number(dueDate.split('-')[2] || 5)
+
+      await createFinanceRecurringRule(props.request, {
+        direction: 'RECEIVABLE',
+        title: entryForm.title,
+        amountBrl: Number(entryForm.expectedAmountBrl),
+        dayOfMonth: Number.isFinite(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : 5,
+        startsAt: dueDate,
+        recurringTypeId,
+        categoryId: resolveSalaryCategoryId(),
+        defaultBankAccountId: normalizeOptionalNumber(entryForm.bankAccountId),
+      })
+
+      entryForm.title = ''
+      entryForm.expectedAmountBrl = ''
+      entryForm.dueDate = ''
+      entryForm.entryType = 'ONE_OFF'
+
+      notifyUser('Salario cadastrado como recorrencia com sucesso.', 'success')
+      await Promise.all([loadRecurringRules(), loadEntries(), loadDashboard()])
+      return
+    }
+
     await createFinanceEntry(props.request, {
       direction: entryForm.direction,
       entryType: entryForm.entryType,
@@ -1235,42 +1267,74 @@ async function toggleRecurringTypeStatus(recurringTypeItem) {
 
 async function submitBankAccount() {
   try {
-    await createFinanceBankAccount(props.request, {
+    const payload = {
       name: bankAccountForm.name,
-      bankName: bankAccountForm.bankName,
+      branch: bankAccountForm.branch || null,
+      accountNumber: bankAccountForm.accountNumber || null,
       accountType: bankAccountForm.accountType,
       currentBalanceBrl: Number(bankAccountForm.currentBalanceBrl || 0),
-      colorHex: bankAccountForm.colorHex || null,
-      iconKey: bankAccountForm.iconKey || null,
-    })
+    }
 
-    bankAccountForm.name = ''
-    bankAccountForm.bankName = ''
-    bankAccountForm.currentBalanceBrl = '0'
-    bankAccountForm.colorHex = ''
-    bankAccountForm.iconKey = ''
+    if (bankAccountEditingId.value) {
+      await updateFinanceBankAccount(props.request, bankAccountEditingId.value, payload)
+      notifyUser('Conta bancária atualizada com sucesso.', 'success')
+    } else {
+      await createFinanceBankAccount(props.request, payload)
+      notifyUser('Conta bancária criada com sucesso.', 'success')
+    }
 
-    notifyUser('Conta bancária criada com sucesso.', 'success')
+    resetBankAccountForm()
     await loadCatalogs()
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar a conta bancária.'), 'error')
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível salvar a conta bancária.'), 'error')
   }
 }
 
-async function toggleBankAccountStatus(bankAccount) {
+function startEditingBankAccount(bankAccount) {
   if (!bankAccount?.id) {
+    return
+  }
+
+  bankAccountEditingId.value = bankAccount.id
+  bankAccountForm.name = String(bankAccount.name || '')
+  bankAccountForm.branch = String(bankAccount.branch || '')
+  bankAccountForm.accountNumber = String(bankAccount.accountNumber || '')
+  bankAccountForm.accountType = String(bankAccount.accountType || 'CHECKING')
+  bankAccountForm.currentBalanceBrl = String(bankAccount.currentBalanceBrl ?? '0')
+}
+
+function resetBankAccountForm() {
+  bankAccountEditingId.value = null
+  bankAccountForm.name = ''
+  bankAccountForm.branch = ''
+  bankAccountForm.accountNumber = ''
+  bankAccountForm.accountType = 'CHECKING'
+  bankAccountForm.currentBalanceBrl = '0'
+}
+
+async function deleteBankAccount(bankAccount) {
+  if (!bankAccount?.id) {
+    return
+  }
+
+  const confirmed = window.confirm('Confirma excluir esta conta bancária?')
+  if (!confirmed) {
     return
   }
 
   try {
     await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
-      isActive: !bankAccount.isActive,
+      isActive: false,
     })
 
-    notifyUser('Status da conta bancária atualizado.', 'success')
+    if (bankAccountEditingId.value === bankAccount.id) {
+      resetBankAccountForm()
+    }
+
+    notifyUser('Conta bancária removida com sucesso.', 'success')
     await loadCatalogs()
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível atualizar o status da conta bancária.'), 'error')
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível remover a conta bancária.'), 'error')
   }
 }
 
@@ -1579,6 +1643,66 @@ function normalizeOptionalNumber(value) {
   return Number.isFinite(normalizedValue) && normalizedValue > 0
     ? normalizedValue
     : null
+}
+
+function normalizeTextForComparison(rawValue) {
+  return String(rawValue || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function findCategoryByNormalizedName(targetName) {
+  const normalizedTargetName = normalizeTextForComparison(targetName)
+  return categories.value.find((categoryItem) => (
+    normalizeTextForComparison(categoryItem?.name) === normalizedTargetName
+  )) || null
+}
+
+function findRecurringTypeByNormalizedName(targetName) {
+  const normalizedTargetName = normalizeTextForComparison(targetName)
+  return recurringTypes.value.find((recurringTypeItem) => (
+    normalizeTextForComparison(recurringTypeItem?.name) === normalizedTargetName
+  )) || null
+}
+
+function resolveSalaryCategoryId() {
+  const selectedCategoryId = normalizeOptionalNumber(entryForm.categoryId)
+  if (selectedCategoryId) {
+    return selectedCategoryId
+  }
+
+  return normalizeOptionalNumber(findCategoryByNormalizedName('Salario')?.id)
+}
+
+function resolveSalaryRecurringTypeId() {
+  const salaryRecurringTypeId = normalizeOptionalNumber(findRecurringTypeByNormalizedName('Salario')?.id)
+  if (salaryRecurringTypeId) {
+    return salaryRecurringTypeId
+  }
+
+  const monthlyRecurringTypeId = normalizeOptionalNumber(findRecurringTypeByNormalizedName('Mensal')?.id)
+  if (monthlyRecurringTypeId) {
+    return monthlyRecurringTypeId
+  }
+
+  const firstActiveRecurringType = recurringTypes.value.find((recurringTypeItem) => Boolean(recurringTypeItem?.isActive))
+  return normalizeOptionalNumber(firstActiveRecurringType?.id)
+}
+
+function shouldCreateSalaryRecurringRuleFromEntry() {
+  if (entryForm.direction !== 'RECEIVABLE') {
+    return false
+  }
+
+  const normalizedTitle = normalizeTextForComparison(entryForm.title)
+  const selectedCategoryName = categories.value.find((categoryItem) => (
+    String(categoryItem?.id) === String(entryForm.categoryId)
+  ))?.name || ''
+  const normalizedCategoryName = normalizeTextForComparison(selectedCategoryName)
+
+  return normalizedTitle.includes('salario') || normalizedCategoryName === 'salario'
 }
 
 function getFinanceLabel(termCode, fallbackLabel = '-') {
@@ -2063,18 +2187,23 @@ function applyAccountsDirectionContext() {
     <section v-if="activeTab === 'banks'" class="finance-section">
       <article class="finance-panel">
         <header>
-          <h3>Nova conta bancária</h3>
+          <h3>{{ bankAccountEditingId ? 'Editar conta bancária' : 'Nova conta bancária' }}</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitBankAccount">
           <label>
-            <span>Nome da conta</span>
+            <span>Nome da conta (banco)</span>
             <input v-model="bankAccountForm.name" type="text" required>
           </label>
 
           <label>
-            <span>Banco</span>
-            <input v-model="bankAccountForm.bankName" type="text" required>
+            <span>Agência</span>
+            <input v-model="bankAccountForm.branch" type="text" placeholder="0001">
+          </label>
+
+          <label>
+            <span>Número da conta</span>
+            <input v-model="bankAccountForm.accountNumber" type="text" placeholder="12345-6">
           </label>
 
           <label>
@@ -2095,17 +2224,17 @@ function applyAccountsDirectionContext() {
             <input v-model="bankAccountForm.currentBalanceBrl" type="number" step="0.01">
           </label>
 
-          <label>
-            <span>Cor (hex)</span>
-            <input v-model="bankAccountForm.colorHex" type="text" placeholder="#2563eb">
-          </label>
-
-          <label>
-            <span>Ícone</span>
-            <input v-model="bankAccountForm.iconKey" type="text" placeholder="wallet">
-          </label>
-
-          <button class="finance-action-button" type="submit">Salvar conta bancária</button>
+          <button class="finance-action-button" type="submit">
+            {{ bankAccountEditingId ? 'Salvar alterações' : 'Salvar conta bancária' }}
+          </button>
+          <button
+            v-if="bankAccountEditingId"
+            type="button"
+            class="finance-inline-action"
+            @click="resetBankAccountForm"
+          >
+            Cancelar edição
+          </button>
         </form>
       </article>
 
@@ -2119,7 +2248,8 @@ function applyAccountsDirectionContext() {
             <thead>
               <tr>
                 <th>Conta</th>
-                <th>Banco</th>
+                <th>Agência</th>
+                <th>Número</th>
                 <th>Tipo</th>
                 <th>Saldo</th>
                 <th>Status</th>
@@ -2129,7 +2259,8 @@ function applyAccountsDirectionContext() {
             <tbody>
               <tr v-for="bankAccount in bankAccounts" :key="bankAccount.id">
                 <td>{{ bankAccount.name }}</td>
-                <td>{{ bankAccount.bankName }}</td>
+                <td>{{ bankAccount.branch || '-' }}</td>
+                <td>{{ bankAccount.accountNumber || '-' }}</td>
                 <td>{{ getFinanceLabel(bankAccount.accountType, '-') }}</td>
                 <td>{{ formatCurrency(bankAccount.currentBalanceBrl) }}</td>
                 <td>
@@ -2142,9 +2273,17 @@ function applyAccountsDirectionContext() {
                   <button
                     type="button"
                     class="finance-inline-action"
-                    @click="toggleBankAccountStatus(bankAccount)"
+                    @click="startEditingBankAccount(bankAccount)"
                   >
-                    {{ bankAccount.isActive ? 'Inativar' : 'Ativar' }}
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    :disabled="!bankAccount.isActive"
+                    @click="deleteBankAccount(bankAccount)"
+                  >
+                    Deletar
                   </button>
                 </td>
               </tr>
@@ -3308,11 +3447,12 @@ function applyAccountsDirectionContext() {
   color: var(--button-primary-text, #ffffff);
   border-radius: 10px;
   min-height: 42px;
-  padding: 0 14px;
+  padding: 0 12px;
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  margin-left: 8px;
 }
 
 .finance-form-grid > .finance-action-button,

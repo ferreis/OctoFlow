@@ -7,6 +7,31 @@ use Doctrine\DBAL\Connection;
 
 final class FinanceCatalogService
 {
+    /**
+     * @var list<array{name: string, kind: string}>
+     */
+    private const DEFAULT_CATEGORIES = [
+        ['name' => 'Salario', 'kind' => 'RECEIVABLE'],
+        ['name' => 'Moradia', 'kind' => 'PAYABLE'],
+        ['name' => 'Alimentacao', 'kind' => 'PAYABLE'],
+        ['name' => 'Transporte', 'kind' => 'PAYABLE'],
+        ['name' => 'Saude', 'kind' => 'PAYABLE'],
+        ['name' => 'Educacao', 'kind' => 'PAYABLE'],
+        ['name' => 'Lazer', 'kind' => 'PAYABLE'],
+        ['name' => 'Investimentos', 'kind' => 'INVESTMENT'],
+        ['name' => 'Outros', 'kind' => 'BOTH'],
+    ];
+
+    /**
+     * @var list<array{name: string, description: string}>
+     */
+    private const DEFAULT_RECURRING_TYPES = [
+        ['name' => 'Salario', 'description' => 'Recebimento recorrente mensal de salario.'],
+        ['name' => 'Mensal', 'description' => 'Compromissos recorrentes todos os meses.'],
+        ['name' => 'Assinatura', 'description' => 'Servicos e assinaturas recorrentes.'],
+        ['name' => 'Conta fixa', 'description' => 'Despesas fixas mensais como aluguel e condominio.'],
+    ];
+
     public function __construct(
         private readonly Connection $connection,
     ) {
@@ -18,6 +43,7 @@ final class FinanceCatalogService
     public function listCategories(User $user, array $filters = []): array
     {
         $ownerId = $this->requireOwnerId($user);
+        $this->ensureDefaultCategories($ownerId);
         $kindFilter = strtoupper(trim((string) ($filters['kind'] ?? '')));
 
         $sql = <<<'SQL'
@@ -141,6 +167,7 @@ final class FinanceCatalogService
     public function listRecurringTypes(User $user): array
     {
         $ownerId = $this->requireOwnerId($user);
+        $this->ensureDefaultRecurringTypes($ownerId);
 
         /** @var list<array<string, mixed>> $items */
         $items = $this->connection->fetchAllAssociative(<<<'SQL'
@@ -251,6 +278,8 @@ final class FinanceCatalogService
                 id,
                 name,
                 bank_name AS "bankName",
+                branch AS "branch",
+                account_number AS "accountNumber",
                 account_type AS "accountType",
                 current_balance_brl AS "currentBalanceBrl",
                 color_hex AS "colorHex",
@@ -275,14 +304,14 @@ final class FinanceCatalogService
     {
         $ownerId = $this->requireOwnerId($user);
         $name = FinanceInput::normalizeName((string) ($payload['name'] ?? ''));
-        $bankName = FinanceInput::normalizeName((string) ($payload['bankName'] ?? ''));
+        $bankName = FinanceInput::normalizeName((string) ($payload['bankName'] ?? $name));
+        $branch = trim((string) ($payload['branch'] ?? ''));
+        $accountNumber = trim((string) ($payload['accountNumber'] ?? ''));
         $accountType = strtoupper(trim((string) ($payload['accountType'] ?? 'CHECKING')));
         $currentBalanceBrl = FinanceInput::normalizeMoney($payload['currentBalanceBrl'] ?? 0, 'currentBalanceBrl');
-        $colorHex = trim((string) ($payload['colorHex'] ?? ''));
-        $iconKey = trim((string) ($payload['iconKey'] ?? ''));
 
-        if ($name === '' || $bankName === '') {
-            throw new \InvalidArgumentException('The bank account name and bank name are required.');
+        if ($name === '') {
+            throw new \InvalidArgumentException('The bank account name is required.');
         }
 
         if (!in_array($accountType, ['CHECKING', 'SAVINGS', 'CREDIT', 'INVESTMENT', 'CASH'], true)) {
@@ -294,10 +323,12 @@ final class FinanceCatalogService
             'owner_id' => $ownerId,
             'name' => $name,
             'bank_name' => $bankName,
+            'branch' => $branch !== '' ? $branch : null,
+            'account_number' => $accountNumber !== '' ? $accountNumber : null,
             'account_type' => $accountType,
             'current_balance_brl' => $currentBalanceBrl,
-            'color_hex' => $colorHex !== '' ? $colorHex : null,
-            'icon_key' => $iconKey !== '' ? $iconKey : null,
+            'color_hex' => null,
+            'icon_key' => null,
             'is_active' => FinanceInput::toDatabaseBoolean(true),
             'created_at' => $now,
             'updated_at' => $now,
@@ -323,25 +354,25 @@ final class FinanceCatalogService
             : (string) $existingAccount['name'];
         $bankName = array_key_exists('bankName', $payload)
             ? FinanceInput::normalizeName((string) $payload['bankName'])
-            : (string) $existingAccount['bankName'];
+            : ($name !== '' ? $name : (string) $existingAccount['bankName']);
+        $branch = array_key_exists('branch', $payload)
+            ? trim((string) $payload['branch'])
+            : trim((string) ($existingAccount['branch'] ?? ''));
+        $accountNumber = array_key_exists('accountNumber', $payload)
+            ? trim((string) $payload['accountNumber'])
+            : trim((string) ($existingAccount['accountNumber'] ?? ''));
         $accountType = array_key_exists('accountType', $payload)
             ? strtoupper(trim((string) $payload['accountType']))
             : (string) $existingAccount['accountType'];
         $currentBalanceBrl = array_key_exists('currentBalanceBrl', $payload)
             ? FinanceInput::normalizeMoney($payload['currentBalanceBrl'], 'currentBalanceBrl')
             : (float) $existingAccount['currentBalanceBrl'];
-        $colorHex = array_key_exists('colorHex', $payload)
-            ? trim((string) $payload['colorHex'])
-            : trim((string) ($existingAccount['colorHex'] ?? ''));
-        $iconKey = array_key_exists('iconKey', $payload)
-            ? trim((string) $payload['iconKey'])
-            : trim((string) ($existingAccount['iconKey'] ?? ''));
         $isActive = array_key_exists('isActive', $payload)
             ? FinanceInput::normalizeBoolean($payload['isActive'], true)
             : (bool) $existingAccount['isActive'];
 
-        if ($name === '' || $bankName === '') {
-            throw new \InvalidArgumentException('The bank account name and bank name are required.');
+        if ($name === '') {
+            throw new \InvalidArgumentException('The bank account name is required.');
         }
 
         if (!in_array($accountType, ['CHECKING', 'SAVINGS', 'CREDIT', 'INVESTMENT', 'CASH'], true)) {
@@ -351,10 +382,12 @@ final class FinanceCatalogService
         $this->connection->update('finance_bank_account', [
             'name' => $name,
             'bank_name' => $bankName,
+            'branch' => $branch !== '' ? $branch : null,
+            'account_number' => $accountNumber !== '' ? $accountNumber : null,
             'account_type' => $accountType,
             'current_balance_brl' => $currentBalanceBrl,
-            'color_hex' => $colorHex !== '' ? $colorHex : null,
-            'icon_key' => $iconKey !== '' ? $iconKey : null,
+            'color_hex' => null,
+            'icon_key' => null,
             'is_active' => FinanceInput::toDatabaseBoolean($isActive),
             'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
         ], [
@@ -395,6 +428,8 @@ final class FinanceCatalogService
                 id,
                 name,
                 bank_name AS "bankName",
+                branch AS "branch",
+                account_number AS "accountNumber",
                 account_type AS "accountType",
                 current_balance_brl AS "currentBalanceBrl",
                 color_hex AS "colorHex",
@@ -542,5 +577,71 @@ final class FinanceCatalogService
         }
 
         return $ownerId;
+    }
+
+    private function ensureDefaultCategories(int $ownerId): void
+    {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        foreach (self::DEFAULT_CATEGORIES as $defaultCategory) {
+            $normalizedName = FinanceInput::normalizeNameKey($defaultCategory['name']);
+            $kind = $defaultCategory['kind'];
+
+            $alreadyExists = $this->connection->fetchOne(
+                'SELECT id FROM finance_category WHERE owner_id = :ownerId AND normalized_name = :normalizedName AND kind = :kind LIMIT 1',
+                [
+                    'ownerId' => $ownerId,
+                    'normalizedName' => $normalizedName,
+                    'kind' => $kind,
+                ],
+            );
+
+            if ($alreadyExists !== false) {
+                continue;
+            }
+
+            $this->connection->insert('finance_category', [
+                'owner_id' => $ownerId,
+                'name' => $defaultCategory['name'],
+                'normalized_name' => $normalizedName,
+                'kind' => $kind,
+                'is_system' => FinanceInput::toDatabaseBoolean(true),
+                'is_active' => FinanceInput::toDatabaseBoolean(true),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+    }
+
+    private function ensureDefaultRecurringTypes(int $ownerId): void
+    {
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        foreach (self::DEFAULT_RECURRING_TYPES as $defaultRecurringType) {
+            $normalizedName = FinanceInput::normalizeNameKey($defaultRecurringType['name']);
+
+            $alreadyExists = $this->connection->fetchOne(
+                'SELECT id FROM finance_recurring_type WHERE owner_id = :ownerId AND normalized_name = :normalizedName LIMIT 1',
+                [
+                    'ownerId' => $ownerId,
+                    'normalizedName' => $normalizedName,
+                ],
+            );
+
+            if ($alreadyExists !== false) {
+                continue;
+            }
+
+            $this->connection->insert('finance_recurring_type', [
+                'owner_id' => $ownerId,
+                'name' => $defaultRecurringType['name'],
+                'normalized_name' => $normalizedName,
+                'description' => $defaultRecurringType['description'],
+                'is_system' => FinanceInput::toDatabaseBoolean(true),
+                'is_active' => FinanceInput::toDatabaseBoolean(true),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
     }
 }
