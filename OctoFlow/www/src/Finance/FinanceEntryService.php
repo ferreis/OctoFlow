@@ -21,7 +21,7 @@ final class FinanceEntryService
     public function listEntries(User $user, array $filters = []): array
     {
         $ownerId = $this->requireOwnerId($user);
-        $pagination = FinanceInput::normalizePagination($filters['page'] ?? 1, $filters['itemsPerPage'] ?? 20);
+        $pagination = FinanceInput::normalizePagination($filters['page'] ?? 1, $filters['itemsPerPage'] ?? 10);
 
         $whereParts = ['entry.owner_id = :ownerId'];
         $parameters = ['ownerId' => $ownerId];

@@ -55,7 +55,7 @@ const financeCashflowByGroup = ref([])
 const financeCategoriesGlobal = ref([])
 const financeCategoriesByGroup = ref([])
 const financeEntries = ref([])
-const financeEntriesMeta = ref({ page: 1, itemsPerPage: 200, total: 0 })
+const financeEntriesMeta = ref({ page: 1, itemsPerPage: 10, total: 0 })
 const financeBankAccounts = ref([])
 const financeRecurringRules = ref([])
 const financeInstallmentPlans = ref([])
@@ -921,7 +921,7 @@ function resetFinanceState() {
   financeCategoriesGlobal.value = []
   financeCategoriesByGroup.value = []
   financeEntries.value = []
-  financeEntriesMeta.value = { page: 1, itemsPerPage: 200, total: 0 }
+  financeEntriesMeta.value = { page: 1, itemsPerPage: 10, total: 0 }
   financeBankAccounts.value = []
   financeRecurringRules.value = []
   financeInstallmentPlans.value = []
@@ -961,9 +961,9 @@ async function loadFinanceDashboard(showStatus = false) {
       fetchFinanceDashboardSummary(props.request, { direction }),
       fetchFinanceDashboardCashflow(props.request),
       fetchFinanceDashboardCashflow(props.request, { direction }),
-      fetchFinanceDashboardCategories(props.request, { limit: 16 }),
-      fetchFinanceDashboardCategories(props.request, { direction, limit: 16 }),
-      fetchFinanceEntries(props.request, { direction }, { page: 1, itemsPerPage: 250, sort: 'dueDate:asc' }),
+      fetchFinanceDashboardCategories(props.request, { limit: 10 }),
+      fetchFinanceDashboardCategories(props.request, { direction, limit: 10 }),
+      fetchFinanceEntries(props.request, { direction }, { page: 1, itemsPerPage: 10, sort: 'dueDate:asc' }),
       fetchFinanceBankAccounts(props.request),
       fetchFinanceRecurringRules(props.request),
       fetchFinanceInstallmentPlans(props.request),
@@ -978,7 +978,7 @@ async function loadFinanceDashboard(showStatus = false) {
     financeCategoriesGlobal.value = Array.isArray(categoriesGlobalResponse.data?.items) ? categoriesGlobalResponse.data.items : []
     financeCategoriesByGroup.value = Array.isArray(categoriesByGroupResponse.data?.items) ? categoriesByGroupResponse.data.items : []
     financeEntries.value = Array.isArray(entriesResponse.data?.items) ? entriesResponse.data.items : []
-    financeEntriesMeta.value = entriesResponse.data?.meta || { page: 1, itemsPerPage: 250, total: 0 }
+    financeEntriesMeta.value = entriesResponse.data?.meta || { page: 1, itemsPerPage: 10, total: 0 }
     financeBankAccounts.value = Array.isArray(bankAccountsResponse.data?.items) ? bankAccountsResponse.data.items : []
     financeRecurringRules.value = Array.isArray(recurringRulesResponse.data?.items) ? recurringRulesResponse.data.items : []
     financeInstallmentPlans.value = Array.isArray(installmentPlansResponse.data?.items) ? installmentPlansResponse.data.items : []

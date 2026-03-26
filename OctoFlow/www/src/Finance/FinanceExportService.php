@@ -57,7 +57,7 @@ final class FinanceExportService
     public function listJobs(User $user, array $filters = []): array
     {
         $ownerId = $this->requireOwnerId($user);
-        $pagination = FinanceInput::normalizePagination($filters['page'] ?? 1, $filters['itemsPerPage'] ?? 20);
+        $pagination = FinanceInput::normalizePagination($filters['page'] ?? 1, $filters['itemsPerPage'] ?? 10);
 
         $whereParts = ['owner_id = :ownerId'];
         $parameters = ['ownerId' => $ownerId];

@@ -1,7 +1,7 @@
 function buildPaginationParams(options = {}) {
   const params = {
     page: options.page ?? 1,
-    itemsPerPage: options.itemsPerPage ?? 20,
+    itemsPerPage: options.itemsPerPage ?? 10,
   }
 
   if (options.sort) {

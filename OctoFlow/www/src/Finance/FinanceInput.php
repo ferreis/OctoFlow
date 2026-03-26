@@ -118,7 +118,7 @@ final class FinanceInput
     public static function normalizePagination(mixed $page, mixed $itemsPerPage): array
     {
         $normalizedPage = max(1, (int) $page);
-        $normalizedItemsPerPage = max(1, min(100, (int) $itemsPerPage));
+        $normalizedItemsPerPage = max(5, min(10, (int) $itemsPerPage));
 
         return [
             'page' => $normalizedPage,

@@ -110,6 +110,7 @@ const investmentYieldModeOptions = FINANCE_INVESTMENT_YIELD_MODE_OPTIONS
 const exportTypeOptions = FINANCE_EXPORT_TYPE_OPTIONS
 const bankAccountTypeOptions = FINANCE_BANK_ACCOUNT_TYPE_OPTIONS
 const openFinanceConnectionStatusOptions = OPEN_FINANCE_CONNECTION_STATUS_OPTIONS
+const LIST_ITEMS_PER_PAGE = 10
 const loadingState = reactive({
   dashboard: false,
   entries: false,
@@ -128,7 +129,7 @@ const dashboardCashflow = ref([])
 const dashboardCategories = ref([])
 
 const entriesState = ref([])
-const entriesMeta = ref({ page: 1, itemsPerPage: 20, total: 0 })
+const entriesMeta = ref({ page: 1, itemsPerPage: 10, total: 0 })
 
 const recurringRules = ref([])
 const installmentPlans = ref([])
@@ -145,6 +146,18 @@ const openFinanceConnections = ref([])
 const categories = ref([])
 const recurringTypes = ref([])
 const bankAccounts = ref([])
+const exportMeta = ref({ page: 1, itemsPerPage: LIST_ITEMS_PER_PAGE, total: 0 })
+const localListPages = reactive({
+  bankAccounts: 1,
+  categories: 1,
+  recurringTypes: 1,
+  recurringRules: 1,
+  installmentPlans: 1,
+  investmentPlans: 1,
+  debtPlans: 1,
+  currencyRates: 1,
+  openFinanceConnections: 1,
+})
 
 const entryFilters = reactive({
   direction: '',
@@ -153,7 +166,7 @@ const entryFilters = reactive({
   startDate: '',
   endDate: '',
   page: 1,
-  itemsPerPage: 20,
+  itemsPerPage: 10,
 })
 
 const entryForm = reactive({
@@ -170,11 +183,13 @@ const categoryForm = reactive({
   name: '',
   kind: 'BOTH',
 })
+const categoryEditingId = ref(null)
 
 const recurringTypeCatalogForm = reactive({
   name: '',
   description: '',
 })
+const recurringTypeEditingId = ref(null)
 
 const bankAccountForm = reactive({
   name: '',
@@ -609,11 +624,36 @@ const totalsLabel = computed(() => {
     return '0 lançamentos'
   }
 
-  const firstItemIndex = (Number(entriesMeta.value.page || 1) - 1) * Number(entriesMeta.value.itemsPerPage || 20) + 1
+  const firstItemIndex = (Number(entriesMeta.value.page || 1) - 1) * Number(entriesMeta.value.itemsPerPage || LIST_ITEMS_PER_PAGE) + 1
   const lastItemIndex = Math.min(firstItemIndex + entriesState.value.length - 1, totalEntries)
 
   return `${firstItemIndex}-${lastItemIndex} de ${totalEntries} lançamentos`
 })
+const paginatedBankAccounts = computed(() => getPaginatedLocalItems(bankAccounts.value, 'bankAccounts'))
+const paginatedCategories = computed(() => getPaginatedLocalItems(categories.value, 'categories'))
+const paginatedRecurringTypes = computed(() => getPaginatedLocalItems(recurringTypes.value, 'recurringTypes'))
+const paginatedRecurringRules = computed(() => getPaginatedLocalItems(recurringRules.value, 'recurringRules'))
+const paginatedInstallmentPlans = computed(() => getPaginatedLocalItems(installmentPlans.value, 'installmentPlans'))
+const paginatedInvestmentPlans = computed(() => getPaginatedLocalItems(investmentPlans.value, 'investmentPlans'))
+const paginatedDebtPlans = computed(() => getPaginatedLocalItems(debtPlans.value, 'debtPlans'))
+const paginatedCurrencyRates = computed(() => getPaginatedLocalItems(currencyRates.value, 'currencyRates'))
+const paginatedOpenFinanceConnections = computed(() => getPaginatedLocalItems(openFinanceConnections.value, 'openFinanceConnections'))
+const exportTotalsLabel = computed(() => {
+  const totalItems = Number(exportMeta.value.total || 0)
+  if (totalItems <= 0) {
+    return '0 de 0 exportações'
+  }
+
+  const currentPage = Math.max(1, Number(exportMeta.value.page || 1))
+  const pageSize = Math.max(1, Number(exportMeta.value.itemsPerPage || LIST_ITEMS_PER_PAGE))
+  const startIndex = (currentPage - 1) * pageSize + 1
+  const endIndex = Math.min(startIndex + exportJobs.value.length - 1, totalItems)
+
+  return `${startIndex}-${endIndex} de ${totalItems} exportações`
+})
+const exportPageCount = computed(() => (
+  Math.max(1, Math.ceil(Number(exportMeta.value.total || 0) / Math.max(1, Number(exportMeta.value.itemsPerPage || LIST_ITEMS_PER_PAGE))))
+))
 
 const investmentSummary = computed(() => {
   if (!latestSimulation.value) {
@@ -862,7 +902,7 @@ function resetLocalState() {
   dashboardCashflow.value = []
   dashboardCategories.value = []
   entriesState.value = []
-  entriesMeta.value = { page: 1, itemsPerPage: 20, total: 0 }
+  entriesMeta.value = { page: 1, itemsPerPage: LIST_ITEMS_PER_PAGE, total: 0 }
   recurringRules.value = []
   installmentPlans.value = []
   investmentPlans.value = []
@@ -871,6 +911,7 @@ function resetLocalState() {
   currenciesCatalog.value = []
   currencyRates.value = []
   exportJobs.value = []
+  exportMeta.value = { page: 1, itemsPerPage: LIST_ITEMS_PER_PAGE, total: 0 }
   latestSimulation.value = null
   openFinanceProviders.value = []
   openFinanceConnections.value = []
@@ -906,7 +947,7 @@ async function loadDashboard() {
     const [summaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
       fetchFinanceDashboardSummary(props.request),
       fetchFinanceDashboardCashflow(props.request),
-      fetchFinanceDashboardCategories(props.request),
+      fetchFinanceDashboardCategories(props.request, { limit: LIST_ITEMS_PER_PAGE }),
     ])
 
     dashboardSummary.value = summaryResponse.data?.item || null
@@ -935,12 +976,24 @@ async function loadEntries() {
     })
 
     entriesState.value = Array.isArray(response.data?.items) ? response.data.items : []
-    entriesMeta.value = response.data?.meta || { page: 1, itemsPerPage: 20, total: 0 }
+    entriesMeta.value = response.data?.meta || { page: 1, itemsPerPage: LIST_ITEMS_PER_PAGE, total: 0 }
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar lançamentos.'), 'error')
   } finally {
     loadingState.entries = false
   }
+}
+
+function setEntriesPage(page) {
+  const totalPages = Math.max(1, Math.ceil(Number(entriesMeta.value.total || 0) / Math.max(1, Number(entriesMeta.value.itemsPerPage || LIST_ITEMS_PER_PAGE))))
+  const normalizedPage = Math.min(totalPages, Math.max(1, Number(page || 1)))
+
+  if (normalizedPage === Number(entryFilters.page || 1)) {
+    return
+  }
+
+  entryFilters.page = normalizedPage
+  void loadEntries()
 }
 
 async function loadRecurringRules() {
@@ -1111,17 +1164,30 @@ async function refreshCurrencyData() {
   await loadCurrencyRates()
 }
 
-async function loadExports() {
+async function loadExports(page = Number(exportMeta.value.page || 1)) {
   loadingState.exports = true
 
   try {
-    const response = await fetchFinanceExports(props.request)
+    const response = await fetchFinanceExports(props.request, {
+      page,
+      itemsPerPage: LIST_ITEMS_PER_PAGE,
+    })
     exportJobs.value = Array.isArray(response.data?.items) ? response.data.items : []
+    exportMeta.value = response.data?.meta || { page, itemsPerPage: LIST_ITEMS_PER_PAGE, total: exportJobs.value.length }
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar exportações.'), 'error')
   } finally {
     loadingState.exports = false
   }
+}
+
+function setExportPage(page) {
+  const normalizedPage = Math.min(exportPageCount.value, Math.max(1, Number(page || 1)))
+  if (normalizedPage === Number(exportMeta.value.page || 1)) {
+    return
+  }
+
+  void loadExports(normalizedPage)
 }
 
 async function loadOpenFinance() {
@@ -1199,19 +1265,40 @@ async function submitEntry() {
 
 async function submitCategory() {
   try {
-    await createFinanceCategory(props.request, {
+    const payload = {
       name: categoryForm.name,
       kind: categoryForm.kind,
-    })
+    }
 
-    categoryForm.name = ''
-    categoryForm.kind = 'BOTH'
+    if (categoryEditingId.value) {
+      await updateFinanceCategory(props.request, categoryEditingId.value, payload)
+      notifyUser('Categoria atualizada com sucesso.', 'success')
+    } else {
+      await createFinanceCategory(props.request, payload)
+      notifyUser('Categoria criada com sucesso.', 'success')
+    }
 
-    notifyUser('Categoria criada com sucesso.', 'success')
+    resetCategoryForm()
     await loadCatalogs()
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar a categoria.'), 'error')
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível salvar a categoria.'), 'error')
   }
+}
+
+function startEditingCategory(categoryItem) {
+  if (!categoryItem?.id) {
+    return
+  }
+
+  categoryEditingId.value = categoryItem.id
+  categoryForm.name = String(categoryItem.name || '')
+  categoryForm.kind = String(categoryItem.kind || 'BOTH')
+}
+
+function resetCategoryForm() {
+  categoryEditingId.value = null
+  categoryForm.name = ''
+  categoryForm.kind = 'BOTH'
 }
 
 async function toggleCategoryStatus(categoryItem) {
@@ -1231,21 +1318,68 @@ async function toggleCategoryStatus(categoryItem) {
   }
 }
 
-async function submitRecurringTypeCatalog() {
+async function deleteCategory(categoryItem) {
+  if (!categoryItem?.id) {
+    return
+  }
+
+  const confirmed = window.confirm('Confirma excluir esta categoria?')
+  if (!confirmed) {
+    return
+  }
+
   try {
-    await createFinanceRecurringType(props.request, {
-      name: recurringTypeCatalogForm.name,
-      description: recurringTypeCatalogForm.description || null,
+    await updateFinanceCategory(props.request, categoryItem.id, {
+      isActive: false,
     })
 
-    recurringTypeCatalogForm.name = ''
-    recurringTypeCatalogForm.description = ''
+    if (categoryEditingId.value === categoryItem.id) {
+      resetCategoryForm()
+    }
 
-    notifyUser('Tipo de recorrência criado com sucesso.', 'success')
+    notifyUser('Categoria excluída com sucesso.', 'success')
     await loadCatalogs()
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o tipo de recorrência.'), 'error')
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir a categoria.'), 'error')
   }
+}
+
+async function submitRecurringTypeCatalog() {
+  try {
+    const payload = {
+      name: recurringTypeCatalogForm.name,
+      description: recurringTypeCatalogForm.description || null,
+    }
+
+    if (recurringTypeEditingId.value) {
+      await updateFinanceRecurringType(props.request, recurringTypeEditingId.value, payload)
+      notifyUser('Tipo de recorrência atualizado com sucesso.', 'success')
+    } else {
+      await createFinanceRecurringType(props.request, payload)
+      notifyUser('Tipo de recorrência criado com sucesso.', 'success')
+    }
+
+    resetRecurringTypeForm()
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível salvar o tipo de recorrência.'), 'error')
+  }
+}
+
+function startEditingRecurringType(recurringTypeItem) {
+  if (!recurringTypeItem?.id) {
+    return
+  }
+
+  recurringTypeEditingId.value = recurringTypeItem.id
+  recurringTypeCatalogForm.name = String(recurringTypeItem.name || '')
+  recurringTypeCatalogForm.description = String(recurringTypeItem.description || '')
+}
+
+function resetRecurringTypeForm() {
+  recurringTypeEditingId.value = null
+  recurringTypeCatalogForm.name = ''
+  recurringTypeCatalogForm.description = ''
 }
 
 async function toggleRecurringTypeStatus(recurringTypeItem) {
@@ -1262,6 +1396,32 @@ async function toggleRecurringTypeStatus(recurringTypeItem) {
     await loadCatalogs()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível atualizar o tipo recorrente.'), 'error')
+  }
+}
+
+async function deleteRecurringType(recurringTypeItem) {
+  if (!recurringTypeItem?.id) {
+    return
+  }
+
+  const confirmed = window.confirm('Confirma excluir este tipo de recorrência?')
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await updateFinanceRecurringType(props.request, recurringTypeItem.id, {
+      isActive: false,
+    })
+
+    if (recurringTypeEditingId.value === recurringTypeItem.id) {
+      resetRecurringTypeForm()
+    }
+
+    notifyUser('Tipo de recorrência excluído com sucesso.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir o tipo de recorrência.'), 'error')
   }
 }
 
@@ -1310,6 +1470,23 @@ function resetBankAccountForm() {
   bankAccountForm.accountNumber = ''
   bankAccountForm.accountType = 'CHECKING'
   bankAccountForm.currentBalanceBrl = '0'
+}
+
+async function toggleBankAccountStatus(bankAccount) {
+  if (!bankAccount?.id) {
+    return
+  }
+
+  try {
+    await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
+      isActive: !bankAccount.isActive,
+    })
+
+    notifyUser('Status da conta bancária atualizado.', 'success')
+    await loadCatalogs()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível atualizar a conta bancária.'), 'error')
+  }
 }
 
 async function deleteBankAccount(bankAccount) {
@@ -1643,6 +1820,48 @@ function normalizeOptionalNumber(value) {
   return Number.isFinite(normalizedValue) && normalizedValue > 0
     ? normalizedValue
     : null
+}
+
+function getLocalListPageCount(items) {
+  const totalItems = Array.isArray(items) ? items.length : 0
+  return Math.max(1, Math.ceil(totalItems / LIST_ITEMS_PER_PAGE))
+}
+
+function getLocalListPage(key, items) {
+  const totalPages = getLocalListPageCount(items)
+  const normalizedPage = Math.min(totalPages, Math.max(1, Number(localListPages[key] || 1)))
+
+  if (localListPages[key] !== normalizedPage) {
+    localListPages[key] = normalizedPage
+  }
+
+  return normalizedPage
+}
+
+function setLocalListPage(key, page, items) {
+  const totalPages = getLocalListPageCount(items)
+  localListPages[key] = Math.min(totalPages, Math.max(1, Number(page || 1)))
+}
+
+function getPaginatedLocalItems(items, key) {
+  const normalizedItems = Array.isArray(items) ? items : []
+  const currentPage = getLocalListPage(key, normalizedItems)
+  const startIndex = (currentPage - 1) * LIST_ITEMS_PER_PAGE
+
+  return normalizedItems.slice(startIndex, startIndex + LIST_ITEMS_PER_PAGE)
+}
+
+function getLocalListSummary(items, key, label) {
+  const normalizedItems = Array.isArray(items) ? items : []
+  if (normalizedItems.length === 0) {
+    return `0 de 0 ${label}`
+  }
+
+  const currentPage = getLocalListPage(key, normalizedItems)
+  const startIndex = (currentPage - 1) * LIST_ITEMS_PER_PAGE + 1
+  const endIndex = Math.min(currentPage * LIST_ITEMS_PER_PAGE, normalizedItems.length)
+
+  return `${startIndex}-${endIndex} de ${normalizedItems.length} ${label}`
 }
 
 function normalizeTextForComparison(rawValue) {
@@ -2176,6 +2395,30 @@ function applyAccountsDirectionContext() {
             </tbody>
           </table>
         </div>
+        <div v-if="entriesState.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ totalsLabel }}</span>
+          <div v-if="Math.ceil(Number(entriesMeta.total || 0) / Math.max(1, Number(entriesMeta.itemsPerPage || 1))) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="Number(entriesMeta.page || 1) <= 1"
+              @click="setEntriesPage(Number(entriesMeta.page || 1) - 1)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ Number(entriesMeta.page || 1) }} de {{ Math.max(1, Math.ceil(Number(entriesMeta.total || 0) / Math.max(1, Number(entriesMeta.itemsPerPage || 1)))) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="Number(entriesMeta.page || 1) >= Math.max(1, Math.ceil(Number(entriesMeta.total || 0) / Math.max(1, Number(entriesMeta.itemsPerPage || 1))))"
+              @click="setEntriesPage(Number(entriesMeta.page || 1) + 1)"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
         <RemoteFinanceEmptyState
           v-else
           title="Sem lançamentos"
@@ -2257,7 +2500,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="bankAccount in bankAccounts" :key="bankAccount.id">
+              <tr v-for="bankAccount in paginatedBankAccounts" :key="bankAccount.id">
                 <td>{{ bankAccount.name }}</td>
                 <td>{{ bankAccount.branch || '-' }}</td>
                 <td>{{ bankAccount.accountNumber || '-' }}</td>
@@ -2280,6 +2523,13 @@ function applyAccountsDirectionContext() {
                   <button
                     type="button"
                     class="finance-inline-action"
+                    @click="toggleBankAccountStatus(bankAccount)"
+                  >
+                    {{ bankAccount.isActive ? 'Inativar' : 'Ativar' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
                     :disabled="!bankAccount.isActive"
                     @click="deleteBankAccount(bankAccount)"
                   >
@@ -2289,6 +2539,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="bankAccounts.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(bankAccounts, 'bankAccounts', 'contas') }}</span>
+          <div v-if="getLocalListPageCount(bankAccounts) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('bankAccounts', bankAccounts) <= 1"
+              @click="setLocalListPage('bankAccounts', getLocalListPage('bankAccounts', bankAccounts) - 1, bankAccounts)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('bankAccounts', bankAccounts) }} de {{ getLocalListPageCount(bankAccounts) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('bankAccounts', bankAccounts) >= getLocalListPageCount(bankAccounts)"
+              @click="setLocalListPage('bankAccounts', getLocalListPage('bankAccounts', bankAccounts) + 1, bankAccounts)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
 
         <RemoteFinanceEmptyState
@@ -2302,7 +2576,7 @@ function applyAccountsDirectionContext() {
     <section v-if="activeTab === 'settings'" class="finance-section">
       <article class="finance-panel">
         <header>
-          <h3>Nova categoria</h3>
+          <h3>{{ categoryEditingId ? 'Editar categoria' : 'Nova categoria' }}</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitCategory">
@@ -2324,7 +2598,17 @@ function applyAccountsDirectionContext() {
             </select>
           </label>
 
-          <button class="finance-action-button" type="submit">Salvar categoria</button>
+          <button class="finance-action-button" type="submit">
+            {{ categoryEditingId ? 'Salvar alterações' : 'Salvar categoria' }}
+          </button>
+          <button
+            v-if="categoryEditingId"
+            type="button"
+            class="finance-inline-action"
+            @click="resetCategoryForm"
+          >
+            Cancelar edição
+          </button>
         </form>
       </article>
 
@@ -2345,7 +2629,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="category in categories" :key="category.id">
+              <tr v-for="category in paginatedCategories" :key="category.id">
                 <td>{{ category.name }}</td>
                 <td>{{ getFinanceLabel(category.kind, category.kind || '-') }}</td>
                 <td>{{ category.isSystem ? 'Sistema' : 'Personalizada' }}</td>
@@ -2359,6 +2643,21 @@ function applyAccountsDirectionContext() {
                   <button
                     type="button"
                     class="finance-inline-action"
+                    @click="startEditingCategory(category)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    :disabled="!category.isActive"
+                    @click="deleteCategory(category)"
+                  >
+                    Excluir
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
                     @click="toggleCategoryStatus(category)"
                   >
                     {{ category.isActive ? 'Inativar' : 'Ativar' }}
@@ -2367,6 +2666,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="categories.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(categories, 'categories', 'categorias') }}</span>
+          <div v-if="getLocalListPageCount(categories) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('categories', categories) <= 1"
+              @click="setLocalListPage('categories', getLocalListPage('categories', categories) - 1, categories)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('categories', categories) }} de {{ getLocalListPageCount(categories) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('categories', categories) >= getLocalListPageCount(categories)"
+              @click="setLocalListPage('categories', getLocalListPage('categories', categories) + 1, categories)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -2377,7 +2700,7 @@ function applyAccountsDirectionContext() {
 
       <article class="finance-panel">
         <header>
-          <h3>Novo tipo de recorrência</h3>
+          <h3>{{ recurringTypeEditingId ? 'Editar tipo de recorrência' : 'Novo tipo de recorrência' }}</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitRecurringTypeCatalog">
@@ -2391,7 +2714,17 @@ function applyAccountsDirectionContext() {
             <input v-model="recurringTypeCatalogForm.description" type="text">
           </label>
 
-          <button class="finance-action-button" type="submit">Salvar tipo recorrente</button>
+          <button class="finance-action-button" type="submit">
+            {{ recurringTypeEditingId ? 'Salvar alterações' : 'Salvar tipo recorrente' }}
+          </button>
+          <button
+            v-if="recurringTypeEditingId"
+            type="button"
+            class="finance-inline-action"
+            @click="resetRecurringTypeForm"
+          >
+            Cancelar edição
+          </button>
         </form>
       </article>
 
@@ -2412,7 +2745,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="recurringType in recurringTypes" :key="recurringType.id">
+              <tr v-for="recurringType in paginatedRecurringTypes" :key="recurringType.id">
                 <td>{{ recurringType.name }}</td>
                 <td>{{ recurringType.description || '-' }}</td>
                 <td>{{ recurringType.isSystem ? 'Sistema' : 'Personalizada' }}</td>
@@ -2426,6 +2759,21 @@ function applyAccountsDirectionContext() {
                   <button
                     type="button"
                     class="finance-inline-action"
+                    @click="startEditingRecurringType(recurringType)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    :disabled="!recurringType.isActive"
+                    @click="deleteRecurringType(recurringType)"
+                  >
+                    Excluir
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
                     @click="toggleRecurringTypeStatus(recurringType)"
                   >
                     {{ recurringType.isActive ? 'Inativar' : 'Ativar' }}
@@ -2434,6 +2782,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="recurringTypes.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(recurringTypes, 'recurringTypes', 'tipos recorrentes') }}</span>
+          <div v-if="getLocalListPageCount(recurringTypes) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('recurringTypes', recurringTypes) <= 1"
+              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', recurringTypes) - 1, recurringTypes)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('recurringTypes', recurringTypes) }} de {{ getLocalListPageCount(recurringTypes) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('recurringTypes', recurringTypes) >= getLocalListPageCount(recurringTypes)"
+              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', recurringTypes) + 1, recurringTypes)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -2511,7 +2883,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="rule in recurringRules" :key="rule.id">
+              <tr v-for="rule in paginatedRecurringRules" :key="rule.id">
                 <td>{{ rule.title }}</td>
                 <td>{{ rule.recurringTypeName }}</td>
                 <td>{{ formatCurrency(rule.amountBrl) }}</td>
@@ -2519,6 +2891,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="recurringRules.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(recurringRules, 'recurringRules', 'regras') }}</span>
+          <div v-if="getLocalListPageCount(recurringRules) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('recurringRules', recurringRules) <= 1"
+              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', recurringRules) - 1, recurringRules)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('recurringRules', recurringRules) }} de {{ getLocalListPageCount(recurringRules) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('recurringRules', recurringRules) >= getLocalListPageCount(recurringRules)"
+              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', recurringRules) + 1, recurringRules)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -2621,7 +3017,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="plan in installmentPlans" :key="plan.id">
+              <tr v-for="plan in paginatedInstallmentPlans" :key="plan.id">
                 <td>{{ plan.title }}</td>
                 <td>
                   <RemoteFinanceStatusBadge
@@ -2634,6 +3030,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="installmentPlans.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(installmentPlans, 'installmentPlans', 'parcelamentos') }}</span>
+          <div v-if="getLocalListPageCount(installmentPlans) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('installmentPlans', installmentPlans) <= 1"
+              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', installmentPlans) - 1, installmentPlans)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('installmentPlans', installmentPlans) }} de {{ getLocalListPageCount(installmentPlans) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('installmentPlans', installmentPlans) >= getLocalListPageCount(installmentPlans)"
+              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', installmentPlans) + 1, installmentPlans)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -2762,7 +3182,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="plan in investmentPlans" :key="plan.id">
+              <tr v-for="plan in paginatedInvestmentPlans" :key="plan.id">
                 <td>{{ plan.label }}</td>
                 <td>
                   <RemoteFinanceStatusBadge
@@ -2775,6 +3195,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="investmentPlans.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(investmentPlans, 'investmentPlans', 'planos') }}</span>
+          <div v-if="getLocalListPageCount(investmentPlans) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('investmentPlans', investmentPlans) <= 1"
+              @click="setLocalListPage('investmentPlans', getLocalListPage('investmentPlans', investmentPlans) - 1, investmentPlans)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('investmentPlans', investmentPlans) }} de {{ getLocalListPageCount(investmentPlans) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('investmentPlans', investmentPlans) >= getLocalListPageCount(investmentPlans)"
+              @click="setLocalListPage('investmentPlans', getLocalListPage('investmentPlans', investmentPlans) + 1, investmentPlans)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -2996,7 +3440,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="debtPlan in debtPlans" :key="debtPlan.id">
+              <tr v-for="debtPlan in paginatedDebtPlans" :key="debtPlan.id">
                 <td>{{ debtPlan.title }}</td>
                 <td>{{ debtPlan.creditorName || '-' }}</td>
                 <td>{{ getDebtSettlementModeLabel(debtPlan.settlementMode) }}</td>
@@ -3008,6 +3452,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="debtPlans.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(debtPlans, 'debtPlans', 'planos de dívida') }}</span>
+          <div v-if="getLocalListPageCount(debtPlans) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('debtPlans', debtPlans) <= 1"
+              @click="setLocalListPage('debtPlans', getLocalListPage('debtPlans', debtPlans) - 1, debtPlans)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('debtPlans', debtPlans) }} de {{ getLocalListPageCount(debtPlans) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('debtPlans', debtPlans) >= getLocalListPageCount(debtPlans)"
+              @click="setLocalListPage('debtPlans', getLocalListPage('debtPlans', debtPlans) + 1, debtPlans)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -3062,7 +3530,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="currencyRateItem in currencyRates" :key="currencyRateItem.code">
+              <tr v-for="currencyRateItem in paginatedCurrencyRates" :key="currencyRateItem.code">
                 <td>{{ currencyRateItem.code }} - {{ currencyRateItem.name }}</td>
                 <td>{{ formatExchangeRate(currencyRateItem.buyRateBrl) }}</td>
                 <td>{{ formatExchangeRate(currencyRateItem.sellRateBrl) }}</td>
@@ -3071,6 +3539,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="currencyRates.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(currencyRates, 'currencyRates', 'cotações') }}</span>
+          <div v-if="getLocalListPageCount(currencyRates) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('currencyRates', currencyRates) <= 1"
+              @click="setLocalListPage('currencyRates', getLocalListPage('currencyRates', currencyRates) - 1, currencyRates)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('currencyRates', currencyRates) }} de {{ getLocalListPageCount(currencyRates) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('currencyRates', currencyRates) >= getLocalListPageCount(currencyRates)"
+              @click="setLocalListPage('currencyRates', getLocalListPage('currencyRates', currencyRates) + 1, currencyRates)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -3143,6 +3635,30 @@ function applyAccountsDirectionContext() {
             </tbody>
           </table>
         </div>
+        <div v-if="exportJobs.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ exportTotalsLabel }}</span>
+          <div v-if="exportPageCount > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="Number(exportMeta.page || 1) <= 1"
+              @click="setExportPage(Number(exportMeta.page || 1) - 1)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ Number(exportMeta.page || 1) }} de {{ exportPageCount }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="Number(exportMeta.page || 1) >= exportPageCount"
+              @click="setExportPage(Number(exportMeta.page || 1) + 1)"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
         <RemoteFinanceEmptyState
           v-else
           title="Sem exportações"
@@ -3196,7 +3712,7 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="connection in openFinanceConnections" :key="connection.id">
+              <tr v-for="connection in paginatedOpenFinanceConnections" :key="connection.id">
                 <td>{{ connection.providerName }}</td>
                 <td>
                   <RemoteFinanceStatusBadge
@@ -3211,6 +3727,30 @@ function applyAccountsDirectionContext() {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="openFinanceConnections.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(openFinanceConnections, 'openFinanceConnections', 'conexões') }}</span>
+          <div v-if="getLocalListPageCount(openFinanceConnections) > 1" class="finance-pagination-actions">
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('openFinanceConnections', openFinanceConnections) <= 1"
+              @click="setLocalListPage('openFinanceConnections', getLocalListPage('openFinanceConnections', openFinanceConnections) - 1, openFinanceConnections)"
+            >
+              Anterior
+            </button>
+            <span class="finance-pagination-page">
+              Página {{ getLocalListPage('openFinanceConnections', openFinanceConnections) }} de {{ getLocalListPageCount(openFinanceConnections) }}
+            </span>
+            <button
+              type="button"
+              class="finance-inline-action finance-pagination-button"
+              :disabled="getLocalListPage('openFinanceConnections', openFinanceConnections) >= getLocalListPageCount(openFinanceConnections)"
+              @click="setLocalListPage('openFinanceConnections', getLocalListPage('openFinanceConnections', openFinanceConnections) + 1, openFinanceConnections)"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
         <RemoteFinanceEmptyState
           v-else
@@ -3470,6 +4010,17 @@ function applyAccountsDirectionContext() {
   cursor: not-allowed;
 }
 
+.finance-inline-action-danger {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  color: var(--danger);
+}
+
+.finance-inline-action-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+}
+
 .finance-toggle-label {
   display: flex;
   align-items: center;
@@ -3506,6 +4057,33 @@ function applyAccountsDirectionContext() {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted, #475569);
+}
+
+.finance-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.finance-pagination-summary,
+.finance-pagination-page {
+  font-size: 0.78rem;
+  color: var(--muted, #475569);
+}
+
+.finance-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.finance-pagination-button {
+  min-height: 38px;
+  margin-left: 0;
 }
 
 .finance-muted-block {
