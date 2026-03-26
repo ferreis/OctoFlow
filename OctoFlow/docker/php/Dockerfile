@@ -1,7 +1,7 @@
 FROM php:8.4-fpm
 
-ARG UID=www-data
-ARG GID=www-data
+ARG HOST_UID=1000
+ARG HOST_GID=1000
 
 RUN export DEBIAN_FRONTEND=noninteractive 
 
@@ -27,6 +27,10 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 #cli commom mcrypt zip
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 RUN docker-php-ext-install -j$(nproc) gd
+
+# Espelha o UID/GID do host no www-data para manter permissao consistente em bind mounts.
+RUN groupmod -o -g "${HOST_GID}" www-data \
+    && usermod -o -u "${HOST_UID}" -g "${HOST_GID}" www-data
 
 # Aumentar memory_limit para processar grandes volumes de dados
 # RUN echo 'memory_limit = 512M' >> /usr/local/etc/php/conf.d/docker-php-memlimit.ini

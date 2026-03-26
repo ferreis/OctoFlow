@@ -1,4 +1,6 @@
 FROM postgres:16-bullseye
+ARG HOST_UID=1000
+ARG HOST_GID=1000
 #https://github.com/postgis/docker-postgis/blob/master/12-3.2/Dockerfile
 
 #https://wiki.postgresql.org/wiki/Apt
@@ -21,6 +23,9 @@ RUN apt-get update -y
 #RUN add-apt-repository ppa:ubuntugis/ppa
 #RUN apt-get install postgresql-12-postgis-2.2 -y
 RUN apt-get install postgresql-16-postgis-3 -y
+
+RUN groupmod -o -g "${HOST_GID}" postgres \
+    && usermod -o -u "${HOST_UID}" -g "${HOST_GID}" postgres
 
 #pg_dump --file "/tempdb/netuno_pg_bkp.sql" --host "localhost" --port "5432" --username "root" --no-password --verbose --format=p --blobs "test_db"
 #pg_dump --file "/tempdb/netuno_pg_bkp.sql" --host "localhost" --port "5432" --username "root" --no-password --verbose --format=p --blobs "test_db"

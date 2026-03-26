@@ -7,6 +7,9 @@ services:
     build:
       context: . # path do build
       dockerfile: docker/php/Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     image: php-fpm # faz um cross validate
     volumes:
       - ./www:/var/www/html
@@ -24,6 +27,9 @@ services:
     build:
       context: .
       dockerfile: docker/nodejs/Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     image: nodejs
     restart: on-failure:5
     volumes:
@@ -42,6 +48,9 @@ services:
     build:
       context: .
       dockerfile: ./docker/nginx/Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     image: nginx
     depends_on:
       - frontend
@@ -59,6 +68,7 @@ services:
           chmod 600 /var/www/cert/nginx-selfsigned.key
           chmod 644 /var/www/cert/nginx-selfsigned.crt
         fi
+        chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /var/www/cert
         exec nginx -g 'daemon off;'
     volumes:
       - ./www_nginx:/var/www/html
@@ -83,6 +93,9 @@ services:
     build:
       context: .
       dockerfile: docker/pg/Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     volumes:
       - ../data/pg/PostgreSql-Snippets/infile:/infile
       - ../data/pg/pg_data:/var/lib/postgresql/data
@@ -98,6 +111,7 @@ services:
     container_name: octoflow-mailcatcher
     hostname: mailcatcher
     restart: on-failure:5
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
       - "11081:1080"
     networks:
