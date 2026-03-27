@@ -127,7 +127,7 @@ class AuthController
             return new JsonResponse(['message' => 'Invalid credentials.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
-        return $this->createAuthenticatedResponse($user);
+        return $this->createAuthenticatedResponse($user, $request);
     }
 
     #[Route('/register', name: 'auth_register', methods: ['POST'])]
@@ -177,7 +177,7 @@ class AuthController
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
         }
 
-        return $this->createAuthenticatedResponse($user);
+        return $this->createAuthenticatedResponse($user, $request);
     }
 
     #[Route('/google', name: 'auth_google', methods: ['POST'])]
@@ -210,10 +210,10 @@ class AuthController
             return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
         }
 
-        return $this->createAuthenticatedResponse($user);
+        return $this->createAuthenticatedResponse($user, $request);
     }
 
-    private function createAuthenticatedResponse(User $user): JsonResponse
+    private function createAuthenticatedResponse(User $user, Request $request): JsonResponse
     {
         $accessToken = $this->jwtTokenManager->create($user);
         $issuedRefreshToken = $this->refreshTokenManager->issue($user);
@@ -225,7 +225,7 @@ class AuthController
             'user' => $this->userPayloadBuilder->build($user),
         ]);
 
-        $response->headers->setCookie($this->buildRefreshCookie($issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
+        $response->headers->setCookie($this->buildRefreshCookie($request, $issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
 
         return $response;
     }
@@ -379,7 +379,7 @@ class AuthController
         $issuedRefreshToken = $this->refreshTokenManager->rotate($refreshToken);
         if ($issuedRefreshToken === null) {
             $response = new JsonResponse(['message' => 'Invalid or expired refresh token.'], JsonResponse::HTTP_UNAUTHORIZED);
-            $response->headers->setCookie($this->buildClearRefreshCookie());
+            $response->headers->setCookie($this->buildClearRefreshCookie($request));
 
             return $response;
         }
@@ -392,7 +392,7 @@ class AuthController
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($issuedRefreshToken->user),
         ]);
-        $response->headers->setCookie($this->buildRefreshCookie($issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
+        $response->headers->setCookie($this->buildRefreshCookie($request, $issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
 
         return $response;
     }
@@ -411,7 +411,7 @@ class AuthController
         }
 
         $response = new JsonResponse(['message' => 'Logged out successfully.']);
-        $response->headers->setCookie($this->buildClearRefreshCookie());
+        $response->headers->setCookie($this->buildClearRefreshCookie($request));
 
         if (is_string($sessionCookieName) && trim($sessionCookieName) !== '') {
             $response->headers->setCookie($this->buildClearSessionCookie($sessionCookieName));
@@ -445,22 +445,22 @@ class AuthController
         }
     }
 
-    private function buildRefreshCookie(string $plainToken, \DateTimeImmutable $expiresAt): Cookie
+    private function buildRefreshCookie(Request $request, string $plainToken, \DateTimeImmutable $expiresAt): Cookie
     {
         return Cookie::create($this->refreshCookieName)
             ->withValue($plainToken)
-            ->withPath('/')
+            ->withPath($this->resolveRefreshCookiePath($request))
             ->withExpires($expiresAt)
             ->withHttpOnly(true)
             ->withSecure($this->refreshCookieSecure)
             ->withSameSite($this->resolveSameSite($this->refreshCookieSameSite));
     }
 
-    private function buildClearRefreshCookie(): Cookie
+    private function buildClearRefreshCookie(Request $request): Cookie
     {
         return Cookie::create($this->refreshCookieName)
             ->withValue('')
-            ->withPath('/')
+            ->withPath($this->resolveRefreshCookiePath($request))
             ->withExpires(new \DateTimeImmutable('-1 day'))
             ->withHttpOnly(true)
             ->withSecure($this->refreshCookieSecure)
@@ -476,6 +476,16 @@ class AuthController
             ->withHttpOnly(true)
             ->withSecure($this->refreshCookieSecure)
             ->withSameSite($this->resolveSameSite($this->refreshCookieSameSite));
+    }
+
+    private function resolveRefreshCookiePath(Request $request): string
+    {
+        $basePath = trim($request->getBasePath(), '/');
+        if ($basePath === '') {
+            return '/auth';
+        }
+
+        return sprintf('/%s/auth', $basePath);
     }
 
     private function resolveSameSite(string $sameSite): string

@@ -160,6 +160,8 @@ final class TaskController
     #[Route('/test/post-capture', name: 'task_test_post_capture', methods: ['POST'])]
     public function testPostCapture(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
+        // dd($request);
+        // die;
         if ($user === null) {
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
         }

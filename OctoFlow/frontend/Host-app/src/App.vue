@@ -105,6 +105,7 @@ let removeViewportListener = null
 let notificationSeed = 0
 let uiSettingsSyncKey = ''
 let uiSettingsSyncPromise = null
+let refreshTokenPromise = null
 
 onMounted(async () => {
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
@@ -490,40 +491,50 @@ async function loadCurrentUser(canRetry = true) {
 }
 
 async function refreshToken(useLoading = true) {
+  if (refreshTokenPromise) {
+    return refreshTokenPromise
+  }
+
   if (useLoading) {
     actionLoading.value = true
   }
 
-  try {
-    const { data } = await requestWithCsrf(
-      {
-        url: '/auth/refresh',
-        method: 'POST',
-        csrfActionId: 'auth.refresh',
-      },
-      true,
-      false,
-    )
+  refreshTokenPromise = (async () => {
+    try {
+      const { data } = await requestWithCsrf(
+        {
+          url: '/auth/refresh',
+          method: 'POST',
+          csrfActionId: 'auth.refresh',
+        },
+        true,
+        false,
+      )
 
-    if (!data?.token) {
-      clearAuth()
+      if (!data?.token) {
+        clearAuth()
+        return false
+      }
+
+      setAccessToken(data.token)
+      currentUser.value = data.user || currentUser.value
+      return true
+    } catch (error) {
+      if (shouldClearAuthAfterRefreshFailure(error)) {
+        clearAuth()
+      }
+
       return false
-    }
+    } finally {
+      if (useLoading) {
+        actionLoading.value = false
+      }
 
-    setAccessToken(data.token)
-    currentUser.value = data.user || currentUser.value
-    return true
-  } catch (error) {
-    if (shouldClearAuthAfterRefreshFailure(error)) {
-      clearAuth()
+      refreshTokenPromise = null
     }
+  })()
 
-    return false
-  } finally {
-    if (useLoading) {
-      actionLoading.value = false
-    }
-  }
+  return refreshTokenPromise
 }
 
 async function logout() {
