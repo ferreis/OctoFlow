@@ -30,6 +30,8 @@ import {
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/OctoFlow/api').replace(/\/$/, '')
 const DEFAULT_CSRF_HEADER_NAME = 'X-CSRF-Token'
 const DEFAULT_CSRF_ACTION_HEADER_NAME = 'X-CSRF-Action'
+const CLIENT_BROWSER_ID_STORAGE_KEY = 'octoflow.auth.browser-id'
+const CLIENT_TAB_ID_STORAGE_KEY = 'octoflow.auth.tab-id'
 const PUBLIC_CSRF_ACTIONS = {
   'auth.login': { method: 'POST', path: '/auth/login' },
   'auth.register': { method: 'POST', path: '/auth/register' },
@@ -106,8 +108,13 @@ let notificationSeed = 0
 let uiSettingsSyncKey = ''
 let uiSettingsSyncPromise = null
 let refreshTokenPromise = null
+let clientBrowserId = ''
+let clientTabId = ''
+let clientFingerprintHash = ''
 
 onMounted(async () => {
+  initializeClientIdentity()
+
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
   isCompactViewport.value = viewportMediaQuery.matches
   const handleViewportChange = (event) => {
@@ -641,6 +648,105 @@ function shouldClearAuthAfterRefreshFailure(error) {
   return error.response?.status === 401
 }
 
+function buildRandomIdentifier(prefixLabel) {
+  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return `${prefixLabel}-${window.crypto.randomUUID()}`
+  }
+
+  const randomSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
+  return `${prefixLabel}-${randomSuffix}`
+}
+
+function computeClientFingerprintHash() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const language = String(window.navigator?.language || '').trim().toLowerCase()
+  const timezone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim().toLowerCase()
+  const platform = String(window.navigator?.platform || '').trim().toLowerCase()
+  const userAgent = String(window.navigator?.userAgent || '').trim().toLowerCase()
+  const screenWidth = Number(window.screen?.width || 0)
+  const screenHeight = Number(window.screen?.height || 0)
+  const pixelRatio = Number(window.devicePixelRatio || 1)
+  const rawFingerprint = `${language}|${timezone}|${platform}|${screenWidth}x${screenHeight}|${pixelRatio}|${userAgent}`
+
+  if (rawFingerprint === '') {
+    return ''
+  }
+
+  let accumulatedHash = 0
+  for (let characterIndex = 0; characterIndex < rawFingerprint.length; characterIndex += 1) {
+    const currentCharacterCode = rawFingerprint.charCodeAt(characterIndex)
+    accumulatedHash = ((accumulatedHash << 5) - accumulatedHash) + currentCharacterCode
+    accumulatedHash |= 0
+  }
+
+  return `fp-${Math.abs(accumulatedHash)}`
+}
+
+function initializeClientIdentity() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (clientBrowserId === '') {
+    let persistedBrowserIdentifier = buildRandomIdentifier('browser')
+
+    try {
+      persistedBrowserIdentifier = String(window.localStorage.getItem(CLIENT_BROWSER_ID_STORAGE_KEY) || '').trim()
+      if (persistedBrowserIdentifier === '') {
+        persistedBrowserIdentifier = buildRandomIdentifier('browser')
+        window.localStorage.setItem(CLIENT_BROWSER_ID_STORAGE_KEY, persistedBrowserIdentifier)
+      }
+    } catch {
+      // localStorage pode estar indisponível em modos restritos do navegador.
+    }
+
+    clientBrowserId = persistedBrowserIdentifier
+  }
+
+  if (clientTabId === '') {
+    let persistedTabIdentifier = buildRandomIdentifier('tab')
+
+    try {
+      persistedTabIdentifier = String(window.sessionStorage.getItem(CLIENT_TAB_ID_STORAGE_KEY) || '').trim()
+      if (persistedTabIdentifier === '') {
+        persistedTabIdentifier = buildRandomIdentifier('tab')
+        window.sessionStorage.setItem(CLIENT_TAB_ID_STORAGE_KEY, persistedTabIdentifier)
+      }
+    } catch {
+      // sessionStorage pode estar indisponível em modos restritos do navegador.
+    }
+
+    clientTabId = persistedTabIdentifier
+  }
+
+  if (clientFingerprintHash === '') {
+    clientFingerprintHash = computeClientFingerprintHash()
+  }
+}
+
+function buildClientIdentityHeaders(headers = {}) {
+  initializeClientIdentity()
+
+  const identityHeaders = {}
+  if (clientTabId !== '') {
+    identityHeaders['X-Tab-Id'] = clientTabId
+  }
+  if (clientBrowserId !== '') {
+    identityHeaders['X-Browser-Id'] = clientBrowserId
+  }
+  if (clientFingerprintHash !== '') {
+    identityHeaders['X-Browser-Fingerprint'] = clientFingerprintHash
+  }
+
+  return {
+    ...identityHeaders,
+    ...headers,
+  }
+}
+
 function buildAuthorizedHeaders(headers = {}) {
   return accessToken.value
     ? {
@@ -654,7 +760,7 @@ async function authorizedRequestWithoutCsrf(config, canRetry = true) {
   try {
     return await apiClient.request({
       ...config,
-      headers: buildAuthorizedHeaders(config?.headers || {}),
+      headers: buildAuthorizedHeaders(buildClientIdentityHeaders(config?.headers || {})),
     })
   } catch (error) {
     if (canRetry && axios.isAxiosError(error) && error.response?.status === 401) {
@@ -675,7 +781,9 @@ async function requestCsrfChallenge(config, canRetryAuth = true) {
   const payload = { method, path, actionId }
 
   if (isPublicCsrfAction(actionId, method, path)) {
-    const response = await apiClient.post('/auth/csrf/challenge', payload)
+    const response = await apiClient.post('/auth/csrf/challenge', payload, {
+      headers: buildClientIdentityHeaders(),
+    })
     return response.data || {}
   }
 
@@ -707,9 +815,7 @@ async function requestWithCsrf(config, canRetryCsrf = true, canRetryAuth = true)
   const path = normalizeApiPath(config?.url)
   const actionId = getCsrfActionId(config, method)
   const publicCsrfAction = isPublicCsrfAction(actionId, method, path)
-  const headers = {
-    ...(config?.headers || {}),
-  }
+  const headers = buildClientIdentityHeaders(config?.headers || {})
 
   if (isMutatingMethod(method)) {
     const challenge = await requestCsrfChallenge(config, canRetryAuth)

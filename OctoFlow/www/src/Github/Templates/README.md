@@ -1,32 +1,34 @@
-Catalogo central de templates do sistema.
+# Templates GitHub (Backend)
 
-Estrutura:
+## Objetivo
+Catálogo central de templates usados na criação e atualização de issues.
 
-- `create/`: templates usados na criacao de issue GitHub e tarefa local
-- `update/`: templates usados na atualizacao de issue GitHub
+## Estrutura
 
-Consumo:
+- `create/`: templates para criação de issue GitHub e tarefa local.
+- `update/`: templates para atualização de issue GitHub.
 
-- `App\\Github\\GithubIssueTemplateCatalog` carrega `create/`
-- `App\\Github\\GithubIssueUpdateTemplateCatalog` carrega `update/`
+## Consumo no backend
 
-Endpoints:
+- `App\\Github\\GithubIssueTemplateCatalog` carrega `create/`.
+- `App\\Github\\GithubIssueUpdateTemplateCatalog` carrega `update/`.
+
+## Endpoints
 
 - `GET /tasks/templates`
 - `GET /tasks/update-templates`
 
-Regra:
+## Regras
 
-- nao criar catalogo de template no frontend
-- qualquer novo template deve ser adicionado aqui no backend
+- Não criar catálogo de template no frontend.
+- Todo novo template deve ser adicionado neste diretório.
+- Filtro de visibilidade e uso é sempre no backend.
 
-Controle de acesso:
+## Controle de acesso por template
 
-- cada template pode declarar `access`
-- o filtro de visibilidade e uso acontece no backend
-- o frontend recebe apenas templates ja liberados para o usuario
+Cada template pode declarar `access`.
 
-Formato simples:
+Exemplo simples:
 
 ```php
 'access' => [
@@ -35,7 +37,7 @@ Formato simples:
 ],
 ```
 
-Formato com regra separada para ver e usar:
+Exemplo com regra separada para visualizar e usar:
 
 ```php
 'access' => [
@@ -48,12 +50,12 @@ Formato com regra separada para ver e usar:
 ],
 ```
 
-Resolver central:
+## Resolver central
 
 - `App\\Github\\UserCapabilityResolver`
 - `App\\Github\\TemplateAccessService`
 
-Observacao:
+## Observações
 
-- `ROLE_ADMIN` tem acesso total por padrao
-- os mapas de capability por role devem ser mantidos no resolver central
+- `ROLE_ADMIN` tem acesso total por padrão.
+- Mapa de capabilities por role deve ficar centralizado no resolver.

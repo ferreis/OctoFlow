@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\User;
 use App\Entity\RefreshToken;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -41,6 +42,24 @@ class RefreshTokenRepository extends ServiceEntityRepository
             ->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult();
+    }
+
+    /**
+     * Retorna tokens ativos (não revogados e não expirados) do usuário, do mais antigo para o mais novo.
+     *
+     * @return RefreshToken[]
+     */
+    public function findActiveByUser(User $user): array
+    {
+        return $this->createQueryBuilder('rt')
+            ->andWhere('rt.user = :user')
+            ->andWhere('rt.revokedAt IS NULL')
+            ->andWhere('rt.expiresAt > :now')
+            ->setParameter('user', $user)
+            ->setParameter('now', new \DateTimeImmutable())
+            ->orderBy('rt.createdAt', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**

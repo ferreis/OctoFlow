@@ -216,7 +216,7 @@ class AuthController
     private function createAuthenticatedResponse(User $user, Request $request): JsonResponse
     {
         $accessToken = $this->jwtTokenManager->create($user);
-        $issuedRefreshToken = $this->refreshTokenManager->issue($user);
+        $issuedRefreshToken = $this->refreshTokenManager->issue($user, $request);
 
         $response = new JsonResponse([
             'token' => $accessToken,
@@ -226,6 +226,7 @@ class AuthController
         ]);
 
         $response->headers->setCookie($this->buildRefreshCookie($request, $issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
+        $this->appendLegacyRefreshCookieCleanup($response, $request);
 
         return $response;
     }
@@ -376,10 +377,11 @@ class AuthController
             return new JsonResponse(['message' => 'Refresh token cookie is missing.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
-        $issuedRefreshToken = $this->refreshTokenManager->rotate($refreshToken);
+        $issuedRefreshToken = $this->refreshTokenManager->rotate($refreshToken, $request);
         if ($issuedRefreshToken === null) {
             $response = new JsonResponse(['message' => 'Invalid or expired refresh token.'], JsonResponse::HTTP_UNAUTHORIZED);
             $response->headers->setCookie($this->buildClearRefreshCookie($request));
+            $this->appendLegacyRefreshCookieCleanup($response, $request);
 
             return $response;
         }
@@ -393,6 +395,7 @@ class AuthController
             'user' => $this->userPayloadBuilder->build($issuedRefreshToken->user),
         ]);
         $response->headers->setCookie($this->buildRefreshCookie($request, $issuedRefreshToken->plainToken, $issuedRefreshToken->expiresAt));
+        $this->appendLegacyRefreshCookieCleanup($response, $request);
 
         return $response;
     }
@@ -412,6 +415,7 @@ class AuthController
 
         $response = new JsonResponse(['message' => 'Logged out successfully.']);
         $response->headers->setCookie($this->buildClearRefreshCookie($request));
+        $this->appendLegacyRefreshCookieCleanup($response, $request);
 
         if (is_string($sessionCookieName) && trim($sessionCookieName) !== '') {
             $response->headers->setCookie($this->buildClearSessionCookie($sessionCookieName));
@@ -467,6 +471,17 @@ class AuthController
             ->withSameSite($this->resolveSameSite($this->refreshCookieSameSite));
     }
 
+    private function buildClearRefreshCookieForPath(string $cookiePath): Cookie
+    {
+        return Cookie::create($this->refreshCookieName)
+            ->withValue('')
+            ->withPath($cookiePath)
+            ->withExpires(new \DateTimeImmutable('-1 day'))
+            ->withHttpOnly(true)
+            ->withSecure($this->refreshCookieSecure)
+            ->withSameSite($this->resolveSameSite($this->refreshCookieSameSite));
+    }
+
     private function buildClearSessionCookie(string $cookieName): Cookie
     {
         return Cookie::create(trim($cookieName))
@@ -486,6 +501,51 @@ class AuthController
         }
 
         return sprintf('/%s/auth', $basePath);
+    }
+
+    private function appendLegacyRefreshCookieCleanup(JsonResponse $response, Request $request): void
+    {
+        $activePath = $this->resolveRefreshCookiePath($request);
+
+        foreach ($this->resolveLegacyRefreshCookiePaths($request) as $legacyPath) {
+            if ($legacyPath === $activePath) {
+                continue;
+            }
+
+            $response->headers->setCookie($this->buildClearRefreshCookieForPath($legacyPath));
+        }
+    }
+
+    /**
+     * @return string[]
+     */
+    private function resolveLegacyRefreshCookiePaths(Request $request): array
+    {
+        $basePath = '/' . trim($request->getBasePath(), '/');
+        if ($basePath === '//') {
+            $basePath = '/';
+        }
+
+        $candidatePaths = [
+            '/',
+            '/auth',
+            $basePath,
+            rtrim($basePath, '/') . '/auth',
+        ];
+
+        $normalizedPaths = [];
+        foreach ($candidatePaths as $candidatePath) {
+            $normalizedPath = '/' . trim((string) $candidatePath, '/');
+            if ($normalizedPath === '//') {
+                $normalizedPath = '/';
+            }
+
+            if (!in_array($normalizedPath, $normalizedPaths, true)) {
+                $normalizedPaths[] = $normalizedPath;
+            }
+        }
+
+        return $normalizedPaths;
     }
 
     private function resolveSameSite(string $sameSite): string

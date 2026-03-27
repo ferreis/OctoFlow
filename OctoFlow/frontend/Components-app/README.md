@@ -1,5 +1,38 @@
-# Vue 3 + Vite
+# Components App (Remote - OctoFlow)
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+## O que é
+Aplicação remota (Vue 3 + Vite) que expõe componentes compartilhados para o host via Module Federation.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+## Requisitos
+
+- Node.js 20+
+- npm
+
+## Scripts
+
+- `npm run dev` - sobe em `http://localhost:5175`
+- `npm run build` - build de produção
+- `npm run preview` - preview local do build
+- `npm run lint` - validação de lint
+
+## Papel do remote
+
+- Renderizar UI compartilhada.
+- Receber dados/callbacks prontos do host.
+- Não assumir autenticação/sessão/orquestração principal.
+
+## Exposições principais
+
+- `./TaskCrudPanel`
+- `./GithubWorkspacePanel`
+- `./GithubWorkspaceSummaryCard`
+- `./GithubIssueComposerPanel`
+- `./GithubProjectsCard`
+- `./MarkdownPreview`
+- `./MultiSelect`
+- `./IssueTemplateForm`
+- `./IssueTemplatePreview`
+- `./FinanceKpiCard`
+- `./FinanceStatusBadge`
+- `./FinanceEmptyState`
+- `./FinanceTrendMiniChart`

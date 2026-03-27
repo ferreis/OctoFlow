@@ -1,95 +1,77 @@
-# Segurança de Token no OctoFlow
+# Segurança de Autenticação e Refresh Token (OctoFlow)
 
-## 1) Respostas diretas
+## Objetivo
+Documentar o fluxo atual de autenticação, rotação de token e validação de contexto para reduzir risco de uso indevido de sessão.
 
-### Por que o refresh token aparecia em todas as requisições?
-Porque ele estava em cookie com `Path=/` e o frontend usa `withCredentials: true` no Axios.
+## Respostas rápidas
 
-Resultado: o navegador anexava esse cookie em praticamente toda chamada para a mesma origem.
+### Por que o refresh token aparecia em várias requisições?
+Porque o cookie estava com `Path=/` e o frontend usa `withCredentials: true`.
 
-### O que foi ajustado agora?
-O cookie de refresh foi limitado para o escopo de autenticação (`/auth`, respeitando o base path da API).
+### O que foi ajustado?
+O cookie de refresh passou para escopo de autenticação (`/auth`, respeitando o base path da API).
 
-Resultado: ele não vai mais em rotas como `tasks`, `finance`, `github`, `ui` e demais módulos.
+### Quando o refresh é usado?
+Somente quando uma rota protegida retorna `401`.
 
-### O refresh token deve ser enviado só quando o access token estiver inválido?
-Sim. O fluxo atual foi ajustado para isso:
+Fluxo:
+1. Frontend envia requisição com `Authorization: Bearer <access_token>`.
+2. Backend valida.
+3. Se der `401`, frontend chama `/auth/refresh`.
+4. Recebe novo `access_token` + novo `refresh_token`.
+5. Refaz a requisição original uma única vez.
 
-- O frontend envia sempre `Authorization: Bearer <access_token>` nas rotas protegidas.
-- O backend valida esse access token.
-- Se estiver inválido/expirado, responde `401`.
-- Só nesse caso o frontend chama `/auth/refresh`, recebe novo access token e refaz a requisição uma vez.
+### De onde vem `PHPSESSID`?
+É cookie de sessão padrão do PHP/Symfony.
+No projeto, ele participa do fluxo de CSRF customizado (`CsrfTokenManager`).
 
-Importante: o cookie pode acompanhar chamadas em `/auth/*`, mas só `/auth/refresh` consome o refresh token para rotação.
+### De onde vem `g_state`?
+É cookie do Google Identity Services (`https://accounts.google.com/gsi/client`).
+Não é criado nem controlado pelo backend do OctoFlow.
 
-### De onde veio o `PHPSESSID`?
-`PHPSESSID` é o cookie de sessão padrão do PHP/Symfony.
+## Regras de segurança ativas
 
-No seu sistema ele é usado para a camada de CSRF customizada (`CsrfTokenManager`), que guarda desafios one-time na sessão (`_custom_csrf_challenges`) e um identificador anônimo (`_custom_csrf_visitor`) quando não há usuário autenticado.
+- Refresh token gerado com alta entropia (`random_bytes(64)`).
+- Banco guarda só hash do refresh (`sha256`), nunca o valor puro.
+- Rotação a cada refresh.
+- Reuso de token revogado derruba a família inteira (`tokenFamilyId`).
+- Lock no frontend para evitar refresh paralelo.
+- Limite de tokens ativos por usuário: `AUTH_REFRESH_TOKEN_MAX_ACTIVE=10`.
+- Ao exceder o limite, tokens ativos mais antigos são revogados.
 
-### De onde veio o `g_state`?
-`g_state` vem do Google Identity Services (script `https://accounts.google.com/gsi/client`).
+## Validação de contexto no refresh
 
-Ele é gerenciado pelo próprio Google para estado de login/seleção automática da conta Google. Não é criado nem lido pelo backend do OctoFlow.
+No `issue` e no `rotate`, o backend salva e compara:
 
-## 2) Como está o fluxo de autenticação
+- `fingerprintHash` (origem: `X-Browser-Id`, fallback `X-Browser-Fingerprint`)
+- `userAgentHash` (`User-Agent`)
+- `ipHash` (IP do request)
 
-1. Login (`/auth/login`, `/auth/register` ou `/auth/google`) retorna:
-- `access_token` no corpo
-- `refresh_token` em cookie HttpOnly
+Política atual:
 
-2. Requisições protegidas usam `Authorization: Bearer <access_token>`.
+- Se fingerprint confiável mudar: bloqueia refresh e revoga família.
+- Se `User-Agent` e IP mudarem juntos: bloqueia refresh e revoga família.
+- Se apenas IP mudar: tolera e marca `contextChangedAt`.
 
-3. O backend valida o access token em cada chamada protegida:
-- válido: segue normal
-- inválido/expirado: responde `401`
+## Entity `RefreshToken` (uso real)
 
-4. Só após `401`, o frontend chama `/auth/refresh`:
-- backend valida token atual
-- revoga token antigo
-- emite novo access token + novo refresh token
-
-5. Em logout:
-- backend tenta revogar refresh token recebido
-- limpa cookie de refresh
-- invalida sessão (quando existir)
-
-## 3) Segurança de refresh token implementada
-
-- Token aleatório forte: `random_bytes(64)` (hex).
-- Banco não guarda token em texto puro: guarda só `sha256(token)`.
-- Refresh token tem expiração (`AUTH_REFRESH_TOKEN_TTL`, padrão 14 dias).
-- Rotação a cada refresh (token antigo é revogado).
-- Frontend usa lock de refresh (1 refresh por vez) para evitar corrida e reuso acidental.
-- Detecção de reuso de token revogado: se um token já revogado for usado de novo, a família inteira é revogada.
-- Cookie com `HttpOnly` e `SameSite` configurável (`AUTH_REFRESH_COOKIE_SAMESITE`).
-- `Secure` configurável por ambiente (`AUTH_REFRESH_COOKIE_SECURE`).
-
-## 4) Entity `RefreshToken` (atributo por atributo)
-
-| Atributo | Finalidade | Uso no sistema hoje |
+| Campo | Para que serve | Uso no sistema |
 |---|---|---|
-| `id` | Identificador interno do registro | Chave primária no banco |
-| `user` | Dono do refresh token | Definido em `issue()`, usado para emitir novo access token |
-| `tokenHash` | Hash SHA-256 do refresh token real | Busca e validação (`findByHash`, `findValidByHash`) |
-| `fingerprintHash` | Hash de fingerprint de dispositivo/navegador | Campo existente, hoje não preenchido no fluxo atual |
-| `userAgentHash` | Hash do User-Agent para vínculo de contexto | Campo existente, hoje não preenchido no fluxo atual |
-| `ipHash` | Hash de IP para vínculo de contexto | Campo existente, hoje não preenchido no fluxo atual |
-| `tokenFamilyId` | Identificador da família de rotação | Usado para revogar toda a família em caso de reuso suspeito |
-| `parentTokenHash` | Hash do token anterior da cadeia | Usado para encadear rotações e manter família |
-| `expiresAt` | Data/hora de expiração | Validado em `rotate()` e `findValidByHash()` |
-| `createdAt` | Data/hora de criação | Auditoria e rastreio |
-| `revokedAt` | Marca de revogação | Impede uso futuro do token |
-| `contextChangedAt` | Marca de mudança de contexto de segurança | Campo existente, hoje sem fluxo ativo de preenchimento |
-| `reuseDetectedAt` | Marca de tentativa de reuso detectada | Preenchido quando token revogado é reutilizado |
+| `id` | Identificador interno | PK |
+| `user` | Dono do token | vínculo com usuário |
+| `tokenHash` | Hash do refresh token | busca/validação |
+| `fingerprintHash` | Hash de identidade de navegador/dispositivo | preenchido e validado |
+| `userAgentHash` | Hash de user-agent | preenchido e validado |
+| `ipHash` | Hash de IP | preenchido e validado |
+| `tokenFamilyId` | Família de rotação | revogação em cascata |
+| `parentTokenHash` | Encadeamento da rotação | histórico de token |
+| `expiresAt` | Expiração | validação de validade |
+| `createdAt` | Criação | auditoria |
+| `revokedAt` | Revogação | bloqueio de uso |
+| `contextChangedAt` | Mudança de contexto | auditoria de risco |
+| `reuseDetectedAt` | Reuso detectado | sinal de tentativa indevida |
 
-## 5) Pontos de atenção
-
-- A proteção por família de token e detecção de reuso está ativa.
-- Os campos de contexto (`fingerprintHash`, `userAgentHash`, `ipHash`, `contextChangedAt`) ainda não estão sendo alimentados/validados no fluxo atual.
-- Se quiser hardening adicional, o próximo passo é ativar validação de contexto nesses campos com política de tolerância (ex.: IP móvel) para evitar falso positivo.
-
-## 6) Arquivos principais para consulta
+## Arquivos principais
 
 - `www/src/Controller/AuthController.php`
 - `www/src/Security/RefreshTokenManager.php`
@@ -97,4 +79,3 @@ Ele é gerenciado pelo próprio Google para estado de login/seleção automátic
 - `www/src/Entity/RefreshToken.php`
 - `www/src/Security/CsrfTokenManager.php`
 - `frontend/Host-app/src/App.vue`
-- `frontend/Host-app/src/components/GoogleLogin.vue`
