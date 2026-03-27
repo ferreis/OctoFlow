@@ -400,6 +400,16 @@ class AuthController
         return $response;
     }
 
+    #[Route('/session/restore-available', name: 'auth_session_restore_available', methods: ['GET'])]
+    public function sessionRestoreAvailable(Request $request): JsonResponse
+    {
+        $refreshToken = trim((string) $request->cookies->get($this->refreshCookieName, ''));
+
+        return new JsonResponse([
+            'restoreAvailable' => $refreshToken !== '',
+        ]);
+    }
+
     #[Route('/logout', name: 'auth_logout', methods: ['POST'])]
     public function logout(Request $request): JsonResponse
     {
@@ -495,12 +505,26 @@ class AuthController
 
     private function resolveRefreshCookiePath(Request $request): string
     {
-        $basePath = trim($request->getBasePath(), '/');
-        if ($basePath === '') {
-            return '/auth';
+        $forwardedPrefix = trim((string) $request->headers->get('X-Forwarded-Prefix', ''), '/');
+        if ($forwardedPrefix !== '') {
+            return sprintf('/%s/auth', $forwardedPrefix);
         }
 
-        return sprintf('/%s/auth', $basePath);
+        $basePath = trim((string) $request->getBasePath(), '/');
+        if ($basePath !== '') {
+            return sprintf('/%s/auth', $basePath);
+        }
+
+        $pathInfo = '/' . ltrim((string) $request->getPathInfo(), '/');
+        $authSegmentPosition = strpos($pathInfo, '/auth');
+        if ($authSegmentPosition !== false) {
+            $prefixPath = trim(substr($pathInfo, 0, $authSegmentPosition), '/');
+            if ($prefixPath !== '') {
+                return sprintf('/%s/auth', $prefixPath);
+            }
+        }
+
+        return '/auth';
     }
 
     private function appendLegacyRefreshCookieCleanup(JsonResponse $response, Request $request): void
@@ -521,16 +545,35 @@ class AuthController
      */
     private function resolveLegacyRefreshCookiePaths(Request $request): array
     {
-        $basePath = '/' . trim($request->getBasePath(), '/');
+        $forwardedPrefix = '/' . trim((string) $request->headers->get('X-Forwarded-Prefix', ''), '/');
+        if ($forwardedPrefix === '//') {
+            $forwardedPrefix = '/';
+        }
+
+        $basePath = '/' . trim((string) $request->getBasePath(), '/');
         if ($basePath === '//') {
             $basePath = '/';
+        }
+
+        $pathInfo = '/' . ltrim((string) $request->getPathInfo(), '/');
+        $authSegmentPosition = strpos($pathInfo, '/auth');
+        $prefixFromPathInfo = '/';
+        if ($authSegmentPosition !== false) {
+            $prefixFromPathInfo = rtrim(substr($pathInfo, 0, $authSegmentPosition), '/');
+            if ($prefixFromPathInfo === '') {
+                $prefixFromPathInfo = '/';
+            }
         }
 
         $candidatePaths = [
             '/',
             '/auth',
+            $forwardedPrefix,
+            rtrim($forwardedPrefix, '/') . '/auth',
             $basePath,
             rtrim($basePath, '/') . '/auth',
+            $prefixFromPathInfo,
+            rtrim($prefixFromPathInfo, '/') . '/auth',
         ];
 
         $normalizedPaths = [];

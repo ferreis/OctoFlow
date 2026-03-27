@@ -84,6 +84,7 @@ const availableThemes = APP_THEME_OPTIONS
 const screenAuthValidationInProgress = ref(false)
 const googlePasswordSetupStep = ref('verify')
 const googlePasswordSetupLoading = ref(false)
+const authBootstrapLoading = ref(true)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 const requiresGooglePasswordSetup = computed(() => currentUser.value?.passwordSetupRequired === true)
@@ -129,9 +130,19 @@ onMounted(async () => {
     removeViewportListener = () => viewportMediaQuery?.removeListener(handleViewportChange)
   }
 
-  const refreshed = await refreshToken(false)
-  if (!refreshed) {
-    currentUser.value = null
+  try {
+    const restoreIsAvailable = await isRefreshSessionAvailable()
+    if (!restoreIsAvailable) {
+      currentUser.value = null
+      return
+    }
+
+    const refreshed = await refreshToken(false)
+    if (!refreshed) {
+      currentUser.value = null
+    }
+  } finally {
+    authBootstrapLoading.value = false
   }
 })
 
@@ -865,6 +876,20 @@ async function authRequest(config, canRetry = true) {
   return authorizedRequestWithoutCsrf(config, canRetry)
 }
 
+async function isRefreshSessionAvailable() {
+  try {
+    const { data } = await apiClient.request({
+      url: '/auth/session/restore-available',
+      method: 'GET',
+      headers: buildClientIdentityHeaders(),
+    })
+
+    return data?.restoreAvailable === true
+  } catch {
+    return false
+  }
+}
+
 function setAccessToken(token) {
   accessToken.value = token
 }
@@ -1117,7 +1142,17 @@ function clearNotification() {
 
     <div class="app-main">
       <main class="page-stage">
-        <section v-if="!isAuthenticated" class="auth-stage">
+        <section v-if="authBootstrapLoading" class="auth-stage">
+          <article class="surface-card auth-form-card">
+            <div>
+              <p class="section-kicker">Sessao</p>
+              <h2>Restaurando sessão...</h2>
+            </div>
+            <p class="auth-help-text">Aguarde enquanto validamos seu acesso.</p>
+          </article>
+        </section>
+
+        <section v-else-if="!isAuthenticated" class="auth-stage">
           <article class="surface-card auth-copy-card">
             <p class="section-kicker">OctoFlow</p>
             <h2>Um shell mais limpo para trabalhar com perfil, tarefas e GitHub</h2>

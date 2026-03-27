@@ -26,6 +26,7 @@ security:
         - { path: ^/auth/config$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/google$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/refresh$, roles: PUBLIC_ACCESS }
+        - { path: ^/auth/session/restore-available$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/logout$, roles: PUBLIC_ACCESS }
         - { path: ^/csrf/challenge$, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/docs, roles: PUBLIC_ACCESS }
