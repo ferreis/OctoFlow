@@ -11,6 +11,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(columns: ['user_id'], name: 'idx_refresh_token_user')]
 #[ORM\Index(columns: ['token_family_id'], name: 'idx_refresh_token_family')]
 #[ORM\Index(columns: ['fingerprint_hash'], name: 'idx_refresh_token_fingerprint')]
+#[ORM\Index(columns: ['location_hash'], name: 'idx_refresh_token_location')]
 class RefreshToken
 {
     #[ORM\Id]
@@ -33,6 +34,9 @@ class RefreshToken
 
     #[ORM\Column(length: 64)]
     private string $ipHash = '';
+
+    #[ORM\Column(length: 64)]
+    private string $locationHash = '';
 
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $tokenFamilyId = null;
@@ -175,6 +179,18 @@ class RefreshToken
     public function getTokenFamilyId(): ?string
     {
         return $this->tokenFamilyId;
+    }
+
+    public function getLocationHash(): string
+    {
+        return $this->locationHash;
+    }
+
+    public function setLocationHash(string $locationHash): self
+    {
+        $this->locationHash = $locationHash;
+
+        return $this;
     }
 
     public function setTokenFamilyId(?string $tokenFamilyId): self

@@ -41,6 +41,7 @@ class RefreshTokenManager
             ->setFingerprintHash($requestContextHashes['fingerprintHash'])
             ->setUserAgentHash($requestContextHashes['userAgentHash'])
             ->setIpHash($requestContextHashes['ipHash'])
+            ->setLocationHash($requestContextHashes['locationHash'])
             ->setTokenFamilyId($tokenFamilyId)
             ->setParentTokenHash($parentTokenHash)
             ->setExpiresAt($expiresAt)
@@ -181,20 +182,36 @@ class RefreshTokenManager
     }
 
     /**
-     * @param array{fingerprintHash: string, userAgentHash: string, ipHash: string} $requestContextHashes
+     * @param array{fingerprintHash: string, userAgentHash: string, ipHash: string, locationHash: string} $requestContextHashes
      */
     private function isSuspiciousContextChange(RefreshToken $existingToken, array $requestContextHashes): bool
     {
         $fingerprintChanged = $this->hashesAreDifferent($existingToken->getFingerprintHash(), $requestContextHashes['fingerprintHash']);
         $userAgentChanged = $this->hashesAreDifferent($existingToken->getUserAgentHash(), $requestContextHashes['userAgentHash']);
         $ipChanged = $this->hashesAreDifferent($existingToken->getIpHash(), $requestContextHashes['ipHash']);
+        $locationChanged = $this->hashesAreDifferent($existingToken->getLocationHash(), $requestContextHashes['locationHash']);
 
         $existingTokenHasReliableFingerprint = !$this->isMissingFingerprintHash($existingToken->getFingerprintHash());
         if ($existingTokenHasReliableFingerprint && $fingerprintChanged) {
             return true;
         }
 
-        if ($userAgentChanged && $ipChanged) {
+        $existingTokenHasReliableLocation = !$this->isMissingLocationHash($existingToken->getLocationHash());
+        $changedSignalsCount = 0;
+
+        if ($ipChanged) {
+            $changedSignalsCount += 1;
+        }
+
+        if ($userAgentChanged) {
+            $changedSignalsCount += 1;
+        }
+
+        if ($existingTokenHasReliableLocation && $locationChanged) {
+            $changedSignalsCount += 1;
+        }
+
+        if ($changedSignalsCount >= 2) {
             return true;
         }
 
@@ -202,13 +219,14 @@ class RefreshTokenManager
     }
 
     /**
-     * @param array{fingerprintHash: string, userAgentHash: string, ipHash: string} $requestContextHashes
+     * @param array{fingerprintHash: string, userAgentHash: string, ipHash: string, locationHash: string} $requestContextHashes
      */
     private function hasAnyContextChange(RefreshToken $existingToken, array $requestContextHashes): bool
     {
         return $this->hashesAreDifferent($existingToken->getFingerprintHash(), $requestContextHashes['fingerprintHash'])
             || $this->hashesAreDifferent($existingToken->getUserAgentHash(), $requestContextHashes['userAgentHash'])
-            || $this->hashesAreDifferent($existingToken->getIpHash(), $requestContextHashes['ipHash']);
+            || $this->hashesAreDifferent($existingToken->getIpHash(), $requestContextHashes['ipHash'])
+            || $this->hashesAreDifferent($existingToken->getLocationHash(), $requestContextHashes['locationHash']);
     }
 
     private function isMissingFingerprintHash(string $fingerprintHash): bool
@@ -219,6 +237,16 @@ class RefreshTokenManager
         }
 
         return hash_equals($normalizedFingerprintHash, $this->hashContextValue('fingerprint:none'));
+    }
+
+    private function isMissingLocationHash(string $locationHash): bool
+    {
+        $normalizedLocationHash = trim($locationHash);
+        if ($normalizedLocationHash === '') {
+            return true;
+        }
+
+        return hash_equals($normalizedLocationHash, $this->hashContextValue('location:none'));
     }
 
     private function hashesAreDifferent(string $storedHash, string $currentHash): bool
@@ -234,12 +262,13 @@ class RefreshTokenManager
     }
 
     /**
-     * @return array{fingerprintHash: string, userAgentHash: string, ipHash: string}
+     * @return array{fingerprintHash: string, userAgentHash: string, ipHash: string, locationHash: string}
      */
     private function resolveRequestContextHashes(Request $request): array
     {
         $browserFingerprintHeader = mb_strtolower(trim((string) $request->headers->get('x-browser-fingerprint', '')));
         $browserIdHeader = mb_strtolower(trim((string) $request->headers->get('x-browser-id', '')));
+        $browserLocationHeader = mb_strtolower(trim((string) $request->headers->get('x-client-location', '')));
         $normalizedUserAgent = mb_strtolower(trim((string) $request->headers->get('user-agent', '')));
         $normalizedIp = trim((string) $request->getClientIp());
 
@@ -258,10 +287,15 @@ class RefreshTokenManager
             $normalizedIp = 'unknown';
         }
 
+        if ($browserLocationHeader === '') {
+            $browserLocationHeader = 'none';
+        }
+
         return [
             'fingerprintHash' => $this->hashContextValue('fingerprint:' . $fingerprintSource),
             'userAgentHash' => $this->hashContextValue('user-agent:' . $normalizedUserAgent),
             'ipHash' => $this->hashContextValue('ip:' . $normalizedIp),
+            'locationHash' => $this->hashContextValue('location:' . $browserLocationHeader),
         ];
     }
 

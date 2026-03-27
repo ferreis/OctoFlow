@@ -32,6 +32,7 @@ const DEFAULT_CSRF_HEADER_NAME = 'X-CSRF-Token'
 const DEFAULT_CSRF_ACTION_HEADER_NAME = 'X-CSRF-Action'
 const CLIENT_BROWSER_ID_STORAGE_KEY = 'octoflow.auth.browser-id'
 const CLIENT_TAB_ID_STORAGE_KEY = 'octoflow.auth.tab-id'
+const CLIENT_LOCATION_HINT_STORAGE_KEY = 'octoflow.auth.location-hint'
 const PUBLIC_CSRF_ACTIONS = {
   'auth.login': { method: 'POST', path: '/auth/login' },
   'auth.register': { method: 'POST', path: '/auth/register' },
@@ -112,9 +113,11 @@ let refreshTokenPromise = null
 let clientBrowserId = ''
 let clientTabId = ''
 let clientFingerprintHash = ''
+let clientLocationHint = ''
 
 onMounted(async () => {
   initializeClientIdentity()
+  void warmClientLocationHint()
 
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
   isCompactViewport.value = viewportMediaQuery.matches
@@ -696,6 +699,82 @@ function computeClientFingerprintHash() {
   return `fp-${Math.abs(accumulatedHash)}`
 }
 
+function buildFallbackLocationHint() {
+  if (typeof window === 'undefined') {
+    return 'none'
+  }
+
+  const timezone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim().toLowerCase()
+  const language = String(window.navigator?.language || '').trim().toLowerCase()
+
+  if (timezone === '' && language === '') {
+    return 'none'
+  }
+
+  return `tz:${timezone || 'unknown'}|lang:${language || 'unknown'}`
+}
+
+function normalizeLocationCoordinate(rawCoordinate) {
+  const numericCoordinate = Number(rawCoordinate)
+  if (!Number.isFinite(numericCoordinate)) {
+    return null
+  }
+
+  return (Math.round(numericCoordinate * 10) / 10).toFixed(1)
+}
+
+async function warmClientLocationHint() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const geolocationApi = window.navigator?.geolocation
+  if (!geolocationApi || typeof geolocationApi.getCurrentPosition !== 'function') {
+    return
+  }
+
+  const permissionsApi = window.navigator?.permissions
+  if (!permissionsApi || typeof permissionsApi.query !== 'function') {
+    return
+  }
+
+  try {
+    const geolocationPermission = await permissionsApi.query({ name: 'geolocation' })
+    if (geolocationPermission.state !== 'granted') {
+      return
+    }
+  } catch {
+    return
+  }
+
+  await new Promise((resolveLocation) => {
+    geolocationApi.getCurrentPosition(
+      (position) => {
+        const latitude = normalizeLocationCoordinate(position.coords?.latitude)
+        const longitude = normalizeLocationCoordinate(position.coords?.longitude)
+
+        if (latitude !== null && longitude !== null) {
+          clientLocationHint = `geo:${latitude},${longitude}`
+
+          try {
+            window.localStorage.setItem(CLIENT_LOCATION_HINT_STORAGE_KEY, clientLocationHint)
+          } catch {
+            // localStorage pode estar indisponível em modos restritos do navegador.
+          }
+        }
+
+        resolveLocation()
+      },
+      () => resolveLocation(),
+      {
+        enableHighAccuracy: false,
+        timeout: 2500,
+        maximumAge: 900000,
+      },
+    )
+  })
+}
+
 function initializeClientIdentity() {
   if (typeof window === 'undefined') {
     return
@@ -736,6 +815,19 @@ function initializeClientIdentity() {
   if (clientFingerprintHash === '') {
     clientFingerprintHash = computeClientFingerprintHash()
   }
+
+  if (clientLocationHint === '') {
+    clientLocationHint = buildFallbackLocationHint()
+
+    try {
+      const persistedLocationHint = String(window.localStorage.getItem(CLIENT_LOCATION_HINT_STORAGE_KEY) || '').trim()
+      if (persistedLocationHint !== '') {
+        clientLocationHint = persistedLocationHint
+      }
+    } catch {
+      // localStorage pode estar indisponível em modos restritos do navegador.
+    }
+  }
 }
 
 function buildClientIdentityHeaders(headers = {}) {
@@ -750,6 +842,9 @@ function buildClientIdentityHeaders(headers = {}) {
   }
   if (clientFingerprintHash !== '') {
     identityHeaders['X-Browser-Fingerprint'] = clientFingerprintHash
+  }
+  if (clientLocationHint !== '') {
+    identityHeaders['X-Client-Location'] = clientLocationHint
   }
 
   return {
