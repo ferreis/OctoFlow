@@ -126,9 +126,11 @@ final class LocalTaskService implements LocalTaskSyncInterface
         }
 
         $previousLabelNames = $task->getLabelNames();
+        $previousState = $task->getState();
         $title = trim((string) ($payload['title'] ?? ''));
         $body = trim((string) ($payload['body'] ?? ''));
         $templateKey = trim((string) ($payload['templateKey'] ?? ''));
+        $state = strtoupper(trim((string) ($payload['state'] ?? LocalTask::STATE_OPEN)));
         $repositoryOwner = trim((string) ($payload['repositoryOwner'] ?? ''));
         $repositoryName = trim((string) ($payload['repositoryName'] ?? ''));
         $labelNames = $this->normalizeLabelNames($payload['labelNames'] ?? []);
@@ -143,6 +145,10 @@ final class LocalTaskService implements LocalTaskSyncInterface
 
         if (($repositoryOwner === '') xor ($repositoryName === '')) {
             throw new \InvalidArgumentException('Inform the synchronization repository owner and name together.');
+        }
+
+        if (!in_array($state, [LocalTask::STATE_OPEN, LocalTask::STATE_CLOSED], true)) {
+            throw new \InvalidArgumentException('The local task state must be OPEN or CLOSED.');
         }
 
         if ($templateKey !== '') {
@@ -160,12 +166,14 @@ final class LocalTaskService implements LocalTaskSyncInterface
             ->setTemplateKey($templateKey !== '' ? $templateKey : null)
             ->setTitle($title)
             ->setBody($body)
+            ->setState($state)
             ->setLabelNames($labelNames)
             ->setRepositoryOwner($repositoryOwner !== '' ? $repositoryOwner : null)
             ->setRepositoryName($repositoryName !== '' ? $repositoryName : null)
             ->markPending();
 
         $this->appendLabelHistoryEntries($task, $previousLabelNames, $labelNames);
+        $this->appendStateHistoryEntry($task, $previousState, $state);
         $this->entityManager->flush();
 
         return $this->normalizeTask($task);
@@ -350,6 +358,32 @@ final class LocalTaskService implements LocalTaskSyncInterface
                     : sprintf('Tags removidas: %s.', $removedLabelList)
             );
         }
+    }
+
+    private function appendStateHistoryEntry(LocalTask $task, string $previousState, string $nextState): void
+    {
+        $normalizedPreviousState = strtoupper(trim($previousState));
+        $normalizedNextState = strtoupper(trim($nextState));
+
+        if ($normalizedPreviousState === $normalizedNextState) {
+            return;
+        }
+
+        if ($normalizedNextState === LocalTask::STATE_CLOSED) {
+            $task->appendHistoryEntry(
+                'closed',
+                'Tarefa local fechada',
+                'A tarefa local foi marcada como fechada.'
+            );
+
+            return;
+        }
+
+        $task->appendHistoryEntry(
+            'reopened',
+            'Tarefa local reaberta',
+            'A tarefa local voltou para o estado aberto.'
+        );
     }
 
     /**

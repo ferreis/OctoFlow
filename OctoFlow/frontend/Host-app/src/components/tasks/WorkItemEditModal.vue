@@ -1002,6 +1002,7 @@ const localTemplateRenderTimestamp = ref(buildCurrentDateTimeLabel())
 const localForm = reactive({
   title: '',
   body: '',
+  state: 'OPEN',
   templateKey: '',
   repositoryKey: '',
   selectedLabels: [],
@@ -1282,6 +1283,7 @@ async function loadLocalTask(taskId) {
 function syncLocalForm(task) {
   localForm.title = String(task?.title || '')
   localForm.body = String(task?.body || '')
+  localForm.state = task?.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
   localForm.templateKey = String(task?.templateKey || '')
   localForm.repositoryKey = String(task?.repositoryKey || '')
   localForm.selectedLabels = mapLabelNamesToSelectedOptions(task?.labelNames, localAvailableLabelOptions.value)
@@ -1405,6 +1407,7 @@ async function saveLocalTask() {
     const { data } = await updateLocalTask(props.request, localCurrentTask.value.id, {
       title: localForm.title,
       body: nextBody !== '' ? nextBody : String(localCurrentTask.value?.body || '').trim(),
+      state: localForm.state,
       templateKey: localForm.templateKey || null,
       labelNames: buildLabelNamesFromSelection(localForm.selectedLabels),
       repositoryOwner: repository.owner || null,
@@ -1477,13 +1480,6 @@ function requestClose() {
     return
   }
 
-  if (typeof window !== 'undefined') {
-    const shouldCloseModal = window.confirm('Fechar agora? O rascunho atual foi salvo automaticamente.')
-    if (!shouldCloseModal) {
-      return
-    }
-  }
-
   emit('close')
 }
 
@@ -1521,6 +1517,7 @@ function buildLocalEditSnapshot() {
     selectedTemplateKey: String(localSelectedTemplateKey.value || '').trim(),
     title: String(localForm.title || ''),
     body: String(localForm.body || ''),
+    state: String(localForm.state || 'OPEN'),
     templateKey: String(localForm.templateKey || ''),
     repositoryKey: String(localForm.repositoryKey || ''),
     syncRepositoryKey: String(localSyncRepositoryKey.value || ''),
@@ -1584,6 +1581,7 @@ function persistWorkItemDraft() {
       localForm: {
         title: String(localForm.title || ''),
         body: String(localForm.body || ''),
+        state: String(localForm.state || 'OPEN'),
         templateKey: String(localForm.templateKey || ''),
         repositoryKey: String(localForm.repositoryKey || ''),
         selectedLabelNames: buildLabelNamesFromSelection(localForm.selectedLabels),
@@ -1657,6 +1655,7 @@ function restoreStoredWorkItemDraft() {
 
     localForm.title = String(restoredLocalForm.title || '')
     localForm.body = String(restoredLocalForm.body || '')
+    localForm.state = restoredLocalForm.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
     localForm.templateKey = String(restoredLocalForm.templateKey || '')
     localForm.repositoryKey = String(restoredLocalForm.repositoryKey || '')
     localForm.selectedLabels = mapLabelNamesToSelectedOptions(
@@ -2824,6 +2823,14 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
                   <option v-for="repositoryKey in localAvailableRepositories" :key="repositoryKey" :value="repositoryKey">
                     {{ repositoryKey }}
                   </option>
+                </select>
+              </label>
+
+              <label class="grid gap-2 sm:max-w-xs">
+                <span class="text-sm font-semibold text-slate-900">Status</span>
+                <select v-model="localForm.state" class="app-field-control h-11 appearance-none px-3 text-sm text-slate-900">
+                  <option value="OPEN">Aberta</option>
+                  <option value="CLOSED">Fechada</option>
                 </select>
               </label>
 

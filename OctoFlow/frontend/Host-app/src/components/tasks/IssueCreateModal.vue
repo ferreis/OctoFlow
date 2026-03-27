@@ -413,13 +413,6 @@ function requestClose() {
     return
   }
 
-  if (typeof window !== 'undefined') {
-    const shouldCloseModal = window.confirm('Fechar agora? O rascunho atual foi salvo automaticamente.')
-    if (!shouldCloseModal) {
-      return
-    }
-  }
-
   emit('close')
 }
 
