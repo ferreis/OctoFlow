@@ -57,7 +57,11 @@ sequenceDiagram
     Host->>Remote: carrega componentes remotos sob demanda
     Note over Host,Remote: Host orquestra sessao, permissao e chamadas HTTP
 
-    alt sessao com refresh cookie valido
+    Host->>Gateway: GET /auth/session/restore-available
+    Gateway->>Auth: sessionRestoreAvailable()
+    Auth-->>Host: {restoreAvailable:true/false}
+
+    alt sessao com refresh cookie disponivel
         Host->>Gateway: POST /auth/csrf/challenge
         Gateway->>Auth: gerar challenge publico
         Auth->>Csrf: issueChallenge()
@@ -172,7 +176,7 @@ sequenceDiagram
     DB-->>RTM: persisted
     RTM-->>Auth: plain refresh token + expiresAt
 
-    Auth-->>Host: 200 {token, expires_in, user} + Set-Cookie refresh_token(HttpOnly, path=/auth)
+    Auth-->>Host: 200 {token, expires_in, user} + Set-Cookie refresh_token(HttpOnly, path dinamico /.../auth)
     Host->>Host: salva access token em memoria
     Host->>Gateway: GET /auth/me + Authorization
     Gateway->>DB: validar JWT e buscar app_user
@@ -196,6 +200,11 @@ sequenceDiagram
 
     Note over Host: fluxo executado no boot da app e em 401 de rotas protegidas
 
+    Host->>Gateway: GET /auth/session/restore-available
+    Gateway->>Auth: sessionRestoreAvailable()
+    Auth-->>Host: {restoreAvailable:true/false}
+
+    alt restoreAvailable=true
     Host->>Gateway: POST /auth/csrf/challenge
     Gateway->>Auth: csrfChallenge(auth.refresh)
     Auth->>Csrf: issueChallenge()
@@ -212,7 +221,7 @@ sequenceDiagram
     DB-->>RTM: token atual
 
     alt token valido e ativo
-        RTM->>RTM: avaliar mudanca de contexto por UA/IP
+        RTM->>RTM: avaliar mudanca de contexto por fingerprint, UA, IP e localizacao
         alt token revogado reutilizado
             RTM->>DB: UPDATE reuse_detected_at no token atual
             RTM->>DB: UPDATE revoked_at em toda token_family
@@ -229,6 +238,9 @@ sequenceDiagram
     else token ausente, expirado ou invalido
         Auth-->>Host: 401 invalid or expired refresh token
         Host->>Host: limpar sessao local
+    end
+    else restoreAvailable=false
+        Host->>Host: nao tenta refresh e segue para login
     end
 ```
 

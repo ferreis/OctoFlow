@@ -1,75 +1,112 @@
-# Segurança de Autenticação e Refresh Token (OctoFlow)
+# Seguranca de Autenticacao e Refresh Token (OctoFlow)
+
+Atualizado em: 27/03/2026
 
 ## Objetivo
-Documentar o fluxo atual de autenticação, rotação de token e validação de contexto para reduzir risco de uso indevido de sessão.
+Documentar o comportamento real do login/sessao no sistema hoje.
 
-## Respostas rápidas
+## Resumo rapido
 
-### Por que o refresh token aparecia em várias requisições?
-Porque o cookie estava com `Path=/` e o frontend usa `withCredentials: true`.
+- O frontend usa `access_token` em memoria para rotas protegidas.
+- O `refresh_token` fica em cookie `HttpOnly`.
+- O refresh so e chamado quando:
+1. o app inicia e detecta cookie de refresh disponivel; ou
+2. uma rota protegida retorna `401`.
+- Refresh token roda com rotacao obrigatoria a cada uso.
+- Reuso de token revogado derruba a familia inteira de tokens.
 
-### O que foi ajustado?
-O cookie de refresh passou para escopo de autenticação (`/auth`, respeitando o base path da API).
+## Fluxo de auto-login no F5
 
-### Quando o refresh é usado?
-Somente quando uma rota protegida retorna `401`.
+1. Frontend chama `GET /auth/session/restore-available`.
+2. Se `restoreAvailable=true`, chama `POST /auth/refresh`.
+3. Recebe novo `access_token` + novo `refresh_token`.
+4. Sessao e restaurada sem mostrar login de forma definitiva.
 
-Fluxo:
-1. Frontend envia requisição com `Authorization: Bearer <access_token>`.
-2. Backend valida.
-3. Se der `401`, frontend chama `/auth/refresh`.
-4. Recebe novo `access_token` + novo `refresh_token`.
-5. Refaz a requisição original uma única vez.
+## Cookie de refresh (estado atual)
 
-### De onde vem `PHPSESSID`?
-É cookie de sessão padrão do PHP/Symfony.
-No projeto, ele participa do fluxo de CSRF customizado (`CsrfTokenManager`).
+Variaveis:
 
-### De onde vem `g_state`?
-É cookie do Google Identity Services (`https://accounts.google.com/gsi/client`).
-Não é criado nem controlado pelo backend do OctoFlow.
+```dotenv
+AUTH_REFRESH_TOKEN_COOKIE_NAME=refresh_token
+AUTH_REFRESH_COOKIE_SECURE=1
+AUTH_REFRESH_COOKIE_SAMESITE=none # .env
+AUTH_REFRESH_COOKIE_SAMESITE=lax  # .env.local
+```
 
-## Regras de segurança ativas
+Regras:
+- `HttpOnly=true`
+- `Secure=true`
+- `SameSite` por ambiente
+- `Path` calculado pelo backend com prioridade:
+1. `X-Forwarded-Prefix` (ex.: `/OctoFlow/api` -> cookie em `/OctoFlow/api/auth`)
+2. `basePath` do request
+3. fallback `/auth`
 
-- Refresh token gerado com alta entropia (`random_bytes(64)`).
-- Banco guarda só hash do refresh (`sha256`), nunca o valor puro.
-- Rotação a cada refresh.
-- Reuso de token revogado derruba a família inteira (`tokenFamilyId`).
-- Lock no frontend para evitar refresh paralelo.
-- Limite de tokens ativos por usuário: `AUTH_REFRESH_TOKEN_MAX_ACTIVE=10`.
-- Ao exceder o limite, tokens ativos mais antigos são revogados.
+## Validacao de contexto no refresh token
 
-## Validação de contexto no refresh
+Campos usados:
+- `fingerprintHash`
+- `userAgentHash`
+- `ipHash`
+- `locationHash`
 
-No `issue` e no `rotate`, o backend salva e compara:
+Origem:
+- `fingerprintHash`: `X-Browser-Id` (preferencial) ou `X-Browser-Fingerprint`
+- `userAgentHash`: `User-Agent`
+- `ipHash`: IP de origem do request
+- `locationHash`: `X-Client-Location`
 
-- `fingerprintHash` (origem: `X-Browser-Id`, fallback `X-Browser-Fingerprint`)
-- `userAgentHash` (`User-Agent`)
-- `ipHash` (IP do request)
+Regra de bloqueio:
+1. Se fingerprint confiavel mudou: bloqueia e revoga familia.
+2. Caso contrario, se 2 ou mais sinais mudaram entre:
+   - IP
+   - User-Agent
+   - Localizacao
+   entao bloqueia e revoga familia.
+3. Mudanca isolada de 1 sinal e tolerada, com auditoria (`contextChangedAt`).
 
-Política atual:
+## Limite de sessoes simultaneas
 
-- Se fingerprint confiável mudar: bloqueia refresh e revoga família.
-- Se `User-Agent` e IP mudarem juntos: bloqueia refresh e revoga família.
-- Se apenas IP mudar: tolera e marca `contextChangedAt`.
+- `AUTH_REFRESH_TOKEN_MAX_ACTIVE=10`
+- Se passar de 10, os tokens ativos mais antigos sao revogados.
 
-## Entity `RefreshToken` (uso real)
+## Resposta para duvidas frequentes
 
-| Campo | Para que serve | Uso no sistema |
-|---|---|---|
-| `id` | Identificador interno | PK |
-| `user` | Dono do token | vínculo com usuário |
-| `tokenHash` | Hash do refresh token | busca/validação |
-| `fingerprintHash` | Hash de identidade de navegador/dispositivo | preenchido e validado |
-| `userAgentHash` | Hash de user-agent | preenchido e validado |
-| `ipHash` | Hash de IP | preenchido e validado |
-| `tokenFamilyId` | Família de rotação | revogação em cascata |
-| `parentTokenHash` | Encadeamento da rotação | histórico de token |
-| `expiresAt` | Expiração | validação de validade |
-| `createdAt` | Criação | auditoria |
-| `revokedAt` | Revogação | bloqueio de uso |
-| `contextChangedAt` | Mudança de contexto | auditoria de risco |
-| `reuseDetectedAt` | Reuso detectado | sinal de tentativa indevida |
+### Por que nao usamos identificador unico de placa-mae/PC no browser?
+Porque navegador web nao expoe serial de hardware por privacidade e seguranca.
+
+### Entao da para fingir outro dispositivo?
+Parcialmente sim:
+- IP pode ser alterado (VPN/proxy).
+- User-Agent pode ser falsificado.
+- Fingerprint pode ser imitado em ataque avancado.
+
+Por isso usamos validacao combinada + rotacao + revogacao por familia.
+
+### O que e `PHPSESSID`?
+Cookie de sessao do PHP/Symfony, usado no fluxo de CSRF one-time challenge.
+
+### O que e `g_state`?
+Cookie do Google Identity Services. Nao e criado pelo backend do OctoFlow.
+
+## Entidade RefreshToken (campos e uso)
+
+| Campo | Funcao |
+|---|---|
+| `id` | ID interno |
+| `user` | Dono do token |
+| `tokenHash` | Hash do refresh token |
+| `fingerprintHash` | Hash de identidade do navegador/dispositivo |
+| `userAgentHash` | Hash do User-Agent |
+| `ipHash` | Hash do IP |
+| `locationHash` | Hash da localizacao enviada pelo cliente |
+| `tokenFamilyId` | Familia de rotacao |
+| `parentTokenHash` | Encadeamento de rotacao |
+| `expiresAt` | Expiracao |
+| `createdAt` | Criacao |
+| `revokedAt` | Revogacao |
+| `contextChangedAt` | Mudanca de contexto |
+| `reuseDetectedAt` | Reuso detectado |
 
 ## Arquivos principais
 

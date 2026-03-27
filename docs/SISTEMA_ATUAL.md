@@ -1,6 +1,6 @@
 # SISTEMA_ATUAL.md - OctoFlow
 
-Data de referencia: 25/03/2026  
+Data de referencia: 27/03/2026  
 Escopo: estado atual do sistema conforme codigo e documentacao do repositorio.
 
 ---
@@ -129,6 +129,7 @@ Funcoes:
 - login com email/senha (`/auth/login`);
 - cadastro (`/auth/register`);
 - login com Google (`/auth/google`);
+- verificacao de sessao restauravel (`/auth/session/restore-available`);
 - refresh de sessao (`/auth/refresh`);
 - encerramento de sessao (`/auth/logout`).
 
@@ -292,6 +293,7 @@ Referencia de acesso externo:
 | POST | `/auth/register` | Publico | Sim | Cadastro e login automatico |
 | POST | `/auth/google` | Publico | Sim | Login com credencial Google |
 | POST | `/auth/refresh` | Publico | Sim | Rotacao de refresh e novo JWT |
+| GET | `/auth/session/restore-available` | Publico | Nao | Informa se o cookie de refresh esta disponivel no request |
 | POST | `/auth/logout` | Publico | Sim | Revoga refresh atual e limpa cookies |
 | GET | `/auth/me` | Autenticado | Nao | Retorna usuario da sessao |
 | GET | `/auth/config` | Publico | Nao | Retorna `googleClientId` |
@@ -390,13 +392,21 @@ Referencia de acesso externo:
 - No banco: apenas hash SHA-256.
 - Rotacao obrigatoria em `/auth/refresh`.
 - Reuso de token revogado marca evento e revoga toda familia.
+- Validacao de contexto ativa por:
+  - `fingerprintHash`
+  - `userAgentHash`
+  - `ipHash`
+  - `locationHash`
+- Regra de bloqueio:
+  - fingerprint confiavel mudou => bloqueia
+  - 2 ou mais mudancas entre IP, User-Agent e Localizacao => bloqueia
 - Logout revoga token e limpa cookie.
 
 ## 10.3 Cookies
 
 - Refresh cookie com:
   - `HttpOnly=true`,
-  - `path=/`,
+  - `path` calculado por proxy/base path (ex.: `/OctoFlow/api/auth`),
   - `Secure` e `SameSite` configurados por ambiente.
 
 ## 10.4 CSRF
@@ -460,9 +470,9 @@ Nao ha, neste escopo, suite equivalente de testes frontend automatizados.
 - Resultado: ha inconsistência de politica CSRF para `ui`.
 
 2. Campos de contexto em `refresh_token`
-- Entidade tem `fingerprintHash`, `userAgentHash`, `ipHash`, `contextChangedAt`.
-- No fluxo atual de emissao/rotacao do `RefreshTokenManager`, esses campos nao sao populados com contexto real.
-- Resultado: auditoria de contexto fica incompleta em comparacao ao schema/documentacao.
+- Entidade possui `fingerprintHash`, `userAgentHash`, `ipHash`, `locationHash`, `contextChangedAt`.
+- Fluxo atual de emissao/rotacao popula todos os hashes de contexto.
+- Resultado: auditoria de contexto esta ativa e usada para bloqueio de sessao suspeita.
 
 3. Divergencias de documentacao legada
 - Algumas docs antigas citam portas/fluxos antigos (ex.: manual com referencia a `localhost:3000`).
@@ -525,4 +535,3 @@ Nao ha, neste escopo, suite equivalente de testes frontend automatizados.
 - `OctoFlow/www/src/Entity/LocalTask.php`
 - `OctoFlow/www/src/Entity/ResetPasswordRequest.php`
 - `OctoFlow/www/tests/*`
-

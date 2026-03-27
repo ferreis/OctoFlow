@@ -1,136 +1,64 @@
 # Access Token (JWT)
 
-Este documento descreve o ciclo completo do Access Token no backend `www`.
-
 ## 1. Resumo
 
-O Access Token e um JWT assinado (RS256) emitido pelo Lexik JWT.
+O Access Token e um JWT assinado (Lexik JWT) de curta duracao.
 
-Caracteristicas principais:
-- curto prazo: `JWT_TOKEN_TTL=600` (10 minutos)
-- transporte: `Authorization: Bearer <jwt>`
-- nao e persistido em texto no banco
-- nao depende de validacao conjunta com refresh token em rotas protegidas
-
-Fonte no codigo:
-- `src/Controller/AuthController.php`
-- `config/packages/security.yaml`
-- `config/packages/lexik_jwt_authentication.yaml`
+Regras:
+- TTL: `JWT_TOKEN_TTL=600` (10 minutos)
+- envio: `Authorization: Bearer <jwt>`
+- nao e persistido como token em banco
+- renovacao vem de `POST /auth/refresh` quando necessario
 
 ## 2. Emissao
 
-O token e emitido em:
+O access token e emitido em:
 - `POST /auth/login`
 - `POST /auth/register`
 - `POST /auth/google`
 - `POST /auth/refresh`
 
-Resposta padrao:
+Formato de resposta:
 
 ```json
 {
   "token": "<JWT>",
   "token_type": "Bearer",
   "expires_in": 600,
-  "user": {
-    "id": 1,
-    "email": "admin@example.com",
-    "roles": ["ROLE_USER"],
-    "isActive": true
-  }
+  "user": {}
 }
 ```
 
-## 3. Claims esperadas
+## 3. Uso no frontend
 
-Claims mais relevantes no payload JWT:
-- `exp`: expiracao
-- `iat`: emissao
-- `username` (ou `sub`): identificador do usuario
-- `roles`: permissoes
+1. Front envia JWT nas rotas protegidas.
+2. Se receber `401`, tenta `POST /auth/refresh`.
+3. Se refresh funcionar, repete a requisicao original uma vez.
 
-Observacao: os claims finais sao gerados pelo Lexik JWT a partir da entidade `User`.
+No bootstrap da app:
+1. chama `GET /auth/session/restore-available`
+2. se `true`, chama `POST /auth/refresh`
 
-## 4. Diagrama de Sequencia (Emissao e Uso)
+## 4. Refresh cookie (relacao com access token)
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant API as AuthController
-    participant JWT as Lexik JWT
+- refresh fica em cookie `HttpOnly`
+- cookie `Secure=true`
+- `Path` restrito a `/.../auth` (na pratica `/OctoFlow/api/auth` no proxy atual)
+- front nao le o cookie (HttpOnly), apenas envia automaticamente com `withCredentials`
 
-    Browser->>API: POST /auth/login
-    API->>JWT: create(user)
-    JWT-->>API: signed JWT (RS256)
-    API-->>Browser: 200 {token, expires_in=600, user}
+## 5. Configuracao
 
-    Browser->>API: GET /auth/me\nAuthorization: Bearer <JWT>
-    API-->>Browser: 200 {user}
-```
-
-## 5. Regra atual de uso com Refresh Token
-
-O fluxo atual funciona assim:
-- o frontend usa `Authorization: Bearer <JWT>` nas rotas protegidas
-- o refresh token fica em cookie HttpOnly com path `/`
-- o refresh token so e usado nos endpoints de autenticacao, principalmente `POST /auth/refresh`
-- se o access token expirar e o refresh token nao existir ou estiver invalido, o usuario perde a sessao
-
-## 6. Diagrama de Sequencia (Uso normal + Renovacao)
-
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant API as Symfony API
-
-    Browser->>API: GET /auth/me\nAuthorization: Bearer <JWT>
-    API-->>Browser: 200 {user}
-
-    Browser->>API: POST /auth/refresh\nCookie: refresh_token=<plain>
-    API-->>Browser: 200 {token, expires_in, user} + novo cookie
-```
-
-## 7. Cookie de Refresh
-
-- salvo como `HttpOnly`
-- emitido no login, registro, login Google e refresh
-- path do cookie: `/`
-- `Secure` e `SameSite` configurados via `.env`
-
-## 8. Configuracao
-
-Arquivo: `www/.env`
+`www/.env`:
 
 ```dotenv
 JWT_TOKEN_TTL=600
+AUTH_REFRESH_TOKEN_COOKIE_NAME=refresh_token
+AUTH_REFRESH_COOKIE_SECURE=1
 ```
 
-Arquivo: `www/config/packages/lexik_jwt_authentication.yaml`
+## 6. Fontes
 
-```yaml
-lexik_jwt_authentication:
-    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
-    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
-    pass_phrase: '%env(JWT_PASSPHRASE)%'
-    token_ttl: '%env(int:JWT_TOKEN_TTL)%'
-```
-
-## 9. Exemplo cURL
-
-```bash
-# Login para obter Access Token
-curl -k -i 'https://localhost:4481/OctoFlow/api/auth/login' \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"Senha@123"}'
-
-# Uso em rota protegida
-curl -k -i 'https://localhost:4481/OctoFlow/api/auth/me' \
-  -H 'Authorization: Bearer <JWT>'
-
-# Renovacao de sessao quando o JWT expirar
-curl -k -i -b cookies.txt -c cookies.txt \
-  -X POST \
-  -H 'X-CSRF-Token: <TOKEN_COMPOSTO>' \
-  -H 'X-CSRF-Action: auth.refresh' \
-  'https://localhost:4481/OctoFlow/api/auth/refresh'
-```
+- `www/src/Controller/AuthController.php`
+- `www/config/packages/security.yaml`
+- `www/config/packages/lexik_jwt_authentication.yaml`
+- `frontend/Host-app/src/App.vue`
