@@ -2,6 +2,8 @@
 
 namespace App\Controller;
 
+use App\Account\AccountPasswordChangeMailer;
+use App\Account\AccountPasswordChangeManager;
 use App\Account\Exception\UserEmailConflictException;
 use App\Account\UserEmailManager;
 use App\Account\UserAvatarManager;
@@ -20,6 +22,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -35,6 +38,9 @@ final class AccountEmailController
         private readonly UserEmailManager $userEmailManager,
         private readonly UserAvatarManager $userAvatarManager,
         private readonly UserPayloadBuilder $userPayloadBuilder,
+        private readonly AccountPasswordChangeManager $accountPasswordChangeManager,
+        private readonly AccountPasswordChangeMailer $accountPasswordChangeMailer,
+        private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
         private readonly JWTTokenManagerInterface $jwtTokenManager,
         #[Autowire('%env(int:JWT_TOKEN_TTL)%')]
@@ -172,6 +178,105 @@ final class AccountEmailController
 
         return new JsonResponse([
             'message' => 'Imagem de perfil removida com sucesso.',
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/password-change/send-code', name: 'auth_password_change_send_code', methods: ['POST'])]
+    public function sendPasswordChangeCode(#[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        try {
+            $verificationCode = $this->accountPasswordChangeManager->issueCode($user);
+            $this->entityManager->flush();
+            $this->accountPasswordChangeMailer->sendCode($user, $verificationCode);
+        } catch (\RuntimeException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return new JsonResponse([
+            'message' => 'Código enviado para seu e-mail principal.',
+            'codeExpiresAt' => $user->getPasswordChangeCodeExpiresAt()?->format(\DateTimeInterface::ATOM),
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/password-change/verify-code', name: 'auth_password_change_verify_code', methods: ['POST'])]
+    public function verifyPasswordChangeCode(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $code = trim((string) ($payload['code'] ?? ''));
+
+        try {
+            $this->accountPasswordChangeManager->verifyCode($user, $code);
+            $this->entityManager->flush();
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        return new JsonResponse([
+            'message' => 'Código validado. Agora defina sua nova senha.',
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/password-change/set-password', name: 'auth_password_change_set_password', methods: ['POST'])]
+    public function setPasswordFromProfile(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $password = (string) ($payload['password'] ?? '');
+        $confirmPassword = (string) ($payload['confirmPassword'] ?? '');
+
+        if (mb_strlen($password) < 8) {
+            return new JsonResponse(['message' => 'A senha deve ter no mínimo 8 caracteres.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if ($confirmPassword !== '' && $password !== $confirmPassword) {
+            return new JsonResponse(['message' => 'A confirmação de senha não confere.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $this->accountPasswordChangeManager->ensureVerifiedForPasswordChange($user);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        $user
+            ->setPassword($this->passwordHasher->hashPassword($user, $password))
+            ->setPasswordLoginEnabled(true);
+        $this->accountPasswordChangeManager->clearState($user);
+        $this->entityManager->flush();
+
+        return new JsonResponse([
+            'message' => 'Senha atualizada com sucesso.',
             'token' => $this->jwtTokenManager->create($user),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,

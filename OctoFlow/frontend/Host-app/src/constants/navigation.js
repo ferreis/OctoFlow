@@ -14,6 +14,13 @@ export const navigationItems = [
     title: 'Inbox operacional do OctoFlow',
   },
   {
+    key: 'test',
+    short: 'TS',
+    label: 'Teste',
+    eyebrow: 'Debug',
+    title: 'POST de teste para backend',
+  },
+  {
     key: 'finance-group',
     type: 'group',
     short: 'FN',

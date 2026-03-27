@@ -7,9 +7,11 @@ import MenuSidebar from './components/layout/MenuSidebar.vue'
 import DashboardScreen from './components/screens/DashboardScreen.vue'
 import FinanceScreen from './components/screens/FinanceScreen.vue'
 import ProfileScreen from './components/screens/ProfileScreen.vue'
+import TestScreen from './components/screens/TestScreen.vue'
 import TasksScreen from './components/screens/TasksScreen.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
 import { navigationItems } from './constants/navigation'
+import { formatDateTime } from './utils/date'
 import { extractHttpMessage } from './utils/httpErrors'
 import {
   APP_THEME_OPTIONS,
@@ -59,6 +61,11 @@ const registerForm = reactive({
   password: '',
   confirmPassword: '',
 })
+const googlePasswordSetupForm = reactive({
+  verificationCode: '',
+  password: '',
+  confirmPassword: '',
+})
 
 const activeView = ref('dashboard')
 const authMode = ref('login')
@@ -73,11 +80,25 @@ const activeThemeKey = ref(DEFAULT_APP_THEME_KEY)
 const uiSettings = ref({ ...DEFAULT_UI_SETTINGS })
 const availableThemes = APP_THEME_OPTIONS
 const screenAuthValidationInProgress = ref(false)
+const googlePasswordSetupStep = ref('verify')
+const googlePasswordSetupLoading = ref(false)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
+const requiresGooglePasswordSetup = computed(() => currentUser.value?.passwordSetupRequired === true)
 const effectiveSidebarExpanded = computed(() => !isCompactViewport.value && sidebarExpanded.value)
 const isFinanceView = computed(() => activeView.value.startsWith('finance.'))
 const financeSectionByView = computed(() => FINANCE_VIEW_TO_SECTION[activeView.value] || 'accounts')
+const googlePasswordSetupCodeExpiresAtLabel = computed(() => {
+  const rawExpirationDateTime = typeof currentUser.value?.passwordSetupCodeExpiresAt === 'string'
+    ? currentUser.value.passwordSetupCodeExpiresAt.trim()
+    : ''
+
+  if (rawExpirationDateTime === '') {
+    return ''
+  }
+
+  return formatDateTime(rawExpirationDateTime)
+})
 
 let viewportMediaQuery = null
 let removeViewportListener = null
@@ -136,6 +157,19 @@ watch(
   },
 )
 
+watch(
+  () => [
+    currentUser.value?.passwordSetupRequired === true ? 'required' : 'not-required',
+    currentUser.value?.passwordSetupEmailValidated === true ? 'validated' : 'not-validated',
+  ].join('|'),
+  () => {
+    synchronizeGooglePasswordSetupStep(currentUser.value)
+  },
+  {
+    immediate: true,
+  },
+)
+
 async function handleLogin() {
   loginLoading.value = true
 
@@ -150,8 +184,7 @@ async function handleLogin() {
       },
     })
 
-    setAccessToken(data.token || '')
-    currentUser.value = data.user || null
+    applyAuthenticatedSessionData(data)
 
     if (!currentUser.value) {
       await loadCurrentUser(false)
@@ -183,8 +216,7 @@ async function handleRegister() {
       },
     })
 
-    setAccessToken(data.token || '')
-    currentUser.value = data.user || null
+    applyAuthenticatedSessionData(data)
 
     if (!currentUser.value) {
       await loadCurrentUser(false)
@@ -218,8 +250,7 @@ async function handleGoogleCredential(credential) {
       data: { credential },
     })
 
-    setAccessToken(data.token || '')
-    currentUser.value = data.user || null
+    applyAuthenticatedSessionData(data)
 
     if (!currentUser.value) {
       await loadCurrentUser(false)
@@ -227,6 +258,14 @@ async function handleGoogleCredential(credential) {
 
     activeView.value = 'dashboard'
     loginForm.password = ''
+    resetGooglePasswordSetupForm()
+
+    if (currentUser.value?.passwordSetupRequired === true) {
+      synchronizeGooglePasswordSetupStep(currentUser.value)
+      showNotification('Confirme o código enviado para seu e-mail e crie sua senha para habilitar login com e-mail + senha.', 'warning')
+      return
+    }
+
     await verifyAuthForScreenEntry('dashboard')
     showNotification('Login com Google realizado com sucesso.', 'success')
   } catch (error) {
@@ -240,8 +279,155 @@ function handleGoogleLoginError(error) {
   showNotification(error, 'error')
 }
 
+async function resendGooglePasswordSetupCode() {
+  if (!isAuthenticated.value || googlePasswordSetupLoading.value) {
+    return
+  }
+
+  googlePasswordSetupLoading.value = true
+
+  try {
+    const { data } = await authRequest({
+      url: '/auth/google/password-setup/send-code',
+      method: 'POST',
+      csrfActionId: 'auth.google.password-setup.send-code',
+    })
+
+    if (data?.token) {
+      setAccessToken(data.token)
+    }
+
+    if (data?.user) {
+      currentUser.value = data.user
+    }
+
+    googlePasswordSetupStep.value = 'verify'
+    googlePasswordSetupForm.verificationCode = ''
+    googlePasswordSetupForm.password = ''
+    googlePasswordSetupForm.confirmPassword = ''
+    showNotification(data?.message || 'Código reenviado com sucesso.', 'success')
+  } catch (error) {
+    showNotification(extractHttpMessage(error, 'Não foi possível reenviar o código de validação.'), 'error')
+  } finally {
+    googlePasswordSetupLoading.value = false
+  }
+}
+
+async function verifyGooglePasswordSetupCode() {
+  if (!isAuthenticated.value || googlePasswordSetupLoading.value) {
+    return
+  }
+
+  const verificationCode = googlePasswordSetupForm.verificationCode.trim()
+  if (verificationCode === '') {
+    showNotification('Informe o código recebido por e-mail.', 'warning')
+    return
+  }
+
+  googlePasswordSetupLoading.value = true
+
+  try {
+    const { data } = await authRequest({
+      url: '/auth/google/password-setup/verify-code',
+      method: 'POST',
+      csrfActionId: 'auth.google.password-setup.verify-code',
+      data: { code: verificationCode },
+    })
+
+    if (data?.token) {
+      setAccessToken(data.token)
+    }
+
+    if (data?.user) {
+      currentUser.value = data.user
+    }
+
+    googlePasswordSetupStep.value = 'password'
+    googlePasswordSetupForm.verificationCode = ''
+    showNotification(data?.message || 'Código validado com sucesso.', 'success')
+  } catch (error) {
+    showNotification(extractHttpMessage(error, 'Não foi possível validar o código informado.'), 'error')
+  } finally {
+    googlePasswordSetupLoading.value = false
+  }
+}
+
+async function createGooglePasswordSetupPassword() {
+  if (!isAuthenticated.value || googlePasswordSetupLoading.value) {
+    return
+  }
+
+  if (googlePasswordSetupForm.password.trim() === '') {
+    showNotification('Informe a senha que deseja cadastrar.', 'warning')
+    return
+  }
+
+  googlePasswordSetupLoading.value = true
+
+  try {
+    const { data } = await authRequest({
+      url: '/auth/google/password-setup/set-password',
+      method: 'POST',
+      csrfActionId: 'auth.google.password-setup.set-password',
+      data: {
+        password: googlePasswordSetupForm.password,
+        confirmPassword: googlePasswordSetupForm.confirmPassword,
+      },
+    })
+
+    if (data?.token) {
+      setAccessToken(data.token)
+    }
+
+    if (data?.user) {
+      currentUser.value = data.user
+    }
+
+    resetGooglePasswordSetupForm()
+    googlePasswordSetupStep.value = 'verify'
+    activeView.value = 'dashboard'
+    await verifyAuthForScreenEntry('dashboard')
+    showNotification(data?.message || 'Senha criada com sucesso.', 'success')
+  } catch (error) {
+    showNotification(extractHttpMessage(error, 'Não foi possível criar a senha.'), 'error')
+  } finally {
+    googlePasswordSetupLoading.value = false
+  }
+}
+
 function switchAuthMode(mode) {
   authMode.value = mode === 'register' ? 'register' : 'login'
+}
+
+function resetGooglePasswordSetupForm() {
+  googlePasswordSetupForm.verificationCode = ''
+  googlePasswordSetupForm.password = ''
+  googlePasswordSetupForm.confirmPassword = ''
+}
+
+function synchronizeGooglePasswordSetupStep(userPayload = currentUser.value) {
+  if (userPayload?.passwordSetupRequired !== true) {
+    googlePasswordSetupStep.value = 'verify'
+    resetGooglePasswordSetupForm()
+    return
+  }
+
+  googlePasswordSetupStep.value = userPayload?.passwordSetupEmailValidated === true ? 'password' : 'verify'
+
+  if (googlePasswordSetupStep.value === 'password') {
+    googlePasswordSetupForm.verificationCode = ''
+  } else {
+    googlePasswordSetupForm.password = ''
+    googlePasswordSetupForm.confirmPassword = ''
+  }
+}
+
+function applyAuthenticatedSessionData(sessionData) {
+  const nextToken = typeof sessionData?.token === 'string' ? sessionData.token : ''
+  const nextUser = sessionData?.user || null
+
+  setAccessToken(nextToken)
+  currentUser.value = nextUser
 }
 
 async function verifyAuthForScreenEntry(screenKey = activeView.value) {
@@ -574,6 +760,9 @@ function clearAuth() {
   registerForm.email = ''
   registerForm.password = ''
   registerForm.confirmPassword = ''
+  googlePasswordSetupLoading.value = false
+  googlePasswordSetupStep.value = 'verify'
+  resetGooglePasswordSetupForm()
   uiSettingsSyncKey = ''
   uiSettingsSyncPromise = null
   applyUiSettingsLocally(DEFAULT_UI_SETTINGS)
@@ -791,11 +980,11 @@ function clearNotification() {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ collapsed: isAuthenticated && !effectiveSidebarExpanded, compact: isCompactViewport, 'no-sidebar': !isAuthenticated }">
+  <div class="app-shell" :class="{ collapsed: isAuthenticated && !effectiveSidebarExpanded && !requiresGooglePasswordSetup, compact: isCompactViewport, 'no-sidebar': !isAuthenticated || requiresGooglePasswordSetup }">
     <AppNotification :notification="notification" @close="clearNotification" />
 
     <MenuSidebar
-      v-if="isAuthenticated"
+      v-if="isAuthenticated && !requiresGooglePasswordSetup"
       :items="navigationItems"
       :active-key="activeView"
       :authenticated="isAuthenticated"
@@ -913,6 +1102,89 @@ function clearNotification() {
           </article>
         </section>
 
+        <section v-else-if="requiresGooglePasswordSetup" class="auth-stage">
+          <article class="surface-card auth-copy-card">
+            <p class="section-kicker">Validação obrigatória</p>
+            <h2>Ative sua senha local</h2>
+            <p class="muted-copy">
+              Para liberar o login com e-mail e senha, valide o código enviado para <strong>{{ currentUser?.email }}</strong> e depois defina sua senha.
+            </p>
+            <div class="highlight-grid">
+              <div class="highlight-card">
+                <strong>1. Validar e-mail</strong>
+                <p>Informe o código único enviado por e-mail.</p>
+              </div>
+              <div class="highlight-card">
+                <strong>2. Criar senha</strong>
+                <p>Após validar o código, você poderá cadastrar sua senha local.</p>
+              </div>
+            </div>
+            <p v-if="googlePasswordSetupCodeExpiresAtLabel" class="auth-help-text">
+              Código atual expira em: {{ googlePasswordSetupCodeExpiresAtLabel }}
+            </p>
+          </article>
+
+          <article class="surface-card auth-form-card">
+            <div>
+              <p class="section-kicker">Segurança da conta</p>
+              <h2>{{ googlePasswordSetupStep === 'verify' ? 'Validar código do e-mail' : 'Criar senha local' }}</h2>
+            </div>
+
+            <form v-if="googlePasswordSetupStep === 'verify'" class="auth-form" @submit.prevent="verifyGooglePasswordSetupCode">
+              <label class="field">
+                <span>Código de validação</span>
+                <input
+                  v-model="googlePasswordSetupForm.verificationCode"
+                  type="text"
+                  autocomplete="one-time-code"
+                  minlength="6"
+                  maxlength="16"
+                  required
+                >
+              </label>
+
+              <div class="form-actions">
+                <button class="button-primary" type="submit" :disabled="googlePasswordSetupLoading || actionLoading">
+                  {{ googlePasswordSetupLoading ? 'Validando...' : 'Validar código' }}
+                </button>
+                <button
+                  class="button-secondary"
+                  type="button"
+                  :disabled="googlePasswordSetupLoading || actionLoading"
+                  @click="resendGooglePasswordSetupCode"
+                >
+                  Reenviar código
+                </button>
+              </div>
+            </form>
+
+            <form v-else class="auth-form" @submit.prevent="createGooglePasswordSetupPassword">
+              <label class="field">
+                <span>Nova senha</span>
+                <input v-model="googlePasswordSetupForm.password" type="password" autocomplete="new-password" minlength="8" required>
+              </label>
+
+              <label class="field">
+                <span>Confirmar senha</span>
+                <input v-model="googlePasswordSetupForm.confirmPassword" type="password" autocomplete="new-password" minlength="8" required>
+              </label>
+
+              <div class="form-actions">
+                <button class="button-primary" type="submit" :disabled="googlePasswordSetupLoading || actionLoading">
+                  {{ googlePasswordSetupLoading ? 'Salvando...' : 'Criar senha' }}
+                </button>
+                <button class="button-secondary" type="button" :disabled="googlePasswordSetupLoading || actionLoading" @click="resendGooglePasswordSetupCode">
+                  Reenviar código
+                </button>
+              </div>
+            </form>
+
+            <button class="button-secondary" type="button" :disabled="googlePasswordSetupLoading || actionLoading" @click="logout">
+              Sair
+            </button>
+          </article>
+        </section>
+
         <DashboardScreen
           v-else-if="activeView === 'dashboard'"
           :request="authRequest"
@@ -924,6 +1196,12 @@ function clearNotification() {
           v-else-if="activeView === 'tasks'"
           :request="authRequest"
           :current-user="currentUser"
+          :notify="showNotification"
+        />
+
+        <TestScreen
+          v-else-if="activeView === 'test'"
+          :request="authRequest"
           :notify="showNotification"
         />
 

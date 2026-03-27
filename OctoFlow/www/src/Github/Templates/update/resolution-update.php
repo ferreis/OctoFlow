@@ -2,10 +2,10 @@
 
 return [
     'key' => 'resolution-update',
-    'label' => 'Resolucao',
+    'label' => 'Resolução',
     'description' => 'Fechamento estruturado do chamado.',
     'access' => [],
-    'markdownTitle' => 'Resolucao do chamado',
+    'markdownTitle' => 'Resolução do chamado',
     'fields' => [
         [
             'key' => 'owner',

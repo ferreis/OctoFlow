@@ -11,9 +11,11 @@ import {
   updateGithubRepository,
 } from '../../services/githubWorkspace'
 import { removeProfileAvatar, uploadProfileAvatar } from '../../services/accountProfile'
+import { formatDateTime } from '../../utils/date'
 import { parseGithubRepositoryUrl } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
+import AccountPasswordChangeModal from '../shared/AccountPasswordChangeModal.vue'
 import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
 import {
   COLOR_VISION_MODE_OPTIONS,
@@ -111,6 +113,15 @@ const confirmDialogState = reactive({
   processing: false,
 })
 const confirmDialogAction = ref(null)
+const passwordChangeModalState = reactive({
+  isOpen: false,
+  step: 'code',
+  processing: false,
+  code: '',
+  password: '',
+  confirmPassword: '',
+  codeExpiresAtLabel: '',
+})
 const collapsedSections = reactive({
   summary: false,
   github: true,
@@ -300,6 +311,15 @@ function clearGithubForms() {
   clearObjectMap(accountForms)
   clearObjectMap(repositoryForms)
   clearObjectMap(repositoryPages)
+}
+
+function resetPasswordChangeModalState() {
+  passwordChangeModalState.step = 'code'
+  passwordChangeModalState.processing = false
+  passwordChangeModalState.code = ''
+  passwordChangeModalState.password = ''
+  passwordChangeModalState.confirmPassword = ''
+  passwordChangeModalState.codeExpiresAtLabel = ''
 }
 
 function getAccountId(account) {
@@ -761,6 +781,161 @@ function forwardSessionUpdate(session) {
   emit('session-updated', session)
 }
 
+function setPasswordChangeCode(nextCodeValue) {
+  passwordChangeModalState.code = String(nextCodeValue || '')
+}
+
+function setPasswordChangePassword(nextPasswordValue) {
+  passwordChangeModalState.password = String(nextPasswordValue || '')
+}
+
+function setPasswordChangeConfirmPassword(nextConfirmPasswordValue) {
+  passwordChangeModalState.confirmPassword = String(nextConfirmPasswordValue || '')
+}
+
+async function requestPasswordChangeCode() {
+  if (passwordChangeModalState.processing) {
+    return
+  }
+
+  passwordChangeModalState.processing = true
+  passwordChangeModalState.step = 'code'
+  passwordChangeModalState.code = ''
+  passwordChangeModalState.password = ''
+  passwordChangeModalState.confirmPassword = ''
+
+  try {
+    const { data } = await props.request({
+      url: '/auth/password-change/send-code',
+      method: 'POST',
+      csrfActionId: 'auth.password-change.send-code',
+    })
+
+    forwardSessionUpdate({
+      user: data?.user || null,
+      token: data?.token || '',
+    })
+
+    const rawCodeExpiration = typeof data?.codeExpiresAt === 'string' ? data.codeExpiresAt.trim() : ''
+    passwordChangeModalState.codeExpiresAtLabel = rawCodeExpiration === ''
+      ? ''
+      : formatDateTime(rawCodeExpiration)
+
+    notifyUser(data?.message || 'Código enviado para seu e-mail principal.', 'success')
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, 'Nao foi possivel enviar o codigo para alterar a senha.'), 'error')
+  } finally {
+    passwordChangeModalState.processing = false
+  }
+}
+
+async function openPasswordChangeModal() {
+  if (passwordChangeModalState.processing) {
+    return
+  }
+
+  passwordChangeModalState.isOpen = true
+  resetPasswordChangeModalState()
+  await requestPasswordChangeCode()
+}
+
+function closePasswordChangeModal() {
+  if (passwordChangeModalState.processing) {
+    return
+  }
+
+  passwordChangeModalState.isOpen = false
+  resetPasswordChangeModalState()
+}
+
+async function verifyPasswordChangeCode() {
+  if (passwordChangeModalState.processing) {
+    return
+  }
+
+  const normalizedCode = passwordChangeModalState.code.trim()
+  if (normalizedCode === '') {
+    notifyUser('Informe o codigo enviado por e-mail.', 'warning')
+    return
+  }
+
+  passwordChangeModalState.processing = true
+
+  try {
+    const { data } = await props.request({
+      url: '/auth/password-change/verify-code',
+      method: 'POST',
+      csrfActionId: 'auth.password-change.verify-code',
+      data: {
+        code: normalizedCode,
+      },
+    })
+
+    forwardSessionUpdate({
+      user: data?.user || null,
+      token: data?.token || '',
+    })
+
+    passwordChangeModalState.step = 'password'
+    passwordChangeModalState.code = ''
+    notifyUser(data?.message || 'Codigo validado com sucesso.', 'success')
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, 'Nao foi possivel validar o codigo informado.'), 'error')
+  } finally {
+    passwordChangeModalState.processing = false
+  }
+}
+
+async function updatePasswordFromProfile() {
+  if (passwordChangeModalState.processing) {
+    return
+  }
+
+  const normalizedPassword = passwordChangeModalState.password.trim()
+  const normalizedConfirmPassword = passwordChangeModalState.confirmPassword.trim()
+
+  if (normalizedPassword === '') {
+    notifyUser('Informe a nova senha.', 'warning')
+    return
+  }
+
+  if (normalizedPassword !== normalizedConfirmPassword) {
+    notifyUser('A confirmacao da senha nao confere.', 'warning')
+    return
+  }
+
+  passwordChangeModalState.processing = true
+  let shouldClosePasswordChangeModal = false
+
+  try {
+    const { data } = await props.request({
+      url: '/auth/password-change/set-password',
+      method: 'POST',
+      csrfActionId: 'auth.password-change.set-password',
+      data: {
+        password: normalizedPassword,
+        confirmPassword: normalizedConfirmPassword,
+      },
+    })
+
+    forwardSessionUpdate({
+      user: data?.user || null,
+      token: data?.token || '',
+    })
+
+    notifyUser(data?.message || 'Senha atualizada com sucesso.', 'success')
+    shouldClosePasswordChangeModal = true
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, 'Nao foi possivel atualizar a senha.'), 'error')
+  } finally {
+    passwordChangeModalState.processing = false
+
+    if (shouldClosePasswordChangeModal) {
+      closePasswordChangeModal()
+    }
+  }
+}
+
 async function selectTheme(themeKey) {
   try {
     if (themeKey === CUSTOM_THEME_KEY && typeof props.updateUiSettings === 'function') {
@@ -954,6 +1129,18 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
             <small class="profile-avatar-help">
               JPG, PNG ou WEBP ate 5 MB. A imagem e otimizada automaticamente.
             </small>
+
+            <div class="profile-security-actions">
+              <button
+                class="button-secondary"
+                type="button"
+                :disabled="passwordChangeModalState.processing"
+                @click="openPasswordChangeModal"
+              >
+                {{ passwordChangeModalState.processing ? 'Enviando codigo...' : 'Alterar senha' }}
+              </button>
+              <small class="profile-avatar-help">Ao clicar, enviamos um codigo para seu e-mail principal.</small>
+            </div>
           </div>
         </div>
 
@@ -1608,6 +1795,24 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
       />
     </article>
 
+    <AccountPasswordChangeModal
+      :is-open="passwordChangeModalState.isOpen"
+      :step="passwordChangeModalState.step"
+      :processing="passwordChangeModalState.processing"
+      :email="displayEmail"
+      :code-expires-at-label="passwordChangeModalState.codeExpiresAtLabel"
+      :code="passwordChangeModalState.code"
+      :password="passwordChangeModalState.password"
+      :confirm-password="passwordChangeModalState.confirmPassword"
+      @close="closePasswordChangeModal"
+      @resend-code="requestPasswordChangeCode"
+      @verify-code="verifyPasswordChangeCode"
+      @submit-password="updatePasswordFromProfile"
+      @update:code="setPasswordChangeCode"
+      @update:password="setPasswordChangePassword"
+      @update:confirm-password="setPasswordChangeConfirmPassword"
+    />
+
     <AppConfirmDialog
       :is-open="confirmDialogState.isOpen"
       :title="confirmDialogState.title"
@@ -1712,6 +1917,12 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 .profile-avatar-help {
   color: var(--muted);
   font-size: 0.76rem;
+}
+
+.profile-security-actions {
+  display: grid;
+  gap: calc(8px * var(--profile-density-factor));
+  justify-items: start;
 }
 
 .profile-stats {

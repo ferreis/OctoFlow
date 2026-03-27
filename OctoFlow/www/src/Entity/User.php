@@ -71,6 +71,27 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     private string $password = '';
 
     #[ORM\Column(options: ['default' => true])]
+    private bool $passwordLoginEnabled = true;
+
+    #[ORM\Column(length: 191, nullable: true)]
+    private ?string $googlePasswordSetupCodeHash = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $googlePasswordSetupCodeExpiresAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $googlePasswordSetupVerifiedAt = null;
+
+    #[ORM\Column(length: 191, nullable: true)]
+    private ?string $passwordChangeCodeHash = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $passwordChangeCodeExpiresAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $passwordChangeCodeVerifiedAt = null;
+
+    #[ORM\Column(options: ['default' => true])]
     #[Groups(['user:read'])]
     private bool $isActive = true;
 
@@ -280,6 +301,99 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setPassword(string $password): self
     {
         $this->password = $password;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function isPasswordLoginEnabled(): bool
+    {
+        return $this->passwordLoginEnabled;
+    }
+
+    public function setPasswordLoginEnabled(bool $passwordLoginEnabled): self
+    {
+        $this->passwordLoginEnabled = $passwordLoginEnabled;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getGooglePasswordSetupCodeHash(): ?string
+    {
+        return $this->googlePasswordSetupCodeHash;
+    }
+
+    public function setGooglePasswordSetupCodeHash(?string $googlePasswordSetupCodeHash): self
+    {
+        $normalizedCodeHash = $googlePasswordSetupCodeHash === null ? null : trim($googlePasswordSetupCodeHash);
+        $this->googlePasswordSetupCodeHash = $normalizedCodeHash === '' ? null : $normalizedCodeHash;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getGooglePasswordSetupCodeExpiresAt(): ?\DateTimeImmutable
+    {
+        return $this->googlePasswordSetupCodeExpiresAt;
+    }
+
+    public function setGooglePasswordSetupCodeExpiresAt(?\DateTimeImmutable $googlePasswordSetupCodeExpiresAt): self
+    {
+        $this->googlePasswordSetupCodeExpiresAt = $googlePasswordSetupCodeExpiresAt;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getGooglePasswordSetupVerifiedAt(): ?\DateTimeImmutable
+    {
+        return $this->googlePasswordSetupVerifiedAt;
+    }
+
+    public function setGooglePasswordSetupVerifiedAt(?\DateTimeImmutable $googlePasswordSetupVerifiedAt): self
+    {
+        $this->googlePasswordSetupVerifiedAt = $googlePasswordSetupVerifiedAt;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getPasswordChangeCodeHash(): ?string
+    {
+        return $this->passwordChangeCodeHash;
+    }
+
+    public function setPasswordChangeCodeHash(?string $passwordChangeCodeHash): self
+    {
+        $normalizedCodeHash = $passwordChangeCodeHash === null ? null : trim($passwordChangeCodeHash);
+        $this->passwordChangeCodeHash = $normalizedCodeHash === '' ? null : $normalizedCodeHash;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getPasswordChangeCodeExpiresAt(): ?\DateTimeImmutable
+    {
+        return $this->passwordChangeCodeExpiresAt;
+    }
+
+    public function setPasswordChangeCodeExpiresAt(?\DateTimeImmutable $passwordChangeCodeExpiresAt): self
+    {
+        $this->passwordChangeCodeExpiresAt = $passwordChangeCodeExpiresAt;
+        $this->touch();
+
+        return $this;
+    }
+
+    public function getPasswordChangeCodeVerifiedAt(): ?\DateTimeImmutable
+    {
+        return $this->passwordChangeCodeVerifiedAt;
+    }
+
+    public function setPasswordChangeCodeVerifiedAt(?\DateTimeImmutable $passwordChangeCodeVerifiedAt): self
+    {
+        $this->passwordChangeCodeVerifiedAt = $passwordChangeCodeVerifiedAt;
         $this->touch();
 
         return $this;

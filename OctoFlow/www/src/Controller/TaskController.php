@@ -7,6 +7,7 @@ use App\Github\GithubIssueTemplateCatalog;
 use App\Github\GithubIssueUpdateTemplateCatalog;
 use App\Github\TemplateAccessService;
 use App\Task\LocalTaskService;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -156,6 +157,70 @@ final class TaskController
         }
     }
 
+    #[Route('/test/post-capture', name: 'task_test_post_capture', methods: ['POST'])]
+    public function testPostCapture(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $rawBody = (string) $request->getContent();
+        $decodedJsonPayload = null;
+        $jsonDecodeError = null;
+
+        if ($rawBody !== '') {
+            try {
+                /** @var array<string, mixed>|list<mixed>|scalar|null $decodedPayload */
+                $decodedPayload = json_decode($rawBody, true, flags: \JSON_THROW_ON_ERROR);
+                $decodedJsonPayload = $decodedPayload;
+            } catch (\JsonException $exception) {
+                $jsonDecodeError = $exception->getMessage();
+            }
+        }
+
+        $tabIdentifier = trim((string) $request->headers->get('x-tab-id', ''));
+        $browserIdentifier = trim((string) $request->headers->get('x-browser-id', ''));
+        $browserFingerprintHeader = trim((string) $request->headers->get('x-browser-fingerprint', ''));
+        $userAgent = trim((string) $request->headers->get('user-agent', ''));
+        $acceptLanguage = trim((string) $request->headers->get('accept-language', ''));
+        $remoteAddress = trim((string) ($request->getClientIp() ?? ''));
+        $identityContextHash = hash(
+            'sha256',
+            implode('|', [
+                $browserIdentifier,
+                $tabIdentifier,
+                $userAgent,
+                $acceptLanguage,
+                $remoteAddress,
+            ]),
+        );
+
+        return new JsonResponse([
+            'message' => 'POST capturado com sucesso.',
+            'received' => [
+                'method' => $request->getMethod(),
+                'path' => $request->getPathInfo(),
+                'query' => $request->query->all(),
+                'headers' => $request->headers->all(),
+                'contentType' => (string) $request->headers->get('content-type', ''),
+                'rawBody' => $rawBody,
+                'jsonPayload' => $decodedJsonPayload,
+                'jsonDecodeError' => $jsonDecodeError,
+                'formPayload' => $request->request->all(),
+                'uploadedFiles' => $this->normalizeUploadedFiles($request->files->all()),
+                'clientIdentity' => [
+                    'tabId' => $tabIdentifier,
+                    'browserId' => $browserIdentifier,
+                    'browserFingerprint' => $browserFingerprintHeader,
+                    'userAgent' => $userAgent,
+                    'acceptLanguage' => $acceptLanguage,
+                    'remoteAddress' => $remoteAddress,
+                    'identityContextHash' => $identityContextHash,
+                ],
+            ],
+        ]);
+    }
+
     /**
      * @return array<string, mixed>|null
      */
@@ -169,5 +234,32 @@ final class TaskController
         } catch (\JsonException) {
             return null;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $uploadedFiles
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeUploadedFiles(array $uploadedFiles): array
+    {
+        $normalizedFiles = [];
+
+        foreach ($uploadedFiles as $fieldName => $uploadedFile) {
+            if ($uploadedFile instanceof UploadedFile) {
+                $normalizedFiles[$fieldName] = [
+                    'originalName' => $uploadedFile->getClientOriginalName(),
+                    'mimeType' => $uploadedFile->getClientMimeType(),
+                    'sizeBytes' => $uploadedFile->getSize(),
+                ];
+                continue;
+            }
+
+            if (is_array($uploadedFile)) {
+                $normalizedFiles[$fieldName] = $this->normalizeUploadedFiles($uploadedFile);
+            }
+        }
+
+        return $normalizedFiles;
     }
 }

@@ -62,6 +62,56 @@ final class CsrfChallengeControllerTest extends TestCase
         $this->assertArrayHasKey('csrfToken', $payload);
     }
 
+    public function testAuthenticatedChallengeAllowsGooglePasswordSetupAction(): void
+    {
+        $request = Request::create(
+            '/csrf/challenge',
+            'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode([
+                'method' => 'POST',
+                'path' => '/auth/google/password-setup/verify-code',
+                'actionId' => 'auth.google.password-setup.verify-code',
+            ], \JSON_THROW_ON_ERROR),
+        );
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $controller = new CsrfChallengeController($this->createCsrfTokenManager());
+        $response = $controller->__invoke($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $payload = json_decode((string) $response->getContent(), true, flags: \JSON_THROW_ON_ERROR);
+
+        $this->assertSame('auth.google.password-setup.verify-code', $payload['actionId']);
+        $this->assertSame('/auth/google/password-setup/verify-code', $payload['path']);
+        $this->assertArrayHasKey('csrfToken', $payload);
+    }
+
+    public function testAuthenticatedChallengeAllowsProfilePasswordChangeAction(): void
+    {
+        $request = Request::create(
+            '/csrf/challenge',
+            'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode([
+                'method' => 'POST',
+                'path' => '/auth/password-change/send-code',
+                'actionId' => 'auth.password-change.send-code',
+            ], \JSON_THROW_ON_ERROR),
+        );
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $controller = new CsrfChallengeController($this->createCsrfTokenManager());
+        $response = $controller->__invoke($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $payload = json_decode((string) $response->getContent(), true, flags: \JSON_THROW_ON_ERROR);
+
+        $this->assertSame('auth.password-change.send-code', $payload['actionId']);
+        $this->assertSame('/auth/password-change/send-code', $payload['path']);
+        $this->assertArrayHasKey('csrfToken', $payload);
+    }
+
     public function testAuthenticatedChallengeRejectsSafeMethods(): void
     {
         $request = Request::create(

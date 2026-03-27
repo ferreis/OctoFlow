@@ -3,6 +3,8 @@
 namespace App\Controller;
 
 use App\Account\Exception\UserEmailConflictException;
+use App\Account\GooglePasswordSetupMailer;
+use App\Account\GooglePasswordSetupManager;
 use App\Account\UserEmailManager;
 use App\Account\UserPayloadBuilder;
 use App\Entity\User;
@@ -49,6 +51,8 @@ class AuthController
         private readonly CsrfTokenManager $csrfTokenManager,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
         private readonly UserEmailManager $userEmailManager,
+        private readonly GooglePasswordSetupManager $googlePasswordSetupManager,
+        private readonly GooglePasswordSetupMailer $googlePasswordSetupMailer,
         private readonly UserPayloadBuilder $userPayloadBuilder,
         #[Autowire('%env(string:AUTH_REFRESH_TOKEN_COOKIE_NAME)%')]
         private readonly string $refreshCookieName,
@@ -107,12 +111,20 @@ class AuthController
         }
 
         $user = $this->userRepository->findOneByEmail($email);
-        if ($user === null || !$this->passwordHasher->isPasswordValid($user, $password)) {
+        if ($user === null) {
             return new JsonResponse(['message' => 'Invalid credentials.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
         if (!$user->isActive()) {
             return new JsonResponse(['message' => 'User account is disabled.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        if (!$user->isPasswordLoginEnabled()) {
+            return new JsonResponse(['message' => 'Esta conta ainda não possui senha local. Valide seu e-mail e crie uma senha após entrar com Google.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        if (!$this->passwordHasher->isPasswordValid($user, $password)) {
+            return new JsonResponse(['message' => 'Invalid credentials.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
         return $this->createAuthenticatedResponse($user);
@@ -190,6 +202,8 @@ class AuthController
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_CONFLICT);
         } catch (GoogleTokenVerificationException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_UNAUTHORIZED);
+        } catch (\RuntimeException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         if (!$user->isActive()) {
@@ -221,7 +235,15 @@ class AuthController
         $user = $this->userRepository->findOneByGoogleSubject($googleIdentity->subject);
         if ($user !== null) {
             $this->userEmailManager->ensureEmail($user, $googleIdentity->email, ['google'], true, false);
+            $newValidationCode = null;
+            if ($this->googlePasswordSetupManager->requiresPasswordSetup($user)) {
+                $newValidationCode = $this->googlePasswordSetupManager->ensureValidCode($user);
+            }
             $this->entityManager->flush();
+
+            if ($newValidationCode !== null) {
+                $this->googlePasswordSetupMailer->sendCode($user, $newValidationCode);
+            }
 
             return $user;
         }
@@ -240,15 +262,110 @@ class AuthController
             ->setEmail($googleIdentity->email)
             ->setGoogleSubject($googleIdentity->subject)
             ->setRoles(['ROLE_USER'])
-            ->setIsActive(true);
+            ->setIsActive(true)
+            ->setPasswordLoginEnabled(false);
 
         $user->setPassword($this->passwordHasher->hashPassword($user, bin2hex(random_bytes(32))));
 
         $this->entityManager->persist($user);
         $this->userEmailManager->ensureEmail($user, $googleIdentity->email, ['google'], true, true);
+        $verificationCode = $this->googlePasswordSetupManager->issueCode($user);
         $this->entityManager->flush();
+        $this->googlePasswordSetupMailer->sendCode($user, $verificationCode);
 
         return $user;
+    }
+
+    #[Route('/google/password-setup/send-code', name: 'auth_google_password_setup_send_code', methods: ['POST'])]
+    public function sendGooglePasswordSetupCode(#[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        try {
+            $verificationCode = $this->googlePasswordSetupManager->issueCode($user);
+            $this->entityManager->flush();
+            $this->googlePasswordSetupMailer->sendCode($user, $verificationCode);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (\RuntimeException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return new JsonResponse([
+            'message' => 'Código enviado por e-mail com sucesso.',
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/google/password-setup/verify-code', name: 'auth_google_password_setup_verify_code', methods: ['POST'])]
+    public function verifyGooglePasswordSetupCode(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $code = trim((string) ($payload['code'] ?? ''));
+
+        try {
+            $this->googlePasswordSetupManager->verifyCode($user, $code);
+            $this->entityManager->flush();
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        return new JsonResponse([
+            'message' => 'E-mail validado com sucesso. Agora você já pode criar sua senha.',
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
+    }
+
+    #[Route('/google/password-setup/set-password', name: 'auth_google_password_setup_set_password', methods: ['POST'])]
+    public function setGooglePassword(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $password = (string) ($payload['password'] ?? '');
+        $confirmPassword = (string) ($payload['confirmPassword'] ?? '');
+
+        if (mb_strlen($password) < 8) {
+            return new JsonResponse(['message' => 'A senha deve ter no mínimo 8 caracteres.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if ($confirmPassword !== '' && $password !== $confirmPassword) {
+            return new JsonResponse(['message' => 'A confirmação de senha não confere.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        if (!$this->googlePasswordSetupManager->isEmailCodeValidated($user)) {
+            return new JsonResponse(['message' => 'Valide o código recebido por e-mail antes de criar sua senha.'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
+        $user
+            ->setPassword($this->passwordHasher->hashPassword($user, $password))
+            ->setPasswordLoginEnabled(true);
+        $this->googlePasswordSetupManager->clearPasswordSetupState($user);
+        $this->entityManager->flush();
+
+        return new JsonResponse([
+            'message' => 'Senha criada com sucesso. Agora você também pode entrar com e-mail e senha.',
+            'token' => $this->jwtTokenManager->create($user),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->accessTokenTtl,
+            'user' => $this->userPayloadBuilder->build($user),
+        ]);
     }
 
     #[Route('/refresh', name: 'auth_refresh', methods: ['POST'])]

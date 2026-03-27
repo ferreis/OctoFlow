@@ -80,7 +80,7 @@ final class CsrfChallengeController
             return true;
         }
 
-        if (preg_match('#^/auth/(emails(?:/default)?|google/link|profile/avatar)$#', $path) === 1) {
+        if (preg_match('#^/auth/(emails(?:/default)?|google/link|profile/avatar|google/password-setup/(send-code|verify-code|set-password)|password-change/(send-code|verify-code|set-password))$#', $path) === 1) {
             return true;
         }
 
