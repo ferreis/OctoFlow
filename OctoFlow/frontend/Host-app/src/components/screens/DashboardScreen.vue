@@ -20,6 +20,7 @@ import { fetchFinanceInvestmentPlans } from '../../services/financeInvestments'
 import { fetchGithubProfile, fetchGithubWorkspace } from '../../services/githubWorkspace'
 import { fetchGithubIssuesCache, syncGithubIssues } from '../../services/tasks'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { formatDate } from '../../utils/date'
 
 const props = defineProps({
   request: {
@@ -1305,15 +1306,6 @@ function calculateDaysUntil(rawDate) {
 
   const differenceInMilliseconds = parsedDate.getTime() - startOfToday().getTime()
   return Math.floor(differenceInMilliseconds / 86400000)
-}
-
-function formatDate(rawDate) {
-  const parsedDate = parseDateOnly(rawDate)
-  if (!parsedDate) {
-    return '-'
-  }
-
-  return new Intl.DateTimeFormat('pt-BR').format(parsedDate)
 }
 
 function formatDueStatus(daysUntilDue) {

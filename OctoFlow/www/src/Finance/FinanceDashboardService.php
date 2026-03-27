@@ -192,7 +192,10 @@ final class FinanceDashboardService
      */
     private function buildEntryWhere(int $ownerId, array $filters): array
     {
-        $whereParts = ['entry.owner_id = :ownerId'];
+        $whereParts = [
+            'entry.owner_id = :ownerId',
+            'entry.deleted_at IS NULL',
+        ];
         $parameters = ['ownerId' => $ownerId];
 
         $direction = strtoupper(trim((string) ($filters['direction'] ?? '')));

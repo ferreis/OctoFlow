@@ -35,9 +35,11 @@ import {
   previewFinanceDebtPlan,
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
+  deleteFinanceEntry,
   updateFinanceCategory,
   updateFinanceBankAccount,
   updateFinanceBankAccountStatus,
+  updateFinanceEntry,
   updateFinanceRecurringType,
 } from '../../services/finance'
 import {
@@ -59,7 +61,9 @@ import {
   translateFinanceTerm,
 } from '../../constants/financeTerms'
 import { useNotification } from '../../composables/useNotification'
+import { formatDate, formatDateTime } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
 
 const props = defineProps({
   request: {
@@ -178,6 +182,16 @@ const entryForm = reactive({
   categoryId: '',
   bankAccountId: '',
 })
+const entryEditingId = ref(null)
+const confirmDialogState = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmLabel: 'Confirmar',
+  confirmTone: 'danger',
+  processing: false,
+})
+const confirmDialogAction = ref(null)
 
 const categoryForm = reactive({
   name: '',
@@ -388,7 +402,7 @@ const dashboardCashflowSeries = computed(() => {
   const cashflowItems = Array.isArray(dashboardCashflow.value) ? dashboardCashflow.value : []
 
   return {
-    monthLabels: cashflowItems.map((cashflowItem) => String(cashflowItem.competenceMonth || '-')),
+    monthLabels: cashflowItems.map((cashflowItem) => formatDate(cashflowItem.competenceMonth, '-')),
     expectedIncomeSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.expectedIncomeBrl || 0)),
     expectedExpenseSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.expectedExpenseBrl || 0)),
     expectedNetSeries: cashflowItems.map((cashflowItem) => Number(cashflowItem.expectedNetBrl || 0)),
@@ -840,6 +854,10 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
     return
   }
 
+  if (entryEditingId.value) {
+    resetEntryForm()
+  }
+
   applyAccountsDirectionContext()
   entryFilters.page = 1
 
@@ -1210,7 +1228,7 @@ async function loadOpenFinance() {
 
 async function submitEntry() {
   try {
-    if (shouldCreateSalaryRecurringRuleFromEntry()) {
+    if (!entryEditingId.value && shouldCreateSalaryRecurringRuleFromEntry()) {
       const recurringTypeId = resolveSalaryRecurringTypeId()
       if (!recurringTypeId) {
         notifyUser('Nao foi possivel localizar um tipo de recorrencia para salario.', 'warning')
@@ -1231,17 +1249,14 @@ async function submitEntry() {
         defaultBankAccountId: normalizeOptionalNumber(entryForm.bankAccountId),
       })
 
-      entryForm.title = ''
-      entryForm.expectedAmountBrl = ''
-      entryForm.dueDate = ''
-      entryForm.entryType = 'ONE_OFF'
+      resetEntryForm()
 
       notifyUser('Salario cadastrado como recorrencia com sucesso.', 'success')
       await Promise.all([loadRecurringRules(), loadEntries(), loadDashboard()])
       return
     }
 
-    await createFinanceEntry(props.request, {
+    const entryPayload = {
       direction: entryForm.direction,
       entryType: entryForm.entryType,
       title: entryForm.title,
@@ -1249,17 +1264,136 @@ async function submitEntry() {
       dueDate: entryForm.dueDate || null,
       categoryId: normalizeOptionalNumber(entryForm.categoryId),
       bankAccountId: normalizeOptionalNumber(entryForm.bankAccountId),
-    })
+    }
 
-    entryForm.title = ''
-    entryForm.expectedAmountBrl = ''
-    entryForm.dueDate = ''
-    entryForm.entryType = 'ONE_OFF'
+    if (entryEditingId.value) {
+      await updateFinanceEntry(props.request, entryEditingId.value, entryPayload)
+      notifyUser('Lançamento atualizado com sucesso.', 'success')
+    } else {
+      await createFinanceEntry(props.request, entryPayload)
+      notifyUser('Lançamento criado com sucesso.', 'success')
+    }
 
-    notifyUser('Lançamento criado com sucesso.', 'success')
+    resetEntryForm()
     await Promise.all([loadEntries(), loadDashboard()])
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o lançamento.'), 'error')
+    const fallbackMessage = entryEditingId.value
+      ? 'Não foi possível atualizar o lançamento.'
+      : 'Não foi possível criar o lançamento.'
+    notifyUser(extractHttpMessage(requestError, fallbackMessage), 'error')
+  }
+}
+
+function toDateInputValue(rawDateValue) {
+  const normalizedDateLabel = formatDate(rawDateValue, '')
+  if (normalizedDateLabel === '') {
+    return ''
+  }
+
+  const dateParts = normalizedDateLabel.split('/')
+  if (dateParts.length !== 3) {
+    return ''
+  }
+
+  const [dayPart, monthPart, yearPart] = dateParts
+  return `${yearPart}-${monthPart}-${dayPart}`
+}
+
+function startEditingEntry(entryItem) {
+  if (!entryItem?.id) {
+    return
+  }
+
+  entryEditingId.value = entryItem.id
+  entryForm.direction = String(entryItem.direction || accountsDirectionByTab.value || 'PAYABLE')
+  entryForm.entryType = String(entryItem.entryType || 'ONE_OFF')
+  entryForm.title = String(entryItem.title || '')
+  entryForm.expectedAmountBrl = String(entryItem.expectedAmountBrl ?? '')
+  entryForm.dueDate = toDateInputValue(entryItem.dueDate)
+  entryForm.categoryId = entryItem.categoryId ? String(entryItem.categoryId) : ''
+  entryForm.bankAccountId = entryItem.bankAccountId ? String(entryItem.bankAccountId) : ''
+}
+
+function resetEntryForm() {
+  entryEditingId.value = null
+  entryForm.title = ''
+  entryForm.expectedAmountBrl = ''
+  entryForm.dueDate = ''
+  entryForm.entryType = 'ONE_OFF'
+  entryForm.categoryId = ''
+  entryForm.bankAccountId = ''
+  entryForm.direction = accountsDirectionByTab.value || 'PAYABLE'
+}
+
+function openConfirmDialog(options) {
+  confirmDialogState.title = String(options?.title || 'Confirmar ação')
+  confirmDialogState.message = String(options?.message || '')
+  confirmDialogState.confirmLabel = String(options?.confirmLabel || 'Confirmar')
+  confirmDialogState.confirmTone = String(options?.confirmTone || 'danger')
+  confirmDialogState.processing = false
+  confirmDialogState.isOpen = true
+  confirmDialogAction.value = typeof options?.onConfirm === 'function' ? options.onConfirm : null
+}
+
+function closeConfirmDialog() {
+  if (confirmDialogState.processing) {
+    return
+  }
+
+  confirmDialogState.isOpen = false
+  confirmDialogState.title = ''
+  confirmDialogState.message = ''
+  confirmDialogState.confirmLabel = 'Confirmar'
+  confirmDialogState.confirmTone = 'danger'
+  confirmDialogAction.value = null
+}
+
+async function handleConfirmDialogAction() {
+  if (confirmDialogState.processing) {
+    return
+  }
+
+  if (typeof confirmDialogAction.value !== 'function') {
+    closeConfirmDialog()
+    return
+  }
+
+  confirmDialogState.processing = true
+
+  try {
+    await confirmDialogAction.value()
+  } finally {
+    confirmDialogState.processing = false
+    closeConfirmDialog()
+  }
+}
+
+function requestDeleteEntry(entryItem) {
+  if (!entryItem?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Deletar lançamento',
+    message: 'Esse lançamento será removido. Deseja continuar?',
+    confirmLabel: 'Deletar',
+    confirmTone: 'danger',
+    onConfirm: () => deleteEntry(entryItem),
+  })
+}
+
+async function deleteEntry(entryItem) {
+  try {
+    await deleteFinanceEntry(props.request, entryItem.id)
+
+    if (entryEditingId.value === entryItem.id) {
+      resetEntryForm()
+    }
+
+    notifyUser('Lançamento removido com sucesso.', 'success')
+    await Promise.all([loadEntries(), loadDashboard(), loadInstallments()])
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível remover o lançamento.'), 'error')
   }
 }
 
@@ -1323,11 +1457,16 @@ async function deleteCategory(categoryItem) {
     return
   }
 
-  const confirmed = window.confirm('Confirma excluir esta categoria?')
-  if (!confirmed) {
-    return
-  }
+  openConfirmDialog({
+    title: 'Excluir categoria',
+    message: 'A categoria será inativada e não aparecerá mais para novos lançamentos. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteCategory(categoryItem),
+  })
+}
 
+async function executeDeleteCategory(categoryItem) {
   try {
     await updateFinanceCategory(props.request, categoryItem.id, {
       isActive: false,
@@ -1404,11 +1543,16 @@ async function deleteRecurringType(recurringTypeItem) {
     return
   }
 
-  const confirmed = window.confirm('Confirma excluir este tipo de recorrência?')
-  if (!confirmed) {
-    return
-  }
+  openConfirmDialog({
+    title: 'Excluir tipo recorrente',
+    message: 'O tipo de recorrência será inativado. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteRecurringType(recurringTypeItem),
+  })
+}
 
+async function executeDeleteRecurringType(recurringTypeItem) {
   try {
     await updateFinanceRecurringType(props.request, recurringTypeItem.id, {
       isActive: false,
@@ -1494,11 +1638,16 @@ async function deleteBankAccount(bankAccount) {
     return
   }
 
-  const confirmed = window.confirm('Confirma excluir esta conta bancária?')
-  if (!confirmed) {
-    return
-  }
+  openConfirmDialog({
+    title: 'Excluir conta bancária',
+    message: 'A conta bancária será inativada. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteBankAccount(bankAccount),
+  })
+}
 
+async function executeDeleteBankAccount(bankAccount) {
   try {
     await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
       isActive: false,
@@ -2089,7 +2238,7 @@ function applyAccountsDirectionContext() {
             </thead>
             <tbody>
               <tr v-for="cashflowItem in dashboardCashflow" :key="cashflowItem.competenceMonth">
-                <td>{{ cashflowItem.competenceMonth }}</td>
+                <td>{{ formatDate(cashflowItem.competenceMonth, '-') }}</td>
                 <td>{{ formatCurrency(cashflowItem.expectedIncomeBrl) }}</td>
                 <td>{{ formatCurrency(cashflowItem.expectedExpenseBrl) }}</td>
                 <td>{{ formatCurrency(cashflowItem.expectedNetBrl) }}</td>
@@ -2199,7 +2348,7 @@ function applyAccountsDirectionContext() {
 
       <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
         <header>
-          <h3>Novo lançamento</h3>
+          <h3>{{ entryEditingId ? 'Editar lançamento' : 'Novo lançamento' }}</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitEntry">
@@ -2265,7 +2414,17 @@ function applyAccountsDirectionContext() {
             </select>
           </label>
 
-          <button class="finance-action-button" type="submit">Salvar lançamento</button>
+          <button class="finance-action-button" type="submit">
+            {{ entryEditingId ? 'Salvar alterações' : 'Salvar lançamento' }}
+          </button>
+          <button
+            v-if="entryEditingId"
+            type="button"
+            class="finance-inline-action"
+            @click="resetEntryForm"
+          >
+            Cancelar edição
+          </button>
         </form>
       </article>
 
@@ -2373,6 +2532,7 @@ function applyAccountsDirectionContext() {
                 <th>Vencimento</th>
                 <th>Esperado</th>
                 <th>Restante</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -2388,9 +2548,25 @@ function applyAccountsDirectionContext() {
                     :label="getFinanceLabel(entry.status)"
                   />
                 </td>
-                <td>{{ entry.dueDate || '-' }}</td>
+                <td>{{ formatDate(entry.dueDate, '-') }}</td>
                 <td>{{ formatCurrency(entry.expectedAmountBrl) }}</td>
                 <td>{{ formatCurrency(entry.remainingAmountBrl) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingEntry(entry)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteEntry(entry)"
+                  >
+                    Deletar
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -2887,7 +3063,7 @@ function applyAccountsDirectionContext() {
                 <td>{{ rule.title }}</td>
                 <td>{{ rule.recurringTypeName }}</td>
                 <td>{{ formatCurrency(rule.amountBrl) }}</td>
-                <td>{{ rule.nextRunDate || '-' }}</td>
+                <td>{{ formatDate(rule.nextRunDate, '-') }}</td>
               </tr>
             </tbody>
           </table>
@@ -3534,8 +3710,8 @@ function applyAccountsDirectionContext() {
                 <td>{{ currencyRateItem.code }} - {{ currencyRateItem.name }}</td>
                 <td>{{ formatExchangeRate(currencyRateItem.buyRateBrl) }}</td>
                 <td>{{ formatExchangeRate(currencyRateItem.sellRateBrl) }}</td>
-                <td>{{ currencyRateItem.quoteDate || '-' }}</td>
-                <td>{{ currencyRateItem.quoteDateTime || '-' }}</td>
+                <td>{{ formatDate(currencyRateItem.quoteDate, '-') }}</td>
+                <td>{{ formatDateTime(currencyRateItem.quoteDateTime, '-') }}</td>
               </tr>
             </tbody>
           </table>
@@ -3620,7 +3796,7 @@ function applyAccountsDirectionContext() {
                     :label="getFinanceExportStatusLabel(exportJob.status)"
                   />
                 </td>
-                <td>{{ exportJob.requestedAt }}</td>
+                <td>{{ formatDateTime(exportJob.requestedAt, '-') }}</td>
                 <td>
                   <button
                     type="button"
@@ -3720,7 +3896,7 @@ function applyAccountsDirectionContext() {
                     :label="getFinanceLabel(connection.status)"
                   />
                 </td>
-                <td>{{ connection.lastSyncAt || '-' }}</td>
+                <td>{{ formatDateTime(connection.lastSyncAt, '-') }}</td>
                 <td>
                   <button type="button" class="finance-inline-action" @click="runOpenFinanceSync(connection.id)">Sincronizar</button>
                 </td>
@@ -3759,6 +3935,17 @@ function applyAccountsDirectionContext() {
         />
       </article>
     </section>
+
+    <AppConfirmDialog
+      :is-open="confirmDialogState.isOpen"
+      :title="confirmDialogState.title"
+      :message="confirmDialogState.message"
+      :confirm-label="confirmDialogState.confirmLabel"
+      :confirm-tone="confirmDialogState.confirmTone"
+      :processing="confirmDialogState.processing"
+      @cancel="closeConfirmDialog"
+      @confirm="handleConfirmDialogAction"
+    />
   </section>
 </template>
 

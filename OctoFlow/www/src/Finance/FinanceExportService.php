@@ -615,7 +615,9 @@ final class FinanceExportService
             FROM finance_investment_plan_run run
             INNER JOIN finance_investment_plan plan ON plan.id = run.investment_plan_id
             LEFT JOIN finance_entry contribution_entry ON contribution_entry.id = run.contribution_entry_id
+              AND contribution_entry.deleted_at IS NULL
             LEFT JOIN finance_entry yield_entry ON yield_entry.id = run.yield_entry_id
+              AND yield_entry.deleted_at IS NULL
             WHERE plan.owner_id = :ownerId
             ORDER BY run.generated_at DESC
         SQL, [
@@ -753,7 +755,10 @@ final class FinanceExportService
      */
     private function buildEntryWhere(int $ownerId, array $filters): array
     {
-        $whereParts = ['entry.owner_id = :ownerId'];
+        $whereParts = [
+            'entry.owner_id = :ownerId',
+            'entry.deleted_at IS NULL',
+        ];
         $parameters = ['ownerId' => $ownerId];
 
         $direction = strtoupper(trim((string) ($filters['direction'] ?? '')));

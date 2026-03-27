@@ -129,6 +129,14 @@ export function updateFinanceEntry(request, entryId, payload) {
   })
 }
 
+export function deleteFinanceEntry(request, entryId) {
+  return request({
+    url: `/finance/entries/${encodeURIComponent(entryId)}`,
+    method: 'DELETE',
+    csrfActionId: 'finance.entries.delete',
+  })
+}
+
 export function createFinanceSettlement(request, entryId, payload) {
   return request({
     url: `/finance/entries/${encodeURIComponent(entryId)}/settlements`,

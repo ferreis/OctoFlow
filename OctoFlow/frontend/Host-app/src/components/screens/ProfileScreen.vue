@@ -14,6 +14,7 @@ import { removeProfileAvatar, uploadProfileAvatar } from '../../services/account
 import { parseGithubRepositoryUrl } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
+import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
 import {
   COLOR_VISION_MODE_OPTIONS,
   CUSTOM_THEME_COLOR_KEYS,
@@ -101,6 +102,15 @@ const avatarFileInput = ref(null)
 const avatarUploading = ref(false)
 const avatarRemoving = ref(false)
 const avatarPreviewError = ref(false)
+const confirmDialogState = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmLabel: 'Confirmar',
+  confirmTone: 'danger',
+  processing: false,
+})
+const confirmDialogAction = ref(null)
 const collapsedSections = reactive({
   summary: false,
   github: true,
@@ -480,6 +490,49 @@ async function saveAccount(account) {
   }
 }
 
+function openConfirmDialog(options) {
+  confirmDialogState.title = String(options?.title || 'Confirmar ação')
+  confirmDialogState.message = String(options?.message || '')
+  confirmDialogState.confirmLabel = String(options?.confirmLabel || 'Confirmar')
+  confirmDialogState.confirmTone = String(options?.confirmTone || 'danger')
+  confirmDialogState.processing = false
+  confirmDialogState.isOpen = true
+  confirmDialogAction.value = typeof options?.onConfirm === 'function' ? options.onConfirm : null
+}
+
+function closeConfirmDialog() {
+  if (confirmDialogState.processing) {
+    return
+  }
+
+  confirmDialogState.isOpen = false
+  confirmDialogState.title = ''
+  confirmDialogState.message = ''
+  confirmDialogState.confirmLabel = 'Confirmar'
+  confirmDialogState.confirmTone = 'danger'
+  confirmDialogAction.value = null
+}
+
+async function handleConfirmDialogAction() {
+  if (confirmDialogState.processing) {
+    return
+  }
+
+  if (typeof confirmDialogAction.value !== 'function') {
+    closeConfirmDialog()
+    return
+  }
+
+  confirmDialogState.processing = true
+
+  try {
+    await confirmDialogAction.value()
+  } finally {
+    confirmDialogState.processing = false
+    closeConfirmDialog()
+  }
+}
+
 async function removeAccount(account) {
   const accountId = getAccountId(account)
   if (!accountId) {
@@ -487,11 +540,19 @@ async function removeAccount(account) {
   }
 
   const accountLabel = String(account?.accountLogin || '').trim()
-  if (typeof window !== 'undefined') {
-    const confirmed = window.confirm(`Remover a conta GitHub ${accountLabel || 'selecionada'} e todos os repositorios vinculados?`)
-    if (!confirmed) {
-      return
-    }
+  openConfirmDialog({
+    title: 'Remover conta GitHub',
+    message: `Remover a conta GitHub ${accountLabel || 'selecionada'} e todos os repositorios vinculados?`,
+    confirmLabel: 'Remover',
+    confirmTone: 'danger',
+    onConfirm: () => executeRemoveAccount(account),
+  })
+}
+
+async function executeRemoveAccount(account) {
+  const accountId = getAccountId(account)
+  if (!accountId) {
+    return
   }
 
   deletingAccountId.value = accountId
@@ -572,11 +633,19 @@ async function removeRepository(repository) {
   }
 
   const repositoryName = String(repository?.nameWithOwner || '').trim()
-  if (typeof window !== 'undefined') {
-    const confirmed = window.confirm(`Remover o repositorio ${repositoryName || 'selecionado'} do sistema?`)
-    if (!confirmed) {
-      return
-    }
+  openConfirmDialog({
+    title: 'Remover repositório',
+    message: `Remover o repositorio ${repositoryName || 'selecionado'} do sistema?`,
+    confirmLabel: 'Remover',
+    confirmTone: 'danger',
+    onConfirm: () => executeRemoveRepository(repository),
+  })
+}
+
+async function executeRemoveRepository(repository) {
+  const repositoryId = Number(repository?.id || 0)
+  if (!repositoryId) {
+    return
   }
 
   deletingRepositoryId.value = repositoryId
@@ -1538,6 +1607,17 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
         @session-updated="forwardSessionUpdate"
       />
     </article>
+
+    <AppConfirmDialog
+      :is-open="confirmDialogState.isOpen"
+      :title="confirmDialogState.title"
+      :message="confirmDialogState.message"
+      :confirm-label="confirmDialogState.confirmLabel"
+      :confirm-tone="confirmDialogState.confirmTone"
+      :processing="confirmDialogState.processing"
+      @cancel="closeConfirmDialog"
+      @confirm="handleConfirmDialogAction"
+    />
   </section>
 </template>
 

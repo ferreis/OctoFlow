@@ -436,6 +436,7 @@ final class FinanceInvestmentService
                         SELECT COALESCE(SUM(entry.expected_amount_brl), 0)
                         FROM finance_investment_plan_run run
                         INNER JOIN finance_entry entry ON entry.id = run.contribution_entry_id
+                          AND entry.deleted_at IS NULL
                         WHERE run.investment_plan_id = :planId
                     SQL, [
                         'planId' => $planId,

@@ -83,6 +83,13 @@ const FINANCE_ADDITIONAL_LABEL_BY_CODE = Object.freeze({
   INVESTMENT: 'Investimento',
 })
 
+const FINANCE_ALIAS_LABEL_BY_CODE = Object.freeze({
+  INSTALLMENT: 'Parcelamento',
+  INSTALLMENTS: 'Parcelas',
+  INSTALLMENT_PLAN: 'Plano de parcelamento',
+  'INSTALLMENT PLAN': 'Plano de parcelamento',
+})
+
 const FINANCE_TERM_LABEL_BY_CODE = Object.freeze({
   ...FINANCE_DIRECTION_LABEL_BY_CODE,
   ...FINANCE_PAYABLE_STATUS_LABEL_BY_CODE,
@@ -94,6 +101,7 @@ const FINANCE_TERM_LABEL_BY_CODE = Object.freeze({
   ...FINANCE_EXPORT_TYPE_LABEL_BY_CODE,
   ...FINANCE_EXPORT_STATUS_LABEL_BY_CODE,
   ...FINANCE_ADDITIONAL_LABEL_BY_CODE,
+  ...FINANCE_ALIAS_LABEL_BY_CODE,
 })
 
 function createSelectOptions(codesList, labelsByCode) {

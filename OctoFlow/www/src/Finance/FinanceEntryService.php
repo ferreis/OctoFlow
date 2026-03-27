@@ -23,7 +23,10 @@ final class FinanceEntryService
         $ownerId = $this->requireOwnerId($user);
         $pagination = FinanceInput::normalizePagination($filters['page'] ?? 1, $filters['itemsPerPage'] ?? 10);
 
-        $whereParts = ['entry.owner_id = :ownerId'];
+        $whereParts = [
+            'entry.owner_id = :ownerId',
+            'entry.deleted_at IS NULL',
+        ];
         $parameters = ['ownerId' => $ownerId];
 
         $direction = strtoupper(trim((string) ($filters['direction'] ?? '')));
@@ -326,6 +329,84 @@ final class FinanceEntryService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function softDeleteEntry(User $user, int $entryId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+
+        return $this->connection->transactional(function () use ($ownerId, $entryId): array {
+            $entry = $this->getEntryById($ownerId, $entryId);
+            $previousStatus = (string) ($entry['status'] ?? '');
+
+            /** @var list<array<string, mixed>> $settlements */
+            $settlements = $this->connection->fetchAllAssociative(<<<'SQL'
+                SELECT id, bank_account_id, amount_brl, settled_at
+                FROM finance_entry_settlement
+                WHERE owner_id = :ownerId
+                  AND entry_id = :entryId
+                ORDER BY settled_at ASC, id ASC
+            SQL, [
+                'ownerId' => $ownerId,
+                'entryId' => $entryId,
+            ]);
+
+            foreach ($settlements as $settlement) {
+                $settlementBankAccountId = isset($settlement['bank_account_id']) ? (int) $settlement['bank_account_id'] : null;
+                if ($settlementBankAccountId === null || $settlementBankAccountId <= 0) {
+                    continue;
+                }
+
+                $settlementDate = new \DateTimeImmutable((string) $settlement['settled_at']);
+                $this->applyBankAccountBalanceChange(
+                    $ownerId,
+                    $settlementBankAccountId,
+                    $entryId,
+                    (int) $settlement['id'],
+                    (string) $entry['direction'],
+                    (float) $settlement['amount_brl'],
+                    $settlementDate,
+                    true,
+                );
+            }
+
+            $this->connection->delete('finance_entry_settlement', [
+                'owner_id' => $ownerId,
+                'entry_id' => $entryId,
+            ]);
+
+            $deletedAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+            $this->connection->update('finance_entry', [
+                'status' => 'CANCELED',
+                'settled_amount_brl' => 0,
+                'remaining_amount_brl' => 0,
+                'fully_settled_at' => null,
+                'updated_at' => $deletedAt,
+                'deleted_at' => $deletedAt,
+            ], [
+                'id' => $entryId,
+                'owner_id' => $ownerId,
+            ]);
+
+            $this->appendEntryStatusHistory(
+                $ownerId,
+                $entryId,
+                $previousStatus !== '' ? $previousStatus : null,
+                'CANCELED',
+                'SOFT_DELETED',
+                'Entry soft deleted by user action.',
+            );
+
+            return [
+                'id' => $entryId,
+                'status' => 'CANCELED',
+                'deletedAt' => $deletedAt,
+            ];
+        });
+    }
+
+    /**
      * @param array<string, mixed> $payload
      *
      * @return array{entry: array<string, mixed>, settlement: array<string, mixed>}
@@ -500,6 +581,7 @@ final class FinanceEntryService
             SELECT id, owner_id, status
             FROM finance_entry
             WHERE due_date < :today
+              AND deleted_at IS NULL
               AND remaining_amount_brl > 0
               AND status NOT IN ('OVERDUE', 'CANCELED', 'NEGOTIATED', 'PAID', 'RECEIVED')
         SQL, [
@@ -562,6 +644,7 @@ final class FinanceEntryService
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = entry.bank_account_id
             WHERE entry.owner_id = :ownerId
               AND entry.id = :entryId
+              AND entry.deleted_at IS NULL
             LIMIT 1
         SQL, [
             'ownerId' => $ownerId,

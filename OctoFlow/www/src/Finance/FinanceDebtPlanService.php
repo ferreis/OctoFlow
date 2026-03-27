@@ -63,6 +63,7 @@ final class FinanceDebtPlanService
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = debt_plan.default_bank_account_id
             LEFT JOIN finance_installment_plan installment_plan ON installment_plan.id = debt_plan.linked_installment_plan_id
             LEFT JOIN finance_entry full_entry ON full_entry.id = debt_plan.full_payment_entry_id
+              AND full_entry.deleted_at IS NULL
             WHERE debt_plan.owner_id = :ownerId
             ORDER BY debt_plan.created_at DESC, debt_plan.id DESC
         SQL, [
@@ -518,6 +519,7 @@ final class FinanceDebtPlanService
                     END), 0) AS monthly_debt_commitment_brl
                 FROM finance_entry entry
                 WHERE entry.owner_id = :ownerId
+                  AND entry.deleted_at IS NULL
                   AND COALESCE(entry.competence_month, entry.due_date) >= :initialCompetenceMonth
                 GROUP BY DATE_TRUNC('month', COALESCE(entry.competence_month, entry.due_date))
             ) budget_reference
@@ -584,6 +586,7 @@ final class FinanceDebtPlanService
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = debt_plan.default_bank_account_id
             LEFT JOIN finance_installment_plan installment_plan ON installment_plan.id = debt_plan.linked_installment_plan_id
             LEFT JOIN finance_entry full_entry ON full_entry.id = debt_plan.full_payment_entry_id
+              AND full_entry.deleted_at IS NULL
             WHERE debt_plan.owner_id = :ownerId
               AND debt_plan.id = :debtPlanId
             LIMIT 1

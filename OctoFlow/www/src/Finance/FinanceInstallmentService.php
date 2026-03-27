@@ -50,6 +50,7 @@ final class FinanceInstallmentService
                     FROM finance_installment_item item
                     INNER JOIN finance_entry entry ON entry.id = item.entry_id
                     WHERE item.plan_id = plan.id
+                      AND entry.deleted_at IS NULL
                       AND entry.remaining_amount_brl <= 0
                 ) AS "paidItemsCount",
                 (
@@ -57,6 +58,7 @@ final class FinanceInstallmentService
                     FROM finance_installment_item item
                     INNER JOIN finance_entry entry ON entry.id = item.entry_id
                     WHERE item.plan_id = plan.id
+                      AND entry.deleted_at IS NULL
                 ) AS "remainingAmountBrl"
             FROM finance_installment_plan plan
             LEFT JOIN finance_category category ON category.id = plan.category_id
@@ -101,6 +103,7 @@ final class FinanceInstallmentService
                 FROM finance_installment_item item
                 INNER JOIN finance_entry entry ON entry.id = item.entry_id
                 WHERE item.plan_id = :planId
+                  AND entry.deleted_at IS NULL
                   AND entry.remaining_amount_brl > 0
                   AND entry.status NOT IN ('CANCELED', 'NEGOTIATED')
             SQL, [
@@ -401,6 +404,7 @@ final class FinanceInstallmentService
                     FROM finance_installment_item item
                     INNER JOIN finance_entry entry ON entry.id = item.entry_id
                     WHERE item.plan_id = plan.id
+                      AND entry.deleted_at IS NULL
                 ) AS "remainingAmountBrl"
             FROM finance_installment_plan plan
             LEFT JOIN finance_category category ON category.id = plan.category_id

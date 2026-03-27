@@ -9,6 +9,7 @@ import { fetchGithubWorkspace } from '../../services/githubWorkspace'
 import { createGithubIssue, createLocalTask, fetchTaskTemplates } from '../../services/tasks'
 import { splitRepositoryKey } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { formatDateTime } from '../../utils/date'
 import {
   buildSubmissionFields,
   formatTemplateTitle,
@@ -297,7 +298,7 @@ function renderPreview(template, submissionFields, email) {
 
   const lines = [
     `> Solicitante: ${email}`,
-    '> Data da solicitação: ' + new Date().toLocaleString(),
+    '> Data da solicitação: ' + formatDateTime(new Date()),
     '> Origem: OctoFlow',
     '',
   ]

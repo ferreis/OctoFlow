@@ -18,6 +18,25 @@ export default [
     rules: {
       'no-console': 'off',
       'no-unused-vars': 'warn',
+      'no-alert': 'error',
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'window',
+          property: 'alert',
+          message: 'Use notificação do app em vez de window.alert.',
+        },
+        {
+          object: 'window',
+          property: 'confirm',
+          message: 'Use modal de confirmação do app em vez de window.confirm.',
+        },
+        {
+          object: 'window',
+          property: 'prompt',
+          message: 'Use formulário/modal do app em vez de window.prompt.',
+        },
+      ],
     },
   },
 ]

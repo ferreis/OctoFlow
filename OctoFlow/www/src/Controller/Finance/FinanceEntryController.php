@@ -107,6 +107,22 @@ final class FinanceEntryController
         }
     }
 
+    #[Route('/entries/{entryId<\d+>}', name: 'finance_entries_delete', methods: ['DELETE'])]
+    public function deleteEntry(int $entryId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->financeEntryService->softDeleteEntry($user, $entryId),
+            ]);
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
+
     #[Route('/entries/{entryId<\d+>}/settlements', name: 'finance_entries_settlements_create', methods: ['POST'])]
     public function createSettlement(int $entryId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
