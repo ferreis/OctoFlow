@@ -28,7 +28,38 @@ query GithubIssueUpdateContext($issueId: ID!) {
     __typename
     ... on Issue {
       id
+      number
+      title
       body
+      state
+      url
+      parent {
+        id
+        number
+        title
+        state
+        url
+      }
+      subIssues(first: 50) {
+        nodes {
+          id
+          number
+          title
+          state
+          url
+          createdAt
+          updatedAt
+          assignees(first: 10) {
+            nodes {
+              id
+              login
+              name
+              avatarUrl
+              url
+            }
+          }
+        }
+      }
       assignees(first: 10) {
         nodes {
           id
@@ -56,6 +87,15 @@ query GithubIssueUpdateContext($issueId: ID!) {
             login
             name
             avatarUrl
+            url
+          }
+        }
+      }
+      projectItems(first: 20) {
+        nodes {
+          project {
+            id
+            title
             url
           }
         }
@@ -130,6 +170,33 @@ query GithubIssueDetail($issueId: ID!) {
       createdAt
       closedAt
       updatedAt
+      parent {
+        id
+        number
+        title
+        state
+        url
+      }
+      subIssues(first: 50) {
+        nodes {
+          id
+          number
+          title
+          state
+          url
+          createdAt
+          updatedAt
+          assignees(first: 10) {
+            nodes {
+              id
+              login
+              name
+              avatarUrl
+              url
+            }
+          }
+        }
+      }
       viewerCanUpdate
       viewerCanClose
       viewerCanReopen
@@ -166,6 +233,15 @@ query GithubIssueDetail($issueId: ID!) {
           }
         }
       }
+      projectItems(first: 20) {
+        nodes {
+          project {
+            id
+            title
+            url
+          }
+        }
+      }
       comments(first: 30) {
         nodes {
           id
@@ -178,6 +254,116 @@ query GithubIssueDetail($issueId: ID!) {
           }
         }
       }
+      timelineItems(first: 30, itemTypes: [SUB_ISSUE_ADDED_EVENT]) {
+        nodes {
+          __typename
+          ... on SubIssueAddedEvent {
+            id
+            createdAt
+            actor {
+              __typename
+              ... on User {
+                login
+              }
+              ... on Bot {
+                login
+              }
+              ... on Organization {
+                login
+              }
+              ... on Mannequin {
+                login
+              }
+            }
+            subIssue {
+              id
+              number
+              title
+              url
+              createdAt
+              author {
+                login
+              }
+              assignees(first: 10) {
+                nodes {
+                  id
+                  login
+                  name
+                  avatarUrl
+                  url
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+GRAPHQL;
+
+    private const CREATE_ISSUE_MUTATION = <<<'GRAPHQL'
+mutation CreateIssue($repositoryId: ID!, $title: String!, $body: String!) {
+  createIssue(input: {repositoryId: $repositoryId, title: $title, body: $body}) {
+    issue {
+      id
+      number
+      title
+      body
+      state
+      url
+      createdAt
+      updatedAt
+      viewerCanUpdate
+      viewerCanClose
+      viewerCanReopen
+      author {
+        login
+      }
+      assignees(first: 10) {
+        nodes {
+          id
+          login
+          name
+          avatarUrl
+          url
+        }
+      }
+      labels(first: 15) {
+        nodes {
+          id
+          name
+          color
+          description
+        }
+      }
+      repository {
+        nameWithOwner
+        url
+      }
+    }
+  }
+}
+GRAPHQL;
+
+    private const ADD_SUB_ISSUE_MUTATION = <<<'GRAPHQL'
+mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+  addSubIssue(input: {issueId: $issueId, subIssueId: $subIssueId}) {
+    issue {
+      id
+    }
+    subIssue {
+      id
+    }
+  }
+}
+GRAPHQL;
+
+    private const ADD_PROJECT_ITEM_MUTATION = <<<'GRAPHQL'
+mutation AddIssueToProject($projectId: ID!, $contentId: ID!) {
+  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+    item {
+      id
     }
   }
 }
@@ -428,8 +614,10 @@ GRAPHQL;
         private readonly GithubGraphQLClientInterface $graphqlClient,
         private readonly GithubIssueCacheService $cacheService,
         private readonly GithubRegistryService $registryService,
+        private readonly GithubIssueTemplateCatalog $templateCatalog,
         private readonly GithubIssueUpdateTemplateCatalog $updateTemplateCatalog,
         private readonly TemplateAccessService $templateAccessService,
+        private readonly GithubIssueBodyRenderer $bodyRenderer,
         private readonly GithubIssueUpdateRenderer $updateRenderer,
     ) {
     }
@@ -516,6 +704,10 @@ GRAPHQL;
                 'item' => [
                     ...$cachedIssue,
                     'closedAt' => $normalizedIssue['closedAt'] ?? null,
+                    'parent' => $normalizedIssue['parent'] ?? null,
+                    'subIssues' => $normalizedIssue['subIssues'] ?? [],
+                    'projects' => $normalizedIssue['projects'] ?? [],
+                    'hasOpenSubIssues' => (bool) ($normalizedIssue['hasOpenSubIssues'] ?? false),
                     'repository' => [
                         ...(is_array($cachedIssue['repository'] ?? null) ? $cachedIssue['repository'] : []),
                         'assignableUsers' => $normalizedIssue['repository']['assignableUsers'] ?? [],
@@ -581,6 +773,7 @@ GRAPHQL;
         }
 
         $issueUpdateContext = $this->fetchIssueUpdateContext($token, $normalizedIssueId);
+        $this->assertIssueCanTransitionToState($issueUpdateContext, $state);
         $body = $legacyBody;
 
         if ($templateKey !== '' || $additionalNotes !== '' || $legacyBody === '') {
@@ -638,7 +831,134 @@ GRAPHQL;
         $issue = $this->assignIssueToCollaborators($token, $issue, $assigneeIds);
         $this->registerIssueUpdateComment($token, $normalizedIssueId, $user);
 
-        return $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
+        $cachedIssue = $this->cacheService->upsertIssue($user, $this->normalizeIssue($issue));
+
+        return [
+            ...$cachedIssue,
+            'parent' => $this->normalizeIssueReference($issueUpdateContext['parent'] ?? null),
+            'subIssues' => is_array($issueUpdateContext['subIssues'] ?? null) ? $issueUpdateContext['subIssues'] : [],
+            'projects' => is_array($issueUpdateContext['projects'] ?? null) ? $issueUpdateContext['projects'] : [],
+            'hasOpenSubIssues' => (bool) ($issueUpdateContext['hasOpenSubIssues'] ?? false),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function createSubIssues(User $user, string $issueId, array $payload): array
+    {
+        $normalizedIssueId = trim($issueId);
+        if ($normalizedIssueId === '') {
+            throw new \InvalidArgumentException('The GitHub issue id is required.');
+        }
+
+        $rawItems = $payload['items'] ?? [];
+        if (!is_array($rawItems) || $rawItems === []) {
+            throw new \InvalidArgumentException('At least one sub-issue must be informed.');
+        }
+
+        $token = $this->profileService->requireToken($user);
+        $issueUpdateContext = $this->fetchIssueUpdateContext($token, $normalizedIssueId);
+        $this->assertParentIssueCanReceiveSubIssues($issueUpdateContext);
+
+        $repository = is_array($issueUpdateContext['repository'] ?? null) ? $issueUpdateContext['repository'] : [];
+        $repositoryId = trim((string) ($repository['id'] ?? ''));
+        if ($repositoryId === '') {
+            throw new GithubGraphQLException('GitHub returned an invalid repository id for the parent issue.');
+        }
+
+        $createdItems = [];
+        $parentDueDate = $this->extractDueDateFromBody((string) ($issueUpdateContext['body'] ?? ''));
+
+        foreach ($rawItems as $index => $rawItem) {
+            if (!is_array($rawItem)) {
+                throw new \InvalidArgumentException(sprintf('The sub-issue payload at position %d is invalid.', $index + 1));
+            }
+
+            $title = trim((string) ($rawItem['title'] ?? ''));
+            if ($title === '') {
+                throw new \InvalidArgumentException(sprintf('The title of sub-issue %d is required.', $index + 1));
+            }
+
+            $templateKey = trim((string) ($rawItem['template'] ?? ''));
+            $rawTemplateFields = $rawItem['templateFields'] ?? [];
+            if (!is_array($rawTemplateFields)) {
+                throw new \InvalidArgumentException(sprintf('The template fields of sub-issue %d are invalid.', $index + 1));
+            }
+
+            $body = trim((string) ($rawItem['body'] ?? ''));
+            $resolvedTitle = $this->formatSubIssueTitle($title);
+
+            if ($templateKey !== '') {
+                $template = $this->templateCatalog->find($templateKey);
+                if ($template === null) {
+                    throw new \InvalidArgumentException(sprintf('Unknown template for sub-issue %d.', $index + 1));
+                }
+
+                if (!$this->templateAccessService->canUseTemplate($user, $template)) {
+                    throw new \InvalidArgumentException('The selected GitHub issue template is not available for your profile.');
+                }
+
+                $draft = $this->bodyRenderer->render(
+                    $template,
+                    $title,
+                    $rawTemplateFields,
+                    $user->getEmail()
+                );
+                $resolvedTitle = $this->formatSubIssueTitle($draft['title']);
+                $body = trim((string) ($draft['body'] ?? ''));
+                $manualBody = trim((string) ($rawItem['body'] ?? ''));
+                if ($manualBody !== '') {
+                    $body = trim($body . "\n\n" . $manualBody);
+                }
+            }
+
+            $dueDate = $this->normalizeNullableString($rawItem['dueDate'] ?? null);
+            if ($dueDate !== null) {
+                $this->assertDueDateWithinParentDeadline($dueDate, $parentDueDate, $index + 1);
+                $body = $this->appendDueDateToBody($body, $dueDate);
+            }
+
+            $assigneeIds = $this->normalizeIdList($rawItem['assigneeIds'] ?? []);
+            $this->assertAssignableUsers($assigneeIds, $repository);
+
+            $createdIssueData = $this->graphqlClient->query($token, self::CREATE_ISSUE_MUTATION, [
+                'repositoryId' => $repositoryId,
+                'title' => $resolvedTitle,
+                'body' => $body,
+            ]);
+
+            $createdIssue = $createdIssueData['createIssue']['issue'] ?? null;
+            if (!is_array($createdIssue)) {
+                throw new GithubGraphQLException('GitHub did not return the created sub-issue payload.');
+            }
+
+            $createdIssue = $this->assignIssueToCollaborators($token, $createdIssue, $assigneeIds);
+            $this->linkSubIssueToParent($token, $normalizedIssueId, trim((string) ($createdIssue['id'] ?? '')));
+            $this->syncIssueProjectsFromParent($token, $createdIssue, is_array($issueUpdateContext['projects'] ?? null) ? $issueUpdateContext['projects'] : []);
+            $this->registerSubIssueCreationComment(
+                $token,
+                $normalizedIssueId,
+                $createdIssue,
+                $user
+            );
+
+            $normalizedIssue = $this->normalizeIssue($createdIssue);
+            $this->cacheService->upsertIssue($user, $normalizedIssue);
+            $createdItems[] = $normalizedIssue;
+        }
+
+        $parentPayload = $this->fetchIssue($user, $normalizedIssueId);
+
+        return [
+            'item' => $parentPayload['item'],
+            'history' => $parentPayload['history'],
+            'source' => $parentPayload['source'],
+            'warning' => $parentPayload['warning'],
+            'createdItems' => $createdItems,
+        ];
     }
 
     private function normalizeScope(string $scope): string
@@ -662,7 +982,14 @@ GRAPHQL;
 
         return [
             'id' => trim((string) ($node['id'] ?? '')),
+            'number' => (int) ($node['number'] ?? 0),
+            'title' => trim((string) ($node['title'] ?? '')),
             'body' => (string) ($node['body'] ?? ''),
+            'state' => strtoupper(trim((string) ($node['state'] ?? 'OPEN'))) === 'CLOSED' ? 'CLOSED' : 'OPEN',
+            'url' => trim((string) ($node['url'] ?? '')),
+            'parent' => $this->normalizeIssueReference($node['parent'] ?? null),
+            'subIssues' => $this->normalizeIssueReferences($node['subIssues']['nodes'] ?? []),
+            'hasOpenSubIssues' => $this->hasOpenSubIssues($node['subIssues']['nodes'] ?? []),
             'assignees' => $this->normalizeGithubUsers($node['assignees']['nodes'] ?? []),
             'repository' => [
                 'id' => is_array($node['repository'] ?? null)
@@ -681,6 +1008,7 @@ GRAPHQL;
                     ? $this->normalizeGithubUsers($node['repository']['assignableUsers']['nodes'] ?? [])
                     : [],
             ],
+            'projects' => $this->normalizeProjects($node['projectItems']['nodes'] ?? []),
         ];
     }
 
@@ -857,6 +1185,10 @@ GRAPHQL;
             'authorLogin' => $authorLogin !== '' ? $authorLogin : null,
             'assignees' => $this->normalizeGithubUsers($rawIssue['assignees']['nodes'] ?? []),
             'labels' => $this->normalizeLabels($rawIssue['labels']['nodes'] ?? []),
+            'parent' => $this->normalizeIssueReference($rawIssue['parent'] ?? null),
+            'subIssues' => $this->normalizeIssueReferences($rawIssue['subIssues']['nodes'] ?? []),
+            'hasOpenSubIssues' => $this->hasOpenSubIssues($rawIssue['subIssues']['nodes'] ?? []),
+            'projects' => $this->normalizeProjects($rawIssue['projectItems']['nodes'] ?? []),
             'repository' => [
                 'nameWithOwner' => is_array($repository) ? trim((string) ($repository['nameWithOwner'] ?? '')) : '',
                 'url' => is_array($repository) ? trim((string) ($repository['url'] ?? '')) : '',
@@ -869,7 +1201,8 @@ GRAPHQL;
                 $updatedAt,
                 $closedAt,
                 (string) ($rawIssue['state'] ?? 'OPEN'),
-                $rawIssue['comments']['nodes'] ?? []
+                $rawIssue['comments']['nodes'] ?? [],
+                $rawIssue['timelineItems']['nodes'] ?? [],
             ),
         ];
     }
@@ -887,6 +1220,7 @@ GRAPHQL;
         ?string $closedAt,
         string $state,
         mixed $rawComments,
+        mixed $rawTimelineItems,
     ): array {
         $history = [];
         $normalizedIssueId = trim($issueId);
@@ -934,6 +1268,8 @@ GRAPHQL;
             ];
         }
 
+        $octoFlowSubIssueRegistry = [];
+
         if (is_array($rawComments)) {
             foreach ($rawComments as $rawComment) {
                 if (!is_array($rawComment)) {
@@ -947,24 +1283,84 @@ GRAPHQL;
                 }
 
                 $commentAuthor = $rawComment['author'] ?? null;
+                $commentBody = $this->normalizeNullableString($rawComment['body'] ?? null);
+                $registeredSubIssueId = $this->extractOctoFlowSubIssueMarker($commentBody);
+                if ($registeredSubIssueId !== null) {
+                    $octoFlowSubIssueRegistry[$registeredSubIssueId] = true;
+                }
+
                 $history[] = [
                     'id' => $commentId,
                     'kind' => 'comment',
-                    'title' => 'Comentario',
+                    'title' => $registeredSubIssueId !== null ? 'Sub-issue criada' : 'Comentario',
                     'actorLogin' => is_array($commentAuthor) ? $this->normalizeNullableString($commentAuthor['login'] ?? null) : null,
                     'createdAt' => $commentCreatedAt,
                     'updatedAt' => trim((string) ($rawComment['updatedAt'] ?? $commentCreatedAt)),
-                    'body' => $this->normalizeNullableString($rawComment['body'] ?? null),
+                    'body' => $commentBody,
                     'url' => $this->normalizeNullableString($rawComment['url'] ?? null),
+                    'octoflowIssueId' => $registeredSubIssueId,
                 ];
             }
         }
+
+        $history = [
+            ...$history,
+            ...$this->buildSubIssueTimelineHistoryEntries($rawTimelineItems, array_keys($octoFlowSubIssueRegistry)),
+        ];
 
         usort($history, static function (array $left, array $right): int {
             return strcmp((string) ($right['createdAt'] ?? ''), (string) ($left['createdAt'] ?? ''));
         });
 
         return array_values($history);
+    }
+
+    /**
+     * @param mixed $rawTimelineItems
+     * @param list<string> $octoFlowManagedSubIssueIds
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildSubIssueTimelineHistoryEntries(mixed $rawTimelineItems, array $octoFlowManagedSubIssueIds): array
+    {
+        if (!is_array($rawTimelineItems)) {
+            return [];
+        }
+
+        $historyEntries = [];
+
+        foreach ($rawTimelineItems as $rawTimelineItem) {
+            if (!is_array($rawTimelineItem) || trim((string) ($rawTimelineItem['__typename'] ?? '')) !== 'SubIssueAddedEvent') {
+                continue;
+            }
+
+            $subIssue = is_array($rawTimelineItem['subIssue'] ?? null) ? $rawTimelineItem['subIssue'] : null;
+            $subIssueId = trim((string) ($subIssue['id'] ?? ''));
+            if ($subIssueId === '' || in_array($subIssueId, $octoFlowManagedSubIssueIds, true)) {
+                continue;
+            }
+
+            $eventId = trim((string) ($rawTimelineItem['id'] ?? ''));
+            $eventCreatedAt = trim((string) ($rawTimelineItem['createdAt'] ?? ''));
+            if ($eventId === '' || $eventCreatedAt === '') {
+                continue;
+            }
+
+            $historyEntries[] = [
+                'id' => $eventId,
+                'kind' => 'comment',
+                'title' => 'Sub-issue criada',
+                'actorLogin' => $this->normalizeTimelineActorLogin($rawTimelineItem['actor'] ?? null)
+                    ?? $this->normalizeNullableString($subIssue['author']['login'] ?? null),
+                'createdAt' => $eventCreatedAt,
+                'updatedAt' => $eventCreatedAt,
+                'body' => $this->buildSubIssueHistoryBody($subIssue, 'GitHub', $rawTimelineItem['actor'] ?? null),
+                'url' => $this->normalizeNullableString($subIssue['url'] ?? null),
+                'octoflowIssueId' => $subIssueId,
+            ];
+        }
+
+        return $historyEntries;
     }
 
     /**
@@ -981,7 +1377,8 @@ GRAPHQL;
             trim((string) ($issue['updatedAt'] ?? '')),
             $this->normalizeNullableString($issue['closedAt'] ?? null),
             (string) ($issue['state'] ?? 'OPEN'),
-            []
+            [],
+            [],
         );
     }
 
@@ -1141,6 +1538,99 @@ GRAPHQL;
     }
 
     /**
+     * @param mixed $rawIssue
+     *
+     * @return array<string, mixed>|null
+     */
+    private function normalizeIssueReference(mixed $rawIssue): ?array
+    {
+        if (!is_array($rawIssue)) {
+            return null;
+        }
+
+        $issueId = trim((string) ($rawIssue['id'] ?? ''));
+        if ($issueId === '') {
+            return null;
+        }
+
+        $state = strtoupper(trim((string) ($rawIssue['state'] ?? 'OPEN')));
+
+        return [
+            'id' => $issueId,
+            'number' => (int) ($rawIssue['number'] ?? 0),
+            'title' => trim((string) ($rawIssue['title'] ?? '')),
+            'state' => $state === 'CLOSED' ? 'CLOSED' : 'OPEN',
+            'url' => trim((string) ($rawIssue['url'] ?? '')),
+            'createdAt' => trim((string) ($rawIssue['createdAt'] ?? '')),
+            'updatedAt' => trim((string) ($rawIssue['updatedAt'] ?? '')),
+            'assignees' => $this->normalizeGithubUsers($rawIssue['assignees']['nodes'] ?? []),
+        ];
+    }
+
+    /**
+     * @param mixed $rawIssues
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeIssueReferences(mixed $rawIssues): array
+    {
+        if (!is_array($rawIssues)) {
+            return [];
+        }
+
+        $issues = [];
+
+        foreach ($rawIssues as $rawIssue) {
+            $normalizedIssue = $this->normalizeIssueReference($rawIssue);
+            if ($normalizedIssue === null) {
+                continue;
+            }
+
+            $issues[] = $normalizedIssue;
+        }
+
+        usort($issues, static fn (array $left, array $right): int => $left['number'] <=> $right['number']);
+
+        return array_values($issues);
+    }
+
+    /**
+     * @param mixed $rawProjectItems
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeProjects(mixed $rawProjectItems): array
+    {
+        if (!is_array($rawProjectItems)) {
+            return [];
+        }
+
+        $projects = [];
+        $seenProjectIds = [];
+
+        foreach ($rawProjectItems as $rawProjectItem) {
+            $project = is_array($rawProjectItem) ? ($rawProjectItem['project'] ?? null) : null;
+            if (!is_array($project)) {
+                continue;
+            }
+
+            $projectId = trim((string) ($project['id'] ?? ''));
+            if ($projectId === '' || isset($seenProjectIds[$projectId])) {
+                continue;
+            }
+
+            $seenProjectIds[$projectId] = true;
+            $projects[] = [
+                'id' => $projectId,
+                'title' => trim((string) ($project['title'] ?? '')),
+                'url' => trim((string) ($project['url'] ?? '')),
+            ];
+        }
+
+        return array_values($projects);
+    }
+
+    /**
      * @param mixed $rawIds
      *
      * @return list<string>
@@ -1263,6 +1753,24 @@ GRAPHQL;
         return array_values(array_unique($resolvedLabelIds));
     }
 
+    private function registerSubIssueCreationComment(string $token, string $parentIssueId, array $subIssue, User $user): void
+    {
+        $subIssueId = trim((string) ($subIssue['id'] ?? ''));
+        if ($subIssueId === '') {
+            throw new GithubGraphQLException('GitHub returned an invalid sub-issue id for history registration.');
+        }
+
+        $data = $this->graphqlClient->query($token, self::ADD_COMMENT_MUTATION, [
+            'issueId' => $parentIssueId,
+            'body' => $this->buildOctoFlowSubIssueCommentBody($subIssue, $user),
+        ]);
+
+        $commentNode = $data['addComment']['commentEdge']['node'] ?? null;
+        if (!is_array($commentNode) || trim((string) ($commentNode['id'] ?? '')) === '') {
+            throw new GithubGraphQLException('GitHub did not return the sub-issue history comment payload.');
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -1304,6 +1812,184 @@ GRAPHQL;
         }
 
         return strtolower($normalizedValue);
+    }
+
+    /**
+     * @param array<string, mixed> $issueUpdateContext
+     */
+    private function assertIssueCanTransitionToState(array $issueUpdateContext, string $state): void
+    {
+        if ($state !== 'CLOSED') {
+            return;
+        }
+
+        $openSubIssues = array_values(array_filter(
+            is_array($issueUpdateContext['subIssues'] ?? null) ? $issueUpdateContext['subIssues'] : [],
+            static fn (array $subIssue): bool => strtoupper(trim((string) ($subIssue['state'] ?? 'OPEN'))) !== 'CLOSED'
+        ));
+
+        if ($openSubIssues === []) {
+            return;
+        }
+
+        $labels = array_map(static function (array $subIssue): string {
+            $number = (int) ($subIssue['number'] ?? 0);
+            $title = trim((string) ($subIssue['title'] ?? 'Sub-issue'));
+
+            return $number > 0 ? sprintf('#%d %s', $number, $title) : $title;
+        }, array_slice($openSubIssues, 0, 3));
+
+        $suffix = count($openSubIssues) > 3 ? ' e outras sub-issues abertas.' : '.';
+
+        throw new \InvalidArgumentException(sprintf(
+            'Nao e possivel concluir a issue principal enquanto existirem sub-issues abertas: %s%s',
+            implode(', ', $labels),
+            $suffix
+        ));
+    }
+
+    /**
+     * @param array<string, mixed> $issueUpdateContext
+     */
+    private function assertParentIssueCanReceiveSubIssues(array $issueUpdateContext): void
+    {
+        if ($this->normalizeIssueReference($issueUpdateContext['parent'] ?? null) !== null) {
+            throw new \InvalidArgumentException('Sub-issues nao podem ter outras sub-issues vinculadas.');
+        }
+    }
+
+    private function hasOpenSubIssues(mixed $rawSubIssues): bool
+    {
+        if (!is_array($rawSubIssues)) {
+            return false;
+        }
+
+        foreach ($rawSubIssues as $rawSubIssue) {
+            if (!is_array($rawSubIssue)) {
+                continue;
+            }
+
+            if (strtoupper(trim((string) ($rawSubIssue['state'] ?? 'OPEN'))) !== 'CLOSED') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $repository
+     * @param list<string> $assigneeIds
+     */
+    private function assertAssignableUsers(array $assigneeIds, array $repository): void
+    {
+        if ($assigneeIds === []) {
+            return;
+        }
+
+        $availableAssigneeIds = array_values(array_filter(array_map(
+            static fn (array $user): string => trim((string) ($user['id'] ?? '')),
+            is_array($repository['assignableUsers'] ?? null) ? $repository['assignableUsers'] : []
+        )));
+
+        if ($availableAssigneeIds === []) {
+            throw new \InvalidArgumentException('The selected repository did not return assignable collaborators.');
+        }
+
+        foreach ($assigneeIds as $assigneeId) {
+            if (!in_array($assigneeId, $availableAssigneeIds, true)) {
+                throw new \InvalidArgumentException('The selected collaborator cannot be assigned in this repository.');
+            }
+        }
+    }
+
+    private function linkSubIssueToParent(string $token, string $parentIssueId, string $subIssueId): void
+    {
+        if ($parentIssueId === '' || $subIssueId === '') {
+            throw new GithubGraphQLException('GitHub returned an invalid parent or sub-issue identifier.');
+        }
+
+        $data = $this->graphqlClient->query($token, self::ADD_SUB_ISSUE_MUTATION, [
+            'issueId' => $parentIssueId,
+            'subIssueId' => $subIssueId,
+        ]);
+
+        $linkedSubIssue = $data['addSubIssue']['subIssue'] ?? null;
+        if (!is_array($linkedSubIssue) || trim((string) ($linkedSubIssue['id'] ?? '')) === '') {
+            throw new GithubGraphQLException('GitHub did not confirm the sub-issue linkage.');
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     * @param list<array<string, mixed>> $projects
+     */
+    private function syncIssueProjectsFromParent(string $token, array $issue, array $projects): void
+    {
+        $issueId = trim((string) ($issue['id'] ?? ''));
+        if ($issueId === '' || $projects === []) {
+            return;
+        }
+
+        foreach ($projects as $project) {
+            $projectId = trim((string) ($project['id'] ?? ''));
+            if ($projectId === '') {
+                continue;
+            }
+
+            $data = $this->graphqlClient->query($token, self::ADD_PROJECT_ITEM_MUTATION, [
+                'projectId' => $projectId,
+                'contentId' => $issueId,
+            ]);
+
+            $projectItem = $data['addProjectV2ItemById']['item'] ?? null;
+            if (!is_array($projectItem) || trim((string) ($projectItem['id'] ?? '')) === '') {
+                throw new GithubGraphQLException('GitHub did not return the inherited project item payload.');
+            }
+        }
+    }
+
+    private function extractDueDateFromBody(string $body): ?\DateTimeImmutable
+    {
+        if (preg_match('/##\s+Prazo desejado\s*\R+([0-9]{4}-[0-9]{2}-[0-9]{2})/iu', $body, $matches) !== 1) {
+            return null;
+        }
+
+        try {
+            return new \DateTimeImmutable($matches[1]);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function assertDueDateWithinParentDeadline(string $subIssueDueDate, ?\DateTimeImmutable $parentDueDate, int $index): void
+    {
+        try {
+            $normalizedSubIssueDueDate = new \DateTimeImmutable($subIssueDueDate);
+        } catch (\Throwable) {
+            throw new \InvalidArgumentException(sprintf('A data de entrega da sub-issue %d e invalida.', $index));
+        }
+
+        if ($parentDueDate !== null && $normalizedSubIssueDueDate > $parentDueDate) {
+            throw new \InvalidArgumentException(sprintf(
+                'A data de entrega da sub-issue %d nao pode ultrapassar o prazo da issue principal (%s).',
+                $index,
+                $parentDueDate->format('Y-m-d')
+            ));
+        }
+    }
+
+    private function appendDueDateToBody(string $body, string $dueDate): string
+    {
+        $sections = [];
+        $normalizedBody = trim($body);
+        if ($normalizedBody !== '') {
+            $sections[] = $normalizedBody;
+        }
+
+        $sections[] = sprintf("## Prazo desejado\n%s", $dueDate);
+
+        return implode("\n\n", $sections);
     }
 
     /**
@@ -1444,6 +2130,100 @@ GRAPHQL;
             self::UPDATE_COMMENT_TIMEZONE,
             trim($user->getEmail())
         );
+    }
+
+    /**
+     * @param array<string, mixed> $subIssue
+     */
+    private function buildOctoFlowSubIssueCommentBody(array $subIssue, User $user): string
+    {
+        $subIssueId = trim((string) ($subIssue['id'] ?? ''));
+        $creator = trim((string) ($user->getEmail() ?? ''));
+
+        return sprintf(
+            "<!-- octoflow:subissue-created:%s -->\n## Sub-issue criada\n\n%s",
+            $subIssueId,
+            $this->buildSubIssueHistoryBody($subIssue, 'OctoFlow', $creator !== '' ? ['login' => $creator] : null),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $subIssue
+     */
+    private function buildSubIssueHistoryBody(array $subIssue, string $sourceLabel, mixed $creator): string
+    {
+        $subIssueNumber = (int) ($subIssue['number'] ?? 0);
+        $subIssueTitle = trim((string) ($subIssue['title'] ?? 'Sub-issue'));
+        $subIssueUrl = trim((string) ($subIssue['url'] ?? ''));
+        $openedAt = trim((string) ($subIssue['createdAt'] ?? ''));
+        $creatorLogin = $this->normalizeTimelineActorLogin($creator)
+            ?? $this->normalizeNullableString($subIssue['author']['login'] ?? null)
+            ?? 'Sistema';
+        $assignees = $this->normalizeGithubUsers($subIssue['assignees']['nodes'] ?? []);
+        $responsibleLabel = $assignees !== []
+            ? implode(', ', array_map(
+                static fn (array $assignee): string => trim((string) ($assignee['name'] ?? '')) !== ''
+                    ? sprintf('%s (%s)', $assignee['name'], $assignee['login'])
+                    : $assignee['login'],
+                $assignees
+            ))
+            : 'Sem responsavel';
+
+        $lines = [
+            sprintf('- Sub-issue: %s%s', $subIssueNumber > 0 ? '#' . $subIssueNumber . ' ' : '', $subIssueTitle),
+            sprintf('- Data de abertura: %s', $openedAt !== '' ? $openedAt : 'Nao informada'),
+            sprintf('- Criada por: %s', $creatorLogin),
+            sprintf('- Responsavel definido: %s', $responsibleLabel),
+            sprintf('- Origem: %s', $sourceLabel),
+        ];
+
+        if ($subIssueUrl !== '') {
+            $lines[] = sprintf('- Link: %s', $subIssueUrl);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function extractOctoFlowSubIssueMarker(?string $body): ?string
+    {
+        if (!is_string($body) || $body === '') {
+            return null;
+        }
+
+        if (preg_match('/<!--\s*octoflow:subissue-created:([^>\s]+)\s*-->/', $body, $matches) !== 1) {
+            return null;
+        }
+
+        $subIssueId = trim((string) ($matches[1] ?? ''));
+
+        return $subIssueId !== '' ? $subIssueId : null;
+    }
+
+    private function normalizeTimelineActorLogin(mixed $rawActor): ?string
+    {
+        if (is_array($rawActor)) {
+            return $this->normalizeNullableString($rawActor['login'] ?? null);
+        }
+
+        if (is_string($rawActor)) {
+            return $this->normalizeNullableString($rawActor);
+        }
+
+        return null;
+    }
+
+    private function formatSubIssueTitle(string $title): string
+    {
+        $normalizedTitle = trim($title);
+        if ($normalizedTitle === '') {
+            return '[sub]';
+        }
+
+        if (preg_match('/^\[sub\]/i', $normalizedTitle) === 1) {
+            return $normalizedTitle;
+        }
+
+        return sprintf('[sub]%s', $normalizedTitle);
     }
 
     /**

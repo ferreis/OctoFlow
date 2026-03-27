@@ -451,15 +451,8 @@ async function loadIssueUpdateTemplates() {
 }
 
 async function syncIssues(options = {}) {
-  const announceRefresh = Boolean(options.announceRefresh)
-
   syncing.value = true
   error.value = ''
-
-  if (announceRefresh) {
-    info.value = 'Sincronizando a listagem com o GitHub...'
-  }
-
   try {
     const { data } = await props.request({
       url: '/github/issues/assigned',
@@ -475,13 +468,8 @@ async function syncIssues(options = {}) {
 
     alignSelection(false)
     await loadLocalTasks()
-    info.value = 'Listagem atualizada a partir do GitHub e persistida no banco local.'
   } catch (requestError) {
     error.value = extractHttpMessage(requestError, 'Nao foi possivel sincronizar as issues com o GitHub.')
-
-    if (issues.value.length > 0) {
-      info.value = 'Mantendo a listagem do banco local enquanto a sincronização do GitHub nao responde.'
-    }
   } finally {
     syncing.value = false
   }
@@ -523,11 +511,8 @@ function updateCacheInfo(data, syncStrategy) {
   }
 
   if (data?.cache?.needsRefresh) {
-    info.value = 'Listagem preenchida pelo banco local. O cache ja pode ser renovado no GitHub.'
     return
   }
-
-  info.value = `Listagem servida do banco local. Ultima sincronização: ${lastSyncedLabel.value}.`
 }
 
 function openCreateModal() {
@@ -618,6 +603,17 @@ async function handleWorkItemUpdated(eventPayload) {
   if (eventPayload?.mode === 'local') {
     await handleLocalTaskUpdated(eventPayload.payload || null)
   }
+}
+
+function handleOpenGithubIssueFromModal(issue) {
+  if (!issue?.id) {
+    return
+  }
+
+  mergeIssueIntoBoard(issue)
+  selectedIssueId.value = issue.id
+  editingIssueId.value = issue.id
+  editingLocalTaskId.value = null
 }
 
 function mergeIssueIntoBoard(updatedIssue) {
@@ -1197,6 +1193,7 @@ function resolveEntryOriginLabel(entry) {
       @close="closeWorkItemModal"
       @item-updated="handleWorkItemUpdated"
       @item-synced="handleLocalTaskSynced"
+      @open-github-issue="handleOpenGithubIssueFromModal"
     />
   </section>
 </template>

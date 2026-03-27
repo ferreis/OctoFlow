@@ -346,6 +346,29 @@ final class GithubController
         }
     }
 
+    #[Route('/issues/{issueId}/sub-issues', name: 'github_issue_sub_issue_create', methods: ['POST'])]
+    public function createSubIssues(string $issueId, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return new JsonResponse(['message' => 'Invalid JSON payload.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            return new JsonResponse($this->assignedIssueService->createSubIssues($user, $issueId, $payload), JsonResponse::HTTP_CREATED);
+        } catch (\InvalidArgumentException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
+        } catch (GithubConfigurationException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_SERVICE_UNAVAILABLE);
+        } catch (GithubGraphQLException $exception) {
+            return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_GATEWAY);
+        }
+    }
+
     #[Route('/emails/link', name: 'github_emails_link', methods: ['POST'])]
     public function linkEmails(#[CurrentUser] ?User $user): JsonResponse
     {

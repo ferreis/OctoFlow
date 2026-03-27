@@ -39,6 +39,15 @@ export function updateGithubIssue(request, issueId, payload) {
   })
 }
 
+export function createGithubSubIssues(request, issueId, payload) {
+  return request({
+    url: `/github/issues/${encodeURIComponent(issueId)}/sub-issues`,
+    method: 'POST',
+    csrfActionId: 'github.issue.update',
+    data: payload,
+  })
+}
+
 export function fetchTaskTemplates(request) {
   return request({
     url: '/tasks/templates',

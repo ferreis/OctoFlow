@@ -6,8 +6,10 @@ import {
   RemoteMultiSelect,
 } from '../../federation/remoteComponents'
 import {
+  createGithubSubIssues,
   fetchGithubIssueDetails,
   fetchLocalTask,
+  fetchTaskTemplates,
   syncLocalTaskToGithub,
   updateGithubIssue,
   updateLocalTask,
@@ -71,7 +73,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['close', 'item-updated', 'item-synced'])
+const emit = defineEmits(['close', 'item-updated', 'item-synced', 'open-github-issue'])
 const { notifyUser } = useNotification(props.notify)
 
 const isGithubMode = computed(() => props.mode === 'github')
@@ -98,13 +100,17 @@ watch(
 const currentIssue = ref(null)
 const currentHistory = ref([])
 const saving = ref(false)
+const creatingSubIssues = ref(false)
 const detailLoading = ref(false)
 const error = ref('')
+const subIssueError = ref('')
 const detailSource = ref('cache')
 const selectedTemplateKey = ref('')
 const templateFieldValues = reactive({})
 const templateDrafts = reactive({})
 const templateRenderTimestamp = ref(buildCurrentDateTimeLabel())
+const subIssueTemplates = ref([])
+const subIssueDrafts = ref([buildEmptySubIssueDraft()])
 const form = reactive({
   state: 'OPEN',
   assignCollaboratorId: '',
@@ -124,8 +130,14 @@ const selectedTemplate = computed(() => {
   return enrichTemplateWithAssignableOptions(template, assignableUserOptions.value)
 })
 const selectedTemplateAssigneeFieldKey = computed(() => getTemplateAssigneeFieldKey(selectedTemplate.value))
+const availableSubIssueTemplates = computed(() => Array.isArray(subIssueTemplates.value) ? subIssueTemplates.value : [])
 const historyEntries = computed(() => normalizeHistoryEntries(currentHistory.value, currentIssue.value))
 const statusLabel = computed(() => currentIssue.value?.state === 'CLOSED' ? 'Fechada' : 'Aberta')
+const currentIssueParent = computed(() => currentIssue.value?.parent || null)
+const subIssues = computed(() => Array.isArray(currentIssue.value?.subIssues) ? currentIssue.value.subIssues : [])
+const hasSubIssues = computed(() => subIssues.value.length > 0)
+const openSubIssuesCount = computed(() => subIssues.value.filter((subIssue) => subIssue?.state !== 'CLOSED').length)
+const canCreateSubIssues = computed(() => canEdit.value && !currentIssueParent.value)
 const shouldShowStandaloneCollaboratorSelect = computed(() => selectedTemplateAssigneeFieldKey.value === '')
 const finalBody = computed(() => buildFinalBody())
 const availableLabelOptions = computed(() => buildMergedProjectLabelOptions(
@@ -164,6 +176,7 @@ const assignablePlaceholderLabel = computed(() => {
 })
 const isWorkItemBusy = computed(() => (
   saving.value
+  || creatingSubIssues.value
   || detailLoading.value
   || localLoading.value
   || localSaving.value
@@ -216,6 +229,7 @@ watch(
     currentIssue.value = normalizeIssuePayload(issue)
     currentHistory.value = buildFallbackHistory(issue)
     syncFormFromIssue(issue)
+    resetSubIssueComposer()
     resetTemplateCatalog()
     activePanel.value = 'view'
     githubViewTab.value = 'description'
@@ -223,6 +237,7 @@ watch(
     detailSource.value = 'cache'
 
     if (issue?.id) {
+      await loadSubIssueTemplates()
       await loadLatestIssue(issue.id)
     }
 
@@ -264,12 +279,6 @@ watch(
 
 async function loadLatestIssue(issueId) {
   detailLoading.value = true
-  notifyUser({
-    message: 'Atualizando esta issue direto do GitHub...',
-    type: 'info',
-    duration: 7000,
-  })
-
   try {
     const { data } = await fetchGithubIssueDetails(props.request, issueId)
 
@@ -277,15 +286,13 @@ async function loadLatestIssue(issueId) {
     currentHistory.value = normalizeHistoryEntries(data?.history, currentIssue.value)
     detailSource.value = data?.source || 'github'
     syncFormFromIssue(currentIssue.value)
+    syncSubIssueDraftAssignees()
 
     const detailWarning = String(data?.warning || '').trim()
     if (detailWarning !== '') {
       notifyUser(detailWarning, 'warning')
     }
 
-    if (detailSource.value === 'github') {
-      notifyUser('Detalhes confirmados com o GitHub e salvos no banco local.', 'success')
-    }
   } catch (requestError) {
     notifyUser(
       extractHttpMessage(requestError, 'Nao foi possivel atualizar os detalhes da issue no GitHub. Mantendo o cache local.'),
@@ -297,6 +304,23 @@ async function loadLatestIssue(issueId) {
   }
 }
 
+async function loadSubIssueTemplates() {
+  if (availableSubIssueTemplates.value.length > 0) {
+    return
+  }
+
+  try {
+    const { data } = await fetchTaskTemplates(props.request)
+    subIssueTemplates.value = Array.isArray(data?.items) ? data.items : []
+  } catch (requestError) {
+    notifyUser(
+      extractHttpMessage(requestError, 'Nao foi possivel carregar os templates de criacao para subissues.'),
+      'warning'
+    )
+    subIssueTemplates.value = []
+  }
+}
+
 function syncFormFromIssue(issue) {
   form.state = issue?.state === 'CLOSED' ? 'CLOSED' : 'OPEN'
   form.assignCollaboratorId = resolvePrimaryAssigneeId(issue)
@@ -304,6 +328,57 @@ function syncFormFromIssue(issue) {
     Array.isArray(issue?.labels) ? issue.labels.map((label) => String(label?.name || '').trim()) : [],
     availableLabelOptions.value,
   )
+}
+
+function buildEmptySubIssueDraft() {
+  return {
+    key: `sub-issue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    body: '',
+    assigneeId: '',
+    dueDate: '',
+    templateKey: '',
+    templateFieldValues: {},
+  }
+}
+
+function resetSubIssueComposer() {
+  subIssueDrafts.value = [buildEmptySubIssueDraft()]
+  subIssueError.value = ''
+}
+
+function addSubIssueDraft() {
+  subIssueDrafts.value = [...subIssueDrafts.value, buildEmptySubIssueDraft()]
+}
+
+function removeSubIssueDraft(draftKey) {
+  const remainingDrafts = subIssueDrafts.value.filter((draft) => draft.key !== draftKey)
+  subIssueDrafts.value = remainingDrafts.length > 0 ? remainingDrafts : [buildEmptySubIssueDraft()]
+}
+
+function syncSubIssueDraftAssignees() {
+  const availableAssigneeIds = new Set(assignableUsers.value.map((user) => String(user?.id || '').trim()).filter(Boolean))
+
+  subIssueDrafts.value = subIssueDrafts.value.map((draft) => ({
+      ...draft,
+      assigneeId: availableAssigneeIds.has(String(draft.assigneeId || '').trim()) ? String(draft.assigneeId || '').trim() : '',
+    }))
+}
+
+function findSubIssueTemplate(templateKey) {
+  return availableSubIssueTemplates.value.find((template) => template?.key === templateKey) || null
+}
+
+function handleSubIssueTemplateChange(draft) {
+  const template = findSubIssueTemplate(String(draft?.templateKey || '').trim())
+  draft.templateFieldValues = template ? buildInitialFieldState(template) : {}
+}
+
+function updateSubIssueTemplateField(draft, fieldKey, value) {
+  draft.templateFieldValues = {
+    ...(draft.templateFieldValues || {}),
+    [fieldKey]: value,
+  }
 }
 
 function resetTemplateCatalog() {
@@ -593,10 +668,84 @@ async function saveIssue() {
   }
 }
 
+async function saveSubIssues() {
+  if (!currentIssue.value?.id) {
+    subIssueError.value = 'Nenhuma issue valida foi selecionada.'
+    return
+  }
+
+  if (!canCreateSubIssues.value) {
+    subIssueError.value = currentIssueParent.value
+      ? 'Sub-issues nao podem receber novas sub-issues.'
+      : 'Voce nao tem permissao para criar sub-issues nesta issue.'
+    return
+  }
+
+  const filledDrafts = subIssueDrafts.value
+    .map((draft) => ({
+      ...draft,
+      title: String(draft.title || '').trim(),
+      body: String(draft.body || '').trim(),
+      assigneeId: String(draft.assigneeId || '').trim(),
+      dueDate: String(draft.dueDate || '').trim(),
+    }))
+    .filter((draft) => draft.title !== '' || draft.body !== '' || draft.assigneeId !== '' || draft.dueDate !== '')
+
+  if (filledDrafts.length === 0) {
+    subIssueError.value = 'Preencha pelo menos uma sub-issue antes de salvar.'
+    return
+  }
+
+  const draftWithoutTitle = filledDrafts.findIndex((draft) => draft.title === '')
+  if (draftWithoutTitle >= 0) {
+    subIssueError.value = `Informe o titulo da sub-issue ${draftWithoutTitle + 1}.`
+    return
+  }
+
+  creatingSubIssues.value = true
+  subIssueError.value = ''
+
+  try {
+    const { data } = await createGithubSubIssues(props.request, currentIssue.value.id, {
+      items: filledDrafts.map((draft) => ({
+        title: draft.title,
+        body: draft.body,
+        dueDate: draft.dueDate || null,
+        template: draft.templateKey || null,
+        templateFields: draft.templateKey
+          ? buildSubmissionFields(findSubIssueTemplate(draft.templateKey), draft.templateFieldValues || {})
+          : {},
+        assigneeIds: draft.assigneeId ? [draft.assigneeId] : [],
+      })),
+    })
+
+    currentIssue.value = normalizeIssuePayload(data?.item || currentIssue.value)
+    currentHistory.value = normalizeHistoryEntries(data?.history, currentIssue.value)
+    syncFormFromIssue(currentIssue.value)
+    syncSubIssueDraftAssignees()
+    emit('item-updated', {
+      mode: 'github',
+      payload: currentIssue.value,
+    })
+    notifyUser(
+      filledDrafts.length === 1 ? 'Sub-issue criada com sucesso.' : 'Sub-issues criadas com sucesso.',
+      'success'
+    )
+    resetSubIssueComposer()
+    activePanel.value = 'subtasks'
+    clearStoredWorkItemDraft()
+  } catch (requestError) {
+    subIssueError.value = extractHttpMessage(requestError, 'Nao foi possivel criar as sub-issues.')
+  } finally {
+    creatingSubIssues.value = false
+  }
+}
+
 function resetIssueForm() {
   syncFormFromIssue(currentIssue.value)
   resetTemplateInputs()
   error.value = ''
+  subIssueError.value = ''
 }
 
 function normalizeIssuePayload(issue) {
@@ -608,6 +757,10 @@ function normalizeIssuePayload(issue) {
     ...issue,
     assignees: Array.isArray(issue.assignees) ? issue.assignees : [],
     labels: Array.isArray(issue.labels) ? issue.labels : [],
+    parent: issue.parent && typeof issue.parent === 'object' ? issue.parent : null,
+    subIssues: Array.isArray(issue.subIssues) ? issue.subIssues : [],
+    projects: Array.isArray(issue.projects) ? issue.projects : [],
+    hasOpenSubIssues: Boolean(issue.hasOpenSubIssues),
     repository: issue.repository || {},
     closedAt: typeof issue.closedAt === 'string' && issue.closedAt.trim() !== ''
       ? issue.closedAt
@@ -730,6 +883,9 @@ function normalizeHistoryEntries(history, fallbackIssue = null) {
       updatedAt: entry.updatedAt || entry.createdAt || '',
       body: typeof entry.body === 'string' && entry.body.trim() !== '' ? entry.body : '',
       url: typeof entry.url === 'string' && entry.url.trim() !== '' ? entry.url : '',
+      octoflowIssueId: typeof entry.octoflowIssueId === 'string' && entry.octoflowIssueId.trim() !== ''
+        ? entry.octoflowIssueId
+        : '',
     }))
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))
 }
@@ -782,6 +938,28 @@ function buildFallbackHistory(issue) {
   }
 
   return history.sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))
+}
+
+async function openGithubIssueInOctoFlow(issueId) {
+  const normalizedIssueId = String(issueId || '').trim()
+  if (normalizedIssueId === '') {
+    return
+  }
+
+  currentIssue.value = {
+    ...(currentIssue.value || {}),
+    id: normalizedIssueId,
+  }
+  currentHistory.value = []
+  activePanel.value = 'view'
+  githubViewTab.value = 'description'
+  error.value = ''
+  subIssueError.value = ''
+  await loadLatestIssue(normalizedIssueId)
+
+  if (currentIssue.value?.id) {
+    emit('open-github-issue', currentIssue.value)
+  }
 }
 
 function normalizeHistoryKind(kind) {
@@ -1044,6 +1222,7 @@ watch(
     () => form.assignCollaboratorId,
     () => JSON.stringify(form.selectedLabels || []),
     () => JSON.stringify(templateFieldValues || {}),
+    () => JSON.stringify(subIssueDrafts.value || []),
   ],
   () => {
     if (!isGithubMode.value) {
@@ -1331,6 +1510,7 @@ function buildGithubEditSnapshot() {
     assignCollaboratorId: String(form.assignCollaboratorId || '').trim(),
     selectedLabelNames: buildLabelNamesFromSelection(form.selectedLabels).sort((leftName, rightName) => leftName.localeCompare(rightName, 'pt-BR')),
     templateFieldValues: normalizeDraftFieldValues(templateFieldValues),
+    subIssueDrafts: normalizeSubIssueDrafts(subIssueDrafts.value),
   })
 }
 
@@ -1393,6 +1573,7 @@ function persistWorkItemDraft() {
       assignCollaboratorId: String(form.assignCollaboratorId || '').trim(),
       selectedLabelNames: buildLabelNamesFromSelection(form.selectedLabels),
       templateFieldValues: normalizeDraftFieldValues(templateFieldValues),
+      subIssueDrafts: normalizeSubIssueDrafts(subIssueDrafts.value),
     }
   } else if (isLocalMode.value) {
     draftPayload = {
@@ -1446,11 +1627,15 @@ function restoreStoredWorkItemDraft() {
   applyingStoredWorkItemDraft.value = true
 
   try {
-    const restoredPanel = storedDraft.activePanel === 'edit' ? 'edit' : 'view'
+    const restoredPanel = ['view', 'edit', 'subtasks'].includes(String(storedDraft.activePanel || '').trim())
+      ? storedDraft.activePanel
+      : 'view'
     activePanel.value = restoredPanel
 
     if (isGithubMode.value) {
-      githubViewTab.value = storedDraft.viewTab === 'history' ? 'history' : 'description'
+      githubViewTab.value = ['description', 'history'].includes(String(storedDraft.viewTab || '').trim())
+        ? storedDraft.viewTab
+        : 'description'
       form.state = storedDraft.formState === 'CLOSED' ? 'CLOSED' : 'OPEN'
       form.assignCollaboratorId = String(storedDraft.assignCollaboratorId || '').trim()
       form.selectedLabels = mapLabelNamesToSelectedOptions(storedDraft.selectedLabelNames, availableLabelOptions.value)
@@ -1461,6 +1646,7 @@ function restoreStoredWorkItemDraft() {
       }
 
       applyDraftFieldValues(templateFieldValues, storedDraft.templateFieldValues)
+      applySubIssueDrafts(storedDraft.subIssueDrafts)
       return
     }
 
@@ -1508,6 +1694,40 @@ function normalizeDraftFieldValues(rawFieldValues) {
   }
 
   return normalizedFieldValues
+}
+
+function normalizeSubIssueDrafts(rawDrafts) {
+  if (!Array.isArray(rawDrafts)) {
+    return []
+  }
+
+  return rawDrafts
+    .filter((draft) => draft && typeof draft === 'object')
+    .map((draft, index) => ({
+      key: String(draft.key || `stored-sub-issue-${index}`),
+      title: String(draft.title || ''),
+      body: String(draft.body || ''),
+      assigneeId: String(draft.assigneeId || ''),
+      dueDate: String(draft.dueDate || ''),
+      templateKey: String(draft.templateKey || ''),
+      templateFieldValues: normalizeDraftFieldValues(draft.templateFieldValues),
+    }))
+}
+
+function applySubIssueDrafts(rawDrafts) {
+  const normalizedDrafts = normalizeSubIssueDrafts(rawDrafts)
+  subIssueDrafts.value = normalizedDrafts.length > 0 ? normalizedDrafts : [buildEmptySubIssueDraft()]
+  syncSubIssueDraftAssignees()
+}
+
+function subIssueStatusLabel(state) {
+  return String(state || '').trim().toUpperCase() === 'CLOSED' ? 'Fechada' : 'Aberta'
+}
+
+function subIssueStatusClass(state) {
+  return String(state || '').trim().toUpperCase() === 'CLOSED'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : 'border-amber-200 bg-amber-50 text-amber-700'
 }
 
 function applyDraftFieldValues(targetReactiveMap, rawFieldValues) {
@@ -1625,6 +1845,29 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
           </div>
         </div>
 
+        <div v-if="currentIssueParent || hasSubIssues" class="grid gap-2 md:grid-cols-2">
+          <div
+            v-if="currentIssueParent"
+            class="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800"
+          >
+            Esta issue e uma sub-issue de
+            <button
+              type="button"
+              class="font-bold underline text-cyan-800"
+              @click="openGithubIssueInOctoFlow(currentIssueParent.id)"
+            >
+              #{{ currentIssueParent.number }} {{ currentIssueParent.title }}
+            </button>.
+          </div>
+
+          <div
+            v-if="hasSubIssues"
+            class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            {{ subIssues.length }} sub-issue(s) vinculada(s), sendo {{ openSubIssuesCount }} ainda aberta(s).
+          </div>
+        </div>
+
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
@@ -1642,6 +1885,14 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
             @click="activePanel = 'edit'"
           >
             Atualização
+          </button>
+          <button
+            type="button"
+            class="app-btn"
+            :class="activePanel === 'subtasks' ? 'app-btn-tab-active' : 'app-btn-secondary'"
+            @click="activePanel = 'subtasks'"
+          >
+            Subissues
           </button>
         </div>
       </header>
@@ -1700,7 +1951,7 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
             </p>
           </article>
 
-          <article v-else class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
+          <article v-else-if="githubViewTab === 'history'" class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Historico</p>
               <h3 class="mt-1 text-2xl font-semibold text-slate-950">Linha do tempo da issue</h3>
@@ -1727,8 +1978,16 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
 
                   <div class="flex items-center gap-3">
                     <span class="text-xs font-medium text-slate-500">{{ formatDateTime(entry.createdAt) }}</span>
+                    <button
+                      v-if="entry.octoflowIssueId"
+                      type="button"
+                      class="text-xs font-semibold text-cyan-700 underline"
+                      @click="openGithubIssueInOctoFlow(entry.octoflowIssueId)"
+                    >
+                      Abrir no OctoFlow
+                    </button>
                     <a
-                      v-if="entry.url"
+                      v-else-if="entry.url"
                       class="text-xs font-semibold text-cyan-700 underline"
                       :href="entry.url"
                       target="_blank"
@@ -1755,10 +2014,11 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
               Nenhum historico adicional foi encontrado para esta issue.
             </p>
           </article>
+
         </div>
 
         <div
-          v-else
+          v-else-if="activePanel === 'edit'"
           class="grid gap-5 xl:grid-cols-[minmax(0,1.08fr),minmax(320px,0.92fr)]"
         >
           <article class="grid gap-4">
@@ -1927,6 +2187,7 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
                 </button>
               </div>
             </form>
+
           </article>
 
           <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
@@ -1943,6 +2204,279 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
                 :content="finalBody"
                 empty-label="Preencha os campos do modelo para gerar a atualização."
               />
+            </div>
+          </article>
+        </div>
+
+        <div v-else class="grid gap-5">
+          <article class="grid gap-4 rounded-[28px] border border-white/60 bg-white/85 p-5 app-depth-soft">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Subissues</p>
+                <h3 class="mt-1 text-2xl font-semibold text-slate-950">Decomposição da issue principal</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-500">
+                  As sub-issues herdam o mesmo repositorio e os mesmos projetos da issue pai.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                class="app-btn app-btn-secondary"
+                :disabled="creatingSubIssues || !canCreateSubIssues"
+                @click="addSubIssueDraft"
+              >
+                Nova sub-issue
+              </button>
+            </div>
+
+            <div v-if="hasSubIssues" class="grid gap-3">
+              <article
+                v-for="subIssue in subIssues"
+                :key="subIssue.id"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-4"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span
+                        class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                        :class="subIssueStatusClass(subIssue.state)"
+                      >
+                        {{ subIssueStatusLabel(subIssue.state) }}
+                      </span>
+                      <strong class="break-words text-sm font-semibold text-slate-900">
+                        #{{ subIssue.number }} {{ subIssue.title }}
+                      </strong>
+                    </div>
+
+                    <p class="mt-2 text-sm text-slate-500">
+                      Responsavel: {{ subIssue.assignees?.length ? subIssue.assignees.map((assignee) => assignee.name || assignee.login).join(', ') : 'Sem responsavel' }}
+                    </p>
+                  </div>
+
+                  <div class="flex items-center gap-3">
+                    <button
+                      type="button"
+                      class="text-sm font-semibold text-cyan-700 underline"
+                      @click="openGithubIssueInOctoFlow(subIssue.id)"
+                    >
+                      Abrir no OctoFlow
+                    </button>
+                    <a
+                      v-if="subIssue.url"
+                      class="text-sm font-semibold text-cyan-700 underline"
+                      :href="subIssue.url"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      GitHub
+                    </a>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <p
+              v-else
+              class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
+            >
+              Nenhuma sub-issue foi criada para esta issue ainda.
+            </p>
+
+            <p
+              v-if="!canCreateSubIssues"
+              class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800"
+            >
+              {{ currentIssueParent
+                ? 'Esta issue ja e uma sub-issue e, por regra, nao pode receber filhos.'
+                : 'Sua conta nao possui permissao para criar sub-issues nesta issue.' }}
+            </p>
+
+            <div class="grid gap-4">
+              <article
+                v-for="(draft, index) in subIssueDrafts"
+                :key="draft.key"
+                class="grid gap-4 rounded-[24px] border border-slate-200/80 bg-white/80 p-5"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Sub-issue {{ index + 1 }}</p>
+                    <p class="text-sm text-slate-500">A issue sera criada no mesmo repositorio da tarefa principal.</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="app-btn app-btn-secondary"
+                    :disabled="creatingSubIssues"
+                    @click="removeSubIssueDraft(draft.key)"
+                  >
+                    Remover
+                  </button>
+                </div>
+
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Titulo</span>
+                  <input
+                    v-model="draft.title"
+                    type="text"
+                    placeholder="Ex.: Ajustar validacao de CPF no cadastro"
+                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  >
+                </label>
+
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Template de criação</span>
+                  <select
+                    :value="draft.templateKey"
+                    :disabled="creatingSubIssues"
+                    class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    @change="draft.templateKey = $event.target.value; handleSubIssueTemplateChange(draft)"
+                  >
+                    <option value="">Criar sem template</option>
+                    <option
+                      v-for="template in availableSubIssueTemplates"
+                      :key="`${draft.key}-${template.key}`"
+                      :value="template.key"
+                    >
+                      {{ template.name }}
+                    </option>
+                  </select>
+                </label>
+
+                <div
+                  v-if="findSubIssueTemplate(draft.templateKey)"
+                  class="grid gap-4 rounded-[24px] border border-slate-200/80 bg-white/80 p-5"
+                >
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Campos do template</p>
+                    <p class="text-sm text-slate-500">{{ findSubIssueTemplate(draft.templateKey)?.description }}</p>
+                  </div>
+
+                  <div class="grid gap-4 md:grid-cols-2">
+                    <template
+                      v-for="field in findSubIssueTemplate(draft.templateKey)?.fields || []"
+                      :key="`${draft.key}-${field.key}`"
+                    >
+                      <label v-if="field.type === 'textarea'" class="grid gap-2 md:col-span-2">
+                        <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                        <textarea
+                          :value="draft.templateFieldValues?.[field.key] || ''"
+                          rows="5"
+                          :placeholder="field.placeholder || ''"
+                          class="min-h-[132px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                          @input="updateSubIssueTemplateField(draft, field.key, $event.target.value)"
+                        />
+                      </label>
+
+                      <label v-else-if="field.type === 'list'" class="grid gap-2 md:col-span-2">
+                        <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                        <textarea
+                          :value="draft.templateFieldValues?.[field.key] || ''"
+                          rows="4"
+                          :placeholder="field.placeholder || 'Um item por linha.'"
+                          class="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                          @input="updateSubIssueTemplateField(draft, field.key, $event.target.value)"
+                        />
+                      </label>
+
+                      <label v-else-if="field.type === 'select'" class="grid gap-2">
+                        <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                        <select
+                          :value="draft.templateFieldValues?.[field.key] || ''"
+                          class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                          @change="updateSubIssueTemplateField(draft, field.key, $event.target.value)"
+                        >
+                          <option value="">Selecione</option>
+                          <option v-for="option in field.options || []" :key="option.value" :value="option.value">
+                            {{ option.label }}
+                          </option>
+                        </select>
+                      </label>
+
+                      <label v-else class="grid gap-2">
+                        <span class="text-sm font-semibold text-slate-900">{{ field.label }}</span>
+                        <input
+                          :value="draft.templateFieldValues?.[field.key] || ''"
+                          type="text"
+                          :placeholder="field.placeholder || ''"
+                          class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                          @input="updateSubIssueTemplateField(draft, field.key, $event.target.value)"
+                        >
+                      </label>
+                    </template>
+                  </div>
+                </div>
+
+                <label class="grid gap-2">
+                  <span class="text-sm font-semibold text-slate-900">Descricao</span>
+                  <textarea
+                    v-model="draft.body"
+                    rows="4"
+                    placeholder="Descreva o escopo especifico desta sub-issue."
+                    class="min-h-[120px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <label class="grid gap-2">
+                    <span class="text-sm font-semibold text-slate-900">Responsavel</span>
+                    <select
+                      v-model="draft.assigneeId"
+                      :disabled="creatingSubIssues"
+                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    >
+                      <option value="">{{ assignablePlaceholderLabel }}</option>
+                      <option
+                        v-for="assignableUser in assignableUsers"
+                        :key="`${draft.key}-${assignableUser.id || assignableUser.login}`"
+                        :value="assignableUser.id"
+                      >
+                        {{ assignableUser.name ? `${assignableUser.name} (${assignableUser.login})` : assignableUser.login }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label class="grid gap-2">
+                    <span class="text-sm font-semibold text-slate-900">Data de entrega</span>
+                    <input
+                      v-model="draft.dueDate"
+                      type="date"
+                      :disabled="creatingSubIssues"
+                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-300"
+                    >
+                  </label>
+                </div>
+              </article>
+            </div>
+
+            <p class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+              Se a issue principal tiver um "Prazo desejado", nenhuma sub-issue pode ultrapassar essa data.
+            </p>
+
+            <p
+              v-if="subIssueError"
+              class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+            >
+              {{ subIssueError }}
+            </p>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                :disabled="creatingSubIssues || !canCreateSubIssues"
+                class="app-btn app-btn-primary"
+                @click="saveSubIssues"
+              >
+                {{ creatingSubIssues ? 'Criando...' : 'Criar sub-issues' }}
+              </button>
+              <button
+                type="button"
+                :disabled="creatingSubIssues"
+                class="app-btn app-btn-secondary"
+                @click="resetSubIssueComposer"
+              >
+                Limpar subtarefas
+              </button>
             </div>
           </article>
         </div>
@@ -2008,6 +2542,14 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
           >
             Atualização
           </button>
+          <button
+            type="button"
+            class="app-btn"
+            :class="activePanel === 'subtasks' ? 'app-btn-tab-active' : 'app-btn-secondary'"
+            @click="activePanel = 'subtasks'"
+          >
+            SubTarefas
+          </button>
         </div>
       </header>
 
@@ -2031,7 +2573,7 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
           </button>
         </div>
 
-        <div class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(320px,0.95fr)]">
+        <div v-if="activePanel !== 'subtasks'" class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr),minmax(320px,0.95fr)]">
           <article v-if="activePanel === 'view' && localViewTab === 'description'" class="app-panel-standard grid gap-4 rounded-[28px] p-5">
             <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
               <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tags</span>
@@ -2399,7 +2941,25 @@ function normalizePersistedHistoryEntries(rawHistoryEntries, taskId) {
               </button>
             </aside>
           </div>
+
         </div>
+
+        <article
+          v-else
+          class="app-panel-standard grid gap-4 rounded-[28px] p-5"
+        >
+          <div>
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">SubTarefas</p>
+            <h3 class="mt-1 text-2xl font-semibold text-slate-950">Organização por subtarefas</h3>
+            <p class="mt-2 text-sm leading-6 text-slate-500">
+              O fluxo de subtarefas para tarefas locais ainda não foi implementado. Esta aba foi preparada para manter a navegação consistente com as issues do GitHub.
+            </p>
+          </div>
+
+          <div class="rounded-[24px] border border-dashed border-slate-300 bg-slate-50/80 px-5 py-8 text-sm text-slate-600">
+            Quando esse módulo evoluir, as subtarefas locais poderão ser exibidas e gerenciadas aqui.
+          </div>
+        </article>
       </div>
     </template>
   </TaskModalShell>
