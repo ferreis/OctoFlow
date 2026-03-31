@@ -9,8 +9,4 @@ RUN apk update
 RUN apk add bash curl nano openssl
 RUN apk update
 
-RUN deluser nginx \
-    && addgroup -g "${HOST_GID}" -S octoflow \
-    && adduser -S -D -H -u "${HOST_UID}" -G octoflow octoflow
-
 WORKDIR /usr/src/app
