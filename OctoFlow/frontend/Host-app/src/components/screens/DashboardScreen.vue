@@ -20,7 +20,7 @@ import { fetchFinanceInvestmentPlans } from '../../services/financeInvestments'
 import { fetchGithubProfile, fetchGithubWorkspace } from '../../services/githubWorkspace'
 import { fetchGithubIssuesCache, syncGithubIssues } from '../../services/tasks'
 import { extractHttpMessage } from '../../utils/httpErrors'
-import { formatDate } from '../../utils/date'
+import { buildCurrentMonthDateRange, formatDate } from '../../utils/date'
 
 const props = defineProps({
   request: {
@@ -943,6 +943,7 @@ async function loadFinanceDashboard(showStatus = false) {
 
   try {
     const direction = activeFinancialDirection.value
+    const currentMonthDateRange = buildCurrentMonthDateRange()
 
     const [
       summaryGlobalResponse,
@@ -958,8 +959,8 @@ async function loadFinanceDashboard(showStatus = false) {
       debtPlansResponse,
       investmentPlansResponse,
     ] = await Promise.all([
-      fetchFinanceDashboardSummary(props.request),
-      fetchFinanceDashboardSummary(props.request, { direction }),
+      fetchFinanceDashboardSummary(props.request, currentMonthDateRange),
+      fetchFinanceDashboardSummary(props.request, { ...currentMonthDateRange, direction }),
       fetchFinanceDashboardCashflow(props.request),
       fetchFinanceDashboardCashflow(props.request, { direction }),
       fetchFinanceDashboardCategories(props.request, { limit: 10 }),

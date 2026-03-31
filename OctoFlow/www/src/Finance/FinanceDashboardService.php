@@ -29,7 +29,10 @@ final class FinanceDashboardService
                 COALESCE(SUM(CASE WHEN entry.direction = 'PAYABLE' THEN entry.expected_amount_brl ELSE 0 END), 0) AS expected_expense_brl,
                 COALESCE(SUM(CASE WHEN entry.direction = 'RECEIVABLE' THEN entry.settled_amount_brl ELSE 0 END), 0) AS realized_income_brl,
                 COALESCE(SUM(CASE WHEN entry.direction = 'PAYABLE' THEN entry.settled_amount_brl ELSE 0 END), 0) AS realized_expense_brl,
-                COALESCE(SUM(entry.remaining_amount_brl), 0) AS remaining_total_brl,
+                COALESCE(SUM(CASE
+                    WHEN entry.direction = 'RECEIVABLE' THEN entry.remaining_amount_brl
+                    ELSE -entry.remaining_amount_brl
+                END), 0) AS remaining_total_brl,
                 COALESCE(SUM(CASE WHEN entry.status = 'OVERDUE' THEN 1 ELSE 0 END), 0) AS overdue_entries_count
             FROM finance_entry entry
             WHERE {$whereSql}

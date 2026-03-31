@@ -37,10 +37,11 @@ final class FinanceEntryController
 
         $startDate = FinanceInput::normalizeOptionalDate($filters['startDate'] ?? null);
         $endDate = FinanceInput::normalizeOptionalDate($filters['endDate'] ?? null);
+        [$lazyStartDate, $lazyEndDate] = $this->resolveLazyGenerationRange($startDate, $endDate);
 
-        if ($startDate instanceof \DateTimeImmutable && $endDate instanceof \DateTimeImmutable && $endDate >= $startDate) {
+        if ($lazyStartDate instanceof \DateTimeImmutable && $lazyEndDate instanceof \DateTimeImmutable && $lazyEndDate >= $lazyStartDate) {
             try {
-                $this->financeRecurringService->generateMissingEntriesForRange($user, $startDate, $endDate, 'lazy');
+                $this->financeRecurringService->generateMissingEntriesForRange($user, $lazyStartDate, $lazyEndDate, 'lazy');
             } catch (\Throwable) {
                 // A listagem segue mesmo se a geração lazy falhar.
             }
@@ -142,19 +143,33 @@ final class FinanceEntryController
         }
     }
 
-    #[Route('/entries/{entryId<\d+>}/settlements/{settlementId<\d+>}', name: 'finance_entries_settlements_delete', methods: ['DELETE'])]
-    public function deleteSettlement(int $entryId, int $settlementId, #[CurrentUser] ?User $user): JsonResponse
+    /**
+     * @return array{0: \DateTimeImmutable|null, 1: \DateTimeImmutable|null}
+     */
+    private function resolveLazyGenerationRange(?\DateTimeImmutable $startDate, ?\DateTimeImmutable $endDate): array
     {
-        if ($user === null) {
-            return $this->buildUnauthorizedResponse();
+        if ($startDate instanceof \DateTimeImmutable && $endDate instanceof \DateTimeImmutable) {
+            return [$startDate, $endDate];
         }
 
-        try {
-            return new JsonResponse([
-                'item' => $this->financeEntryService->deleteSettlement($user, $entryId, $settlementId),
-            ]);
-        } catch (\Throwable $throwable) {
-            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        if ($startDate instanceof \DateTimeImmutable) {
+            $normalizedStartDate = new \DateTimeImmutable($startDate->format('Y-m-01'));
+            $normalizedEndDate = $normalizedStartDate->modify('+2 months')->modify('last day of this month');
+
+            return [$normalizedStartDate, $normalizedEndDate];
         }
+
+        if ($endDate instanceof \DateTimeImmutable) {
+            $normalizedEndDate = new \DateTimeImmutable($endDate->format('Y-m-t'));
+            $normalizedStartDate = new \DateTimeImmutable($normalizedEndDate->format('Y-m-01'));
+            $normalizedStartDate = $normalizedStartDate->modify('-2 months');
+
+            return [$normalizedStartDate, $normalizedEndDate];
+        }
+
+        $defaultStartDate = new \DateTimeImmutable('first day of this month');
+        $defaultEndDate = $defaultStartDate->modify('+2 months')->modify('last day of this month');
+
+        return [$defaultStartDate, $defaultEndDate];
     }
 }

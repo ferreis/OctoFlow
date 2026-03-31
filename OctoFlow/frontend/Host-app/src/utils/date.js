@@ -56,6 +56,13 @@ function buildDateLabel(parsedDate) {
   return `${dayLabel}/${monthLabel}/${yearLabel}`
 }
 
+function buildIsoDateLabel(parsedDate) {
+  const yearLabel = String(parsedDate.getFullYear())
+  const monthLabel = padTwoDigits(parsedDate.getMonth() + 1)
+  const dayLabel = padTwoDigits(parsedDate.getDate())
+  return `${yearLabel}-${monthLabel}-${dayLabel}`
+}
+
 function buildTimeLabel(parsedDate) {
   const hourLabel = padTwoDigits(parsedDate.getHours())
   const minuteLabel = padTwoDigits(parsedDate.getMinutes())
@@ -82,4 +89,24 @@ export function formatDateTime(value, emptyLabel = 'sem data') {
 
 export function buildCurrentDateTimeLabel(value = new Date()) {
   return formatDateTime(value, '')
+}
+
+export function formatDateAsIsoInput(value = new Date(), emptyLabel = '') {
+  const parsedDate = parseDateValue(value)
+  if (!parsedDate) {
+    return emptyLabel
+  }
+
+  return buildIsoDateLabel(parsedDate)
+}
+
+export function buildCurrentMonthDateRange(referenceDate = new Date()) {
+  const parsedReferenceDate = parseDateValue(referenceDate) || new Date()
+  const startDate = new Date(parsedReferenceDate.getFullYear(), parsedReferenceDate.getMonth(), 1)
+  const endDate = new Date(parsedReferenceDate.getFullYear(), parsedReferenceDate.getMonth() + 1, 0)
+
+  return {
+    startDate: formatDateAsIsoInput(startDate, ''),
+    endDate: formatDateAsIsoInput(endDate, ''),
+  }
 }

@@ -67,7 +67,7 @@ import {
   translateFinanceTerm,
 } from '../../constants/financeTerms'
 import { useNotification } from '../../composables/useNotification'
-import { formatDate, formatDateTime } from '../../utils/date'
+import { buildCurrentMonthDateRange, formatDate, formatDateTime } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
 import FinanceEntriesListPanel from '../shared/FinanceEntriesListPanel.vue'
@@ -260,6 +260,8 @@ const renegotiationForm = reactive({
   planId: '',
   installmentsCount: 6,
   reason: 'Renegociação manual',
+  categoryId: '',
+  defaultBankAccountId: '',
 })
 
 const simulationForm = reactive({
@@ -304,8 +306,14 @@ const debtForm = reactive({
   defaultBankAccountId: '',
 })
 
+const accountActionModalState = reactive({
+  isOpen: false,
+  actionType: 'ENTRY',
+})
+const selectedAccountActionType = ref('ENTRY')
+
 const currencyForm = reactive({
-  date: new Date().toISOString().slice(0, 10),
+  date: getCurrentDateInputValue(),
   codes: ['USD', 'EUR', 'GBP', 'ARS'],
 })
 
@@ -705,6 +713,52 @@ const isDebtsAccountsTab = computed(() => activeAccountsTab.value === 'debts')
 const shouldShowEntryManagement = computed(() => isPayableAccountsTab.value || isReceivableAccountsTab.value)
 const shouldShowRecurringSection = computed(() => isPayableAccountsTab.value || isReceivableAccountsTab.value)
 const shouldShowInstallmentSection = computed(() => isPayableAccountsTab.value || isDebtsAccountsTab.value)
+const availableAccountActionOptions = computed(() => {
+  const options = []
+
+  if (shouldShowEntryManagement.value) {
+    options.push(
+      { value: 'ENTRY', label: 'Lançamento avulso' },
+      { value: 'SETTLEMENT', label: 'Baixa de lançamento' },
+    )
+  }
+
+  if (shouldShowRecurringSection.value) {
+    options.push({ value: 'RECURRING_RULE', label: 'Regra recorrente' })
+  }
+
+  if (shouldShowInstallmentSection.value) {
+    options.push(
+      { value: 'INSTALLMENT_PLAN', label: 'Plano de parcelamento' },
+      { value: 'RENEGOTIATION', label: 'Renegociar plano' },
+    )
+  }
+
+  return options
+})
+const accountActionModalTitle = computed(() => {
+  if (accountActionModalState.actionType === 'ENTRY') {
+    return entryEditingId.value ? 'Editar lançamento' : 'Novo lançamento'
+  }
+
+  if (accountActionModalState.actionType === 'SETTLEMENT') {
+    return 'Baixa de lançamento'
+  }
+
+  if (accountActionModalState.actionType === 'RECURRING_RULE') {
+    return recurringRuleEditingId.value ? 'Editar recorrência' : 'Nova recorrência'
+  }
+
+  if (accountActionModalState.actionType === 'INSTALLMENT_PLAN') {
+    return 'Novo parcelamento'
+  }
+
+  if (accountActionModalState.actionType === 'RENEGOTIATION') {
+    return 'Renegociar plano'
+  }
+
+  return 'Gerenciar lançamento'
+})
 
 const recurringDirectionByTab = computed(() => {
   if (isPayableAccountsTab.value) {
@@ -808,6 +862,9 @@ const accountsOverviewComparisonRows = computed(() => {
 
   const incomeRemainingBrl = Math.max(0, roundMoney(expectedIncomeBrl - realizedIncomeBrl))
   const expenseRemainingBrl = Math.max(0, roundMoney(expectedExpenseBrl - realizedExpenseBrl))
+  const totalExpectedBrl = roundMoney(expectedIncomeBrl - expectedExpenseBrl)
+  const totalRealizedBrl = roundMoney(realizedIncomeBrl - realizedExpenseBrl)
+  const totalRemainingBrl = roundMoney(incomeRemainingBrl - expenseRemainingBrl)
 
   return [
     {
@@ -825,6 +882,14 @@ const accountsOverviewComparisonRows = computed(() => {
       realizedBrl: realizedExpenseBrl,
       remainingBrl: expenseRemainingBrl,
       progressPercent: expectedExpenseBrl > 0 ? Math.min(100, roundMoney((realizedExpenseBrl / expectedExpenseBrl) * 100)) : 0,
+    },
+    {
+      key: 'total',
+      label: 'Total (Receber - Pagar)',
+      expectedBrl: totalExpectedBrl,
+      realizedBrl: totalRealizedBrl,
+      remainingBrl: totalRemainingBrl,
+      progressPercent: null,
     },
   ]
 })
@@ -926,6 +991,10 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
     resetRecurringRuleForm()
   }
 
+  if (accountActionModalState.isOpen) {
+    closeAccountActionModal()
+  }
+
   applyAccountsDirectionContext()
   entryFilters.page = 1
   localListPages.recurringRules = 1
@@ -933,6 +1002,26 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
 
   await loadAccountsCurrentTabData(nextAccountsTab)
 })
+
+watch(
+  availableAccountActionOptions,
+  (nextOptions) => {
+    if (!Array.isArray(nextOptions) || nextOptions.length <= 0) {
+      return
+    }
+
+    const selectedOptionExists = nextOptions.some((actionOption) => actionOption.value === selectedAccountActionType.value)
+    if (!selectedOptionExists) {
+      selectedAccountActionType.value = nextOptions[0].value
+    }
+
+    const modalOptionExists = nextOptions.some((actionOption) => actionOption.value === accountActionModalState.actionType)
+    if (!modalOptionExists) {
+      accountActionModalState.actionType = nextOptions[0].value
+    }
+  },
+  { immediate: true },
+)
 
 watch(
   () => entryForm.direction,
@@ -1007,6 +1096,9 @@ function resetLocalState() {
   debtPreview.value = null
   debtPreviewRequestPayload.value = null
   debtPlanCreationSuggestionKey.value = ''
+  accountActionModalState.isOpen = false
+  accountActionModalState.actionType = 'ENTRY'
+  selectedAccountActionType.value = 'ENTRY'
   currenciesCatalog.value = []
   currencyRates.value = []
   exportJobs.value = []
@@ -1043,8 +1135,9 @@ async function loadDashboard() {
   loadingState.dashboard = true
 
   try {
+    const currentMonthDateRange = buildCurrentMonthDateRange()
     const [summaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
-      fetchFinanceDashboardSummary(props.request),
+      fetchFinanceDashboardSummary(props.request, currentMonthDateRange),
       fetchFinanceDashboardCashflow(props.request),
       fetchFinanceDashboardCategories(props.request, { limit: LIST_ITEMS_PER_PAGE }),
     ])
@@ -1326,7 +1419,7 @@ async function submitEntry() {
         return
       }
 
-      const dueDate = entryForm.dueDate || new Date().toISOString().slice(0, 10)
+      const dueDate = entryForm.dueDate || getCurrentDateInputValue()
       const dueDay = Number(dueDate.split('-')[2] || 5)
 
       await createFinanceRecurringRule(props.request, {
@@ -1341,6 +1434,7 @@ async function submitEntry() {
       })
 
       resetEntryForm()
+      closeAccountActionModal()
 
       notifyUser('Salario cadastrado como recorrencia com sucesso.', 'success')
       await Promise.all([loadRecurringRules(), loadEntries(), loadDashboard()])
@@ -1366,6 +1460,7 @@ async function submitEntry() {
     }
 
     resetEntryForm()
+    closeAccountActionModal()
     await Promise.all([loadEntries(), loadDashboard()])
   } catch (requestError) {
     const fallbackMessage = entryEditingId.value
@@ -1403,6 +1498,7 @@ function startEditingEntry(entryItem) {
   entryForm.dueDate = toDateInputValue(entryItem.dueDate)
   entryForm.categoryId = entryItem.categoryId ? String(entryItem.categoryId) : ''
   entryForm.bankAccountId = entryItem.bankAccountId ? String(entryItem.bankAccountId) : ''
+  openAccountActionModal('ENTRY')
 }
 
 function resetEntryForm() {
@@ -1414,6 +1510,85 @@ function resetEntryForm() {
   entryForm.categoryId = ''
   entryForm.bankAccountId = ''
   entryForm.direction = accountsDirectionByTab.value || 'PAYABLE'
+}
+
+function resetSettlementForm() {
+  settlementForm.entryId = ''
+  settlementForm.amountBrl = ''
+  settlementForm.settledAt = ''
+  settlementForm.bankAccountId = ''
+}
+
+function resetInstallmentForm() {
+  installmentForm.direction = installmentDirectionByTab.value || 'PAYABLE'
+  installmentForm.title = ''
+  installmentForm.totalAmountBrl = ''
+  installmentForm.downPaymentBrl = '0'
+  installmentForm.installmentsCount = 12
+  installmentForm.interestAmountBrl = '0'
+  installmentForm.discountAmountBrl = '0'
+  installmentForm.fineAmountBrl = '0'
+  installmentForm.firstDueDate = ''
+  installmentForm.categoryId = ''
+  installmentForm.defaultBankAccountId = ''
+}
+
+function resetRenegotiationForm() {
+  renegotiationForm.planId = ''
+  renegotiationForm.installmentsCount = 6
+  renegotiationForm.reason = 'Renegociação manual'
+  renegotiationForm.categoryId = ''
+  renegotiationForm.defaultBankAccountId = ''
+}
+
+function closeAccountActionModal() {
+  accountActionModalState.isOpen = false
+}
+
+function prepareAccountActionFormForCreate(actionType) {
+  if (actionType === 'ENTRY') {
+    resetEntryForm()
+    return
+  }
+
+  if (actionType === 'SETTLEMENT') {
+    resetSettlementForm()
+    return
+  }
+
+  if (actionType === 'RECURRING_RULE') {
+    resetRecurringRuleForm()
+    return
+  }
+
+  if (actionType === 'INSTALLMENT_PLAN') {
+    resetInstallmentForm()
+    return
+  }
+
+  if (actionType === 'RENEGOTIATION') {
+    resetRenegotiationForm()
+  }
+}
+
+function openAccountActionModal(actionType, shouldPrepareCreate = false) {
+  const normalizedActionType = String(actionType || '').toUpperCase()
+  const actionExists = availableAccountActionOptions.value.some((actionOption) => actionOption.value === normalizedActionType)
+  if (!actionExists) {
+    return
+  }
+
+  if (shouldPrepareCreate) {
+    prepareAccountActionFormForCreate(normalizedActionType)
+  }
+
+  accountActionModalState.actionType = normalizedActionType
+  selectedAccountActionType.value = normalizedActionType
+  accountActionModalState.isOpen = true
+}
+
+function openSelectedAccountActionModal() {
+  openAccountActionModal(selectedAccountActionType.value, true)
 }
 
 function openConfirmDialog(options) {
@@ -1769,8 +1944,8 @@ async function submitSettlement() {
       bankAccountId: normalizeOptionalNumber(settlementForm.bankAccountId),
     })
 
-    settlementForm.amountBrl = ''
-    settlementForm.settledAt = ''
+    resetSettlementForm()
+    closeAccountActionModal()
 
     notifyUser('Baixa registrada com sucesso.', 'success')
     await Promise.all([loadEntries(), loadDashboard(), loadInstallments()])
@@ -1792,7 +1967,7 @@ async function submitRecurringRule() {
       title: recurringForm.title,
       amountBrl: Number(recurringForm.amountBrl),
       dayOfMonth: Number(recurringForm.dayOfMonth),
-      startsAt: recurringForm.startsAt || new Date().toISOString().slice(0, 10),
+      startsAt: recurringForm.startsAt || getCurrentDateInputValue(),
       recurringTypeId: Number(recurringForm.recurringTypeId),
       categoryId: normalizeOptionalNumber(recurringForm.categoryId),
       defaultBankAccountId: normalizeOptionalNumber(recurringForm.defaultBankAccountId),
@@ -1807,6 +1982,7 @@ async function submitRecurringRule() {
     }
 
     resetRecurringRuleForm()
+    closeAccountActionModal()
     await Promise.all([loadRecurringRules(), loadEntries()])
   } catch (requestError) {
     const fallbackErrorMessage = recurringRuleEditingId.value
@@ -1830,6 +2006,7 @@ function startEditingRecurringRule(recurringRuleItem) {
   recurringForm.recurringTypeId = recurringRuleItem.recurringTypeId ? String(recurringRuleItem.recurringTypeId) : ''
   recurringForm.categoryId = recurringRuleItem.categoryId ? String(recurringRuleItem.categoryId) : ''
   recurringForm.defaultBankAccountId = recurringRuleItem.bankAccountId ? String(recurringRuleItem.bankAccountId) : ''
+  openAccountActionModal('RECURRING_RULE')
 }
 
 function resetRecurringRuleForm() {
@@ -1892,13 +2069,13 @@ async function submitInstallmentPlan() {
       interestAmountBrl: Number(installmentForm.interestAmountBrl || 0),
       discountAmountBrl: Number(installmentForm.discountAmountBrl || 0),
       fineAmountBrl: Number(installmentForm.fineAmountBrl || 0),
-      firstDueDate: installmentForm.firstDueDate || new Date().toISOString().slice(0, 10),
+      firstDueDate: installmentForm.firstDueDate || getCurrentDateInputValue(),
       categoryId: normalizeOptionalNumber(installmentForm.categoryId),
       defaultBankAccountId: normalizeOptionalNumber(installmentForm.defaultBankAccountId),
     })
 
-    installmentForm.title = ''
-    installmentForm.totalAmountBrl = ''
+    resetInstallmentForm()
+    closeAccountActionModal()
 
     notifyUser('Parcelamento criado com sucesso.', 'success')
     await Promise.all([loadInstallments(), loadEntries()])
@@ -1918,8 +2095,12 @@ async function submitRenegotiation() {
     await renegotiateFinanceInstallmentPlan(props.request, planId, {
       installmentsCount: Number(renegotiationForm.installmentsCount),
       reason: renegotiationForm.reason,
+      categoryId: normalizeOptionalNumber(renegotiationForm.categoryId),
+      defaultBankAccountId: normalizeOptionalNumber(renegotiationForm.defaultBankAccountId),
     })
 
+    resetRenegotiationForm()
+    closeAccountActionModal()
     notifyUser('Plano renegociado com sucesso.', 'success')
     await Promise.all([loadInstallments(), loadEntries()])
   } catch (requestError) {
@@ -1939,7 +2120,9 @@ function startEditingInstallmentPlan(installmentPlan) {
   renegotiationForm.planId = String(installmentPlan.id)
   renegotiationForm.installmentsCount = Number(installmentPlan.installmentsCount || 1)
   renegotiationForm.reason = `Ajuste manual - ${String(installmentPlan.title || 'Plano')}`
-  notifyUser('Plano carregado no bloco "Renegociar". Ajuste os campos e confirme.', 'info')
+  renegotiationForm.categoryId = installmentPlan.categoryId ? String(installmentPlan.categoryId) : ''
+  renegotiationForm.defaultBankAccountId = installmentPlan.bankAccountId ? String(installmentPlan.bankAccountId) : ''
+  openAccountActionModal('RENEGOTIATION')
 }
 
 function requestDeleteInstallmentPlan(installmentPlan) {
@@ -2120,7 +2303,7 @@ async function convertSimulationToPlan() {
   try {
     await convertFinanceSimulationToPlan(props.request, latestSimulation.value.id, {
       label: convertPlanForm.label,
-      startDate: convertPlanForm.startDate || new Date().toISOString().slice(0, 10),
+      startDate: convertPlanForm.startDate || getCurrentDateInputValue(),
       contributionDay: Number(convertPlanForm.contributionDay),
       generateYieldEntries: Boolean(convertPlanForm.generateYieldEntries),
       yieldMode: convertPlanForm.yieldMode,
@@ -2671,12 +2854,18 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="comparisonRow in accountsOverviewComparisonRows" :key="comparisonRow.key">
+              <tr
+                v-for="comparisonRow in accountsOverviewComparisonRows"
+                :key="comparisonRow.key"
+                :class="{ 'finance-total-summary-row': comparisonRow.key === 'total' }"
+              >
                 <td>{{ comparisonRow.label }}</td>
                 <td>{{ formatCurrency(comparisonRow.expectedBrl) }}</td>
                 <td>{{ formatCurrency(comparisonRow.realizedBrl) }}</td>
                 <td>{{ formatCurrency(comparisonRow.remainingBrl) }}</td>
-                <td>{{ formatPercent(comparisonRow.progressPercent) }}</td>
+                <td>
+                  {{ comparisonRow.progressPercent === null ? '-' : formatPercent(comparisonRow.progressPercent) }}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -2688,109 +2877,38 @@ function applyAccountsDirectionContext() {
         />
       </article>
 
-      <article v-if="shouldShowEntryManagement" class="finance-panel">
+      <article
+        v-if="shouldShowEntryManagement || shouldShowRecurringSection || shouldShowInstallmentSection"
+        class="finance-panel"
+      >
         <header>
-          <h3>{{ entryEditingId ? 'Editar lançamento' : 'Novo lançamento' }}</h3>
+          <h3>Gerenciamento de lançamentos</h3>
+          <small>Mantenha a tela limpa: use Adicionar para abrir o formulário em popup.</small>
         </header>
 
-        <form class="finance-form-grid" @submit.prevent="submitEntry">
+        <div class="finance-form-grid">
           <label>
-            <span>Direção</span>
-            <input :value="accountsCurrentDirectionLabel" type="text" readonly>
-          </label>
-
-          <label>
-            <span>Título</span>
-            <input v-model="entryForm.title" type="text" required>
-          </label>
-
-          <label>
-            <span>Tipo de lançamento</span>
-            <select v-model="entryForm.entryType">
+            <span>O que deseja adicionar</span>
+            <select v-model="selectedAccountActionType">
               <option
-                v-for="entryTypeOption in entryTypeOptionsForForm"
-                :key="entryTypeOption.value"
-                :value="entryTypeOption.value"
+                v-for="actionOption in availableAccountActionOptions"
+                :key="actionOption.value"
+                :value="actionOption.value"
               >
-                {{ entryTypeOption.label }}
+                {{ actionOption.label }}
               </option>
             </select>
           </label>
 
-          <label>
-            <span>Valor (BRL)</span>
-            <input v-model="entryForm.expectedAmountBrl" type="number" step="0.01" min="0.01" required>
-          </label>
-
-          <label>
-            <span>Vencimento</span>
-            <input v-model="entryForm.dueDate" type="date">
-          </label>
-
-          <label>
-            <span>Categoria</span>
-            <select v-model="entryForm.categoryId">
-              <option value="">Sem categoria</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Conta bancária</span>
-            <select v-model="entryForm.bankAccountId">
-              <option value="">Sem conta</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-            </select>
-          </label>
-
-          <button class="finance-action-button" type="submit">
-            {{ entryEditingId ? 'Salvar alterações' : 'Salvar lançamento' }}
-          </button>
           <button
-            v-if="entryEditingId"
             type="button"
-            class="finance-inline-action"
-            @click="resetEntryForm"
+            class="finance-action-button"
+            :disabled="availableAccountActionOptions.length <= 0"
+            @click="openSelectedAccountActionModal"
           >
-            Cancelar edição
+            Adicionar
           </button>
-        </form>
-      </article>
-
-      <article v-if="shouldShowEntryManagement" class="finance-panel">
-        <header>
-          <h3>Baixa de lançamento</h3>
-        </header>
-
-        <form class="finance-form-grid" @submit.prevent="submitSettlement">
-          <label>
-            <span>Lançamento</span>
-            <select v-model="settlementForm.entryId">
-              <option value="">Selecione</option>
-              <option v-for="entry in entriesState" :key="entry.id" :value="entry.id">{{ entry.title }} ({{ formatCurrency(entry.remainingAmountBrl) }})</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Valor da baixa</span>
-            <input v-model="settlementForm.amountBrl" type="number" step="0.01" min="0.01" required>
-          </label>
-
-          <label>
-            <span>Data real</span>
-            <input v-model="settlementForm.settledAt" type="datetime-local">
-          </label>
-
-          <label>
-            <span>Conta bancária</span>
-            <select v-model="settlementForm.bankAccountId">
-              <option value="">Sem conta</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-            </select>
-          </label>
-
-          <button class="finance-action-button" type="submit">Registrar baixa</button>
-        </form>
+        </div>
       </article>
 
       <FinanceEntriesListPanel
@@ -3204,59 +3322,6 @@ function applyAccountsDirectionContext() {
     <section v-if="activeTab === 'accounts' && shouldShowRecurringSection" class="finance-section">
       <article class="finance-panel">
         <header>
-          <h3>{{ recurringRuleEditingId ? 'Editar recorrência' : 'Nova recorrência' }}</h3>
-        </header>
-
-        <form class="finance-form-grid" @submit.prevent="submitRecurringRule">
-          <label>
-            <span>Direção da aba</span>
-            <input :value="recurringDirectionLabel" type="text" readonly>
-          </label>
-
-          <label>
-            <span>Título</span>
-            <input v-model="recurringForm.title" type="text" required>
-          </label>
-
-          <label>
-            <span>Valor mensal</span>
-            <input v-model="recurringForm.amountBrl" type="number" step="0.01" min="0.01" required>
-          </label>
-
-          <label>
-            <span>Dia do mês</span>
-            <input v-model="recurringForm.dayOfMonth" type="number" min="1" max="31" required>
-          </label>
-
-          <label>
-            <span>Início</span>
-            <input v-model="recurringForm.startsAt" type="date">
-          </label>
-
-          <label>
-            <span>Tipo recorrente</span>
-            <select v-model="recurringForm.recurringTypeId" required>
-              <option value="">Selecione</option>
-              <option v-for="recurringType in recurringTypes" :key="recurringType.id" :value="recurringType.id">{{ recurringType.name }}</option>
-            </select>
-          </label>
-
-          <button class="finance-action-button" type="submit">
-            {{ recurringRuleEditingId ? 'Salvar alterações' : 'Criar recorrência' }}
-          </button>
-          <button
-            v-if="recurringRuleEditingId"
-            type="button"
-            class="finance-inline-action"
-            @click="resetRecurringRuleForm"
-          >
-            Cancelar edição
-          </button>
-        </form>
-      </article>
-
-      <article class="finance-panel">
-        <header>
           <h3>Regras recorrentes</h3>
         </header>
 
@@ -3338,74 +3403,6 @@ function applyAccountsDirectionContext() {
     </section>
 
     <section v-if="activeTab === 'accounts' && shouldShowInstallmentSection" class="finance-section">
-      <article class="finance-panel">
-        <header>
-          <h3>Novo parcelamento</h3>
-        </header>
-
-        <form class="finance-form-grid" @submit.prevent="submitInstallmentPlan">
-          <label>
-            <span>Direção da aba</span>
-            <input :value="installmentDirectionLabel" type="text" readonly>
-          </label>
-
-          <label>
-            <span>Título</span>
-            <input v-model="installmentForm.title" type="text" required>
-          </label>
-
-          <label>
-            <span>Valor total</span>
-            <input v-model="installmentForm.totalAmountBrl" type="number" step="0.01" min="0.01" required>
-          </label>
-
-          <label>
-            <span>Entrada</span>
-            <input v-model="installmentForm.downPaymentBrl" type="number" step="0.01" min="0">
-          </label>
-
-          <label>
-            <span>Parcelas</span>
-            <input v-model="installmentForm.installmentsCount" type="number" min="1" required>
-          </label>
-
-          <label>
-            <span>Primeiro vencimento</span>
-            <input v-model="installmentForm.firstDueDate" type="date">
-          </label>
-
-          <button class="finance-action-button" type="submit">Criar parcelamento</button>
-        </form>
-      </article>
-
-      <article class="finance-panel">
-        <header>
-          <h3>Renegociar</h3>
-        </header>
-
-        <form class="finance-form-grid" @submit.prevent="submitRenegotiation">
-          <label>
-            <span>Plano</span>
-            <select v-model="renegotiationForm.planId">
-              <option value="">Selecione</option>
-              <option v-for="plan in filteredInstallmentPlans" :key="plan.id" :value="plan.id">{{ plan.title }}</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Nova quantidade de parcelas</span>
-            <input v-model="renegotiationForm.installmentsCount" type="number" min="1" required>
-          </label>
-
-          <label>
-            <span>Motivo</span>
-            <input v-model="renegotiationForm.reason" type="text" required>
-          </label>
-
-          <button class="finance-action-button" type="submit">Renegociar plano</button>
-        </form>
-      </article>
-
       <article class="finance-panel">
         <header>
           <h3>Planos de parcelamento</h3>
@@ -4237,6 +4234,269 @@ function applyAccountsDirectionContext() {
       </article>
     </section>
 
+    <div
+      v-if="accountActionModalState.isOpen"
+      class="app-modal-overlay flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      @click.self="closeAccountActionModal"
+    >
+      <div class="app-modal-frame w-full max-w-4xl p-6 md:p-7">
+        <header class="finance-modal-header">
+          <h3>{{ accountActionModalTitle }}</h3>
+          <p>Os dados serão aplicados nas listagens desta aba.</p>
+        </header>
+
+        <form
+          v-if="accountActionModalState.actionType === 'ENTRY'"
+          class="finance-form-grid"
+          @submit.prevent="submitEntry"
+        >
+          <label>
+            <span>Título</span>
+            <input v-model="entryForm.title" type="text" required>
+          </label>
+
+          <label>
+            <span>Tipo de lançamento</span>
+            <select v-model="entryForm.entryType">
+              <option
+                v-for="entryTypeOption in entryTypeOptionsForForm"
+                :key="entryTypeOption.value"
+                :value="entryTypeOption.value"
+              >
+                {{ entryTypeOption.label }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span>Valor (BRL)</span>
+            <input v-model="entryForm.expectedAmountBrl" type="number" step="0.01" min="0.01" required>
+          </label>
+
+          <label>
+            <span>Vencimento</span>
+            <input v-model="entryForm.dueDate" type="date">
+          </label>
+
+          <label>
+            <span>Categoria</span>
+            <select v-model="entryForm.categoryId">
+              <option value="">Sem categoria</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Conta bancária</span>
+            <select v-model="entryForm.bankAccountId">
+              <option value="">Sem conta</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+            </select>
+          </label>
+
+          <div class="finance-modal-actions">
+            <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
+            <button class="button-primary" type="submit">
+              {{ entryEditingId ? 'Salvar alterações' : 'Salvar lançamento' }}
+            </button>
+          </div>
+        </form>
+
+        <form
+          v-else-if="accountActionModalState.actionType === 'SETTLEMENT'"
+          class="finance-form-grid"
+          @submit.prevent="submitSettlement"
+        >
+          <label>
+            <span>Lançamento</span>
+            <select v-model="settlementForm.entryId">
+              <option value="">Selecione</option>
+              <option v-for="entry in entriesState" :key="entry.id" :value="entry.id">{{ entry.title }} ({{ formatCurrency(entry.remainingAmountBrl) }})</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Valor da baixa</span>
+            <input v-model="settlementForm.amountBrl" type="number" step="0.01" min="0.01" required>
+          </label>
+
+          <label>
+            <span>Data real</span>
+            <input v-model="settlementForm.settledAt" type="datetime-local">
+          </label>
+
+          <label>
+            <span>Conta bancária</span>
+            <select v-model="settlementForm.bankAccountId">
+              <option value="">Sem conta</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+            </select>
+          </label>
+
+          <div class="finance-modal-actions">
+            <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
+            <button class="button-primary" type="submit">Registrar baixa</button>
+          </div>
+        </form>
+
+        <form
+          v-else-if="accountActionModalState.actionType === 'RECURRING_RULE'"
+          class="finance-form-grid"
+          @submit.prevent="submitRecurringRule"
+        >
+          <label>
+            <span>Título</span>
+            <input v-model="recurringForm.title" type="text" required>
+          </label>
+
+          <label>
+            <span>Valor mensal</span>
+            <input v-model="recurringForm.amountBrl" type="number" step="0.01" min="0.01" required>
+          </label>
+
+          <label>
+            <span>Dia do mês</span>
+            <input v-model="recurringForm.dayOfMonth" type="number" min="1" max="31" required>
+          </label>
+
+          <label>
+            <span>Início</span>
+            <input v-model="recurringForm.startsAt" type="date">
+          </label>
+
+          <label>
+            <span>Tipo recorrente</span>
+            <select v-model="recurringForm.recurringTypeId" required>
+              <option value="">Selecione</option>
+              <option v-for="recurringType in recurringTypes" :key="recurringType.id" :value="recurringType.id">{{ recurringType.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Categoria</span>
+            <select v-model="recurringForm.categoryId">
+              <option value="">Sem categoria</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Conta bancária padrão</span>
+            <select v-model="recurringForm.defaultBankAccountId">
+              <option value="">Sem conta</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+            </select>
+          </label>
+
+          <div class="finance-modal-actions">
+            <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
+            <button class="button-primary" type="submit">
+              {{ recurringRuleEditingId ? 'Salvar alterações' : 'Criar recorrência' }}
+            </button>
+          </div>
+        </form>
+
+        <form
+          v-else-if="accountActionModalState.actionType === 'INSTALLMENT_PLAN'"
+          class="finance-form-grid"
+          @submit.prevent="submitInstallmentPlan"
+        >
+          <label>
+            <span>Título</span>
+            <input v-model="installmentForm.title" type="text" required>
+          </label>
+
+          <label>
+            <span>Valor total</span>
+            <input v-model="installmentForm.totalAmountBrl" type="number" step="0.01" min="0.01" required>
+          </label>
+
+          <label>
+            <span>Entrada</span>
+            <input v-model="installmentForm.downPaymentBrl" type="number" step="0.01" min="0">
+          </label>
+
+          <label>
+            <span>Parcelas</span>
+            <input v-model="installmentForm.installmentsCount" type="number" min="1" required>
+          </label>
+
+          <label>
+            <span>Primeiro vencimento</span>
+            <input v-model="installmentForm.firstDueDate" type="date">
+          </label>
+
+          <label>
+            <span>Categoria</span>
+            <select v-model="installmentForm.categoryId">
+              <option value="">Sem categoria</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Conta bancária padrão</span>
+            <select v-model="installmentForm.defaultBankAccountId">
+              <option value="">Sem conta</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+            </select>
+          </label>
+
+          <div class="finance-modal-actions">
+            <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
+            <button class="button-primary" type="submit">Criar parcelamento</button>
+          </div>
+        </form>
+
+        <form
+          v-else-if="accountActionModalState.actionType === 'RENEGOTIATION'"
+          class="finance-form-grid"
+          @submit.prevent="submitRenegotiation"
+        >
+          <label>
+            <span>Plano</span>
+            <select v-model="renegotiationForm.planId">
+              <option value="">Selecione</option>
+              <option v-for="plan in filteredInstallmentPlans" :key="plan.id" :value="plan.id">{{ plan.title }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Nova quantidade de parcelas</span>
+            <input v-model="renegotiationForm.installmentsCount" type="number" min="1" required>
+          </label>
+
+          <label>
+            <span>Motivo</span>
+            <input v-model="renegotiationForm.reason" type="text" required>
+          </label>
+
+          <label>
+            <span>Categoria</span>
+            <select v-model="renegotiationForm.categoryId">
+              <option value="">Manter atual</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Conta bancária padrão</span>
+            <select v-model="renegotiationForm.defaultBankAccountId">
+              <option value="">Manter atual</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+            </select>
+          </label>
+
+          <div class="finance-modal-actions">
+            <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
+            <button class="button-primary" type="submit">Renegociar plano</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <AppConfirmDialog
       :is-open="confirmDialogState.isOpen"
       :title="confirmDialogState.title"
@@ -4287,6 +4547,37 @@ function applyAccountsDirectionContext() {
 .finance-section {
   display: grid;
   gap: 16px;
+}
+
+.finance-modal-header {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.finance-modal-header h3 {
+  margin: 0;
+  color: var(--ink, #0f172a);
+  font-size: 1.05rem;
+}
+
+.finance-modal-header p {
+  margin: 0;
+  color: var(--muted, #475569);
+  font-size: 0.86rem;
+}
+
+.finance-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+
+.finance-total-summary-row td {
+  font-weight: 700;
 }
 
 .finance-subtabs {

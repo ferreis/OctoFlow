@@ -56,22 +56,6 @@ final class FinanceExportController
         }
     }
 
-    #[Route('/exports/{exportJobId<\d+>}', name: 'finance_exports_show', methods: ['GET'])]
-    public function showExport(int $exportJobId, #[CurrentUser] ?User $user): JsonResponse
-    {
-        if ($user === null) {
-            return $this->buildUnauthorizedResponse();
-        }
-
-        try {
-            return new JsonResponse([
-                'item' => $this->financeExportService->getJob($user, $exportJobId),
-            ]);
-        } catch (\Throwable $throwable) {
-            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
-        }
-    }
-
     #[Route('/exports/{exportJobId<\d+>}/download', name: 'finance_exports_download', methods: ['GET'])]
     public function downloadExport(int $exportJobId, #[CurrentUser] ?User $user): BinaryFileResponse|JsonResponse
     {

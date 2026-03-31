@@ -75,24 +75,4 @@ final class FinanceRecurringController
         }
     }
 
-    #[Route('/recurring-rules/{ruleId<\d+>}/preview', name: 'finance_recurring_rules_preview', methods: ['POST'])]
-    public function previewRule(int $ruleId, Request $request, #[CurrentUser] ?User $user): JsonResponse
-    {
-        if ($user === null) {
-            return $this->buildUnauthorizedResponse();
-        }
-
-        $payload = $this->decodeJson($request);
-        if ($payload === null) {
-            return $this->buildInvalidJsonResponse();
-        }
-
-        $months = max(1, min(24, (int) ($payload['months'] ?? 6)));
-
-        try {
-            return new JsonResponse($this->financeRecurringService->previewRule($user, $ruleId, $months));
-        } catch (\Throwable $throwable) {
-            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
-        }
-    }
 }

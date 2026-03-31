@@ -180,12 +180,6 @@ function deleteEntry(entryItem) {
           </option>
         </select>
       </label>
-
-      <label v-else>
-        <span>Direção atual</span>
-        <input :value="currentDirectionLabel" type="text" readonly>
-      </label>
-
       <label>
         <span>Status</span>
         <select v-model="localFilters.status">

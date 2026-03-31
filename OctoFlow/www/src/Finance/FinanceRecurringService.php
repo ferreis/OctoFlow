@@ -209,54 +209,6 @@ final class FinanceRecurringService
         return $this->getRuleById($ownerId, $ruleId);
     }
 
-    /**
-     * @return array{items: list<array<string, mixed>>}
-     */
-    public function previewRule(User $user, int $ruleId, int $months = 6): array
-    {
-        $ownerId = $this->requireOwnerId($user);
-        $rule = $this->getRuleById($ownerId, $ruleId);
-        $monthsToPreview = max(1, min(24, $months));
-
-        $startMonth = new \DateTimeImmutable('first day of this month');
-        $endMonth = $startMonth->modify(sprintf('+%d months', $monthsToPreview - 1));
-
-        $items = [];
-
-        foreach ($this->iterateMonths($startMonth, $endMonth) as $month) {
-            $competenceMonth = $month->format('Y-m-01');
-            $dueDate = $this->buildDateInMonth($month, (int) $rule['dayOfMonth']);
-
-            if ($dueDate < new \DateTimeImmutable((string) $rule['startsAt'])) {
-                continue;
-            }
-
-            if (!empty($rule['endsAt']) && $dueDate > new \DateTimeImmutable((string) $rule['endsAt'])) {
-                continue;
-            }
-
-            $alreadyGenerated = $this->connection->fetchOne(<<<'SQL'
-                SELECT id
-                FROM finance_recurring_rule_run
-                WHERE recurring_rule_id = :ruleId
-                  AND competence_month = :competenceMonth
-                LIMIT 1
-            SQL, [
-                'ruleId' => $ruleId,
-                'competenceMonth' => $competenceMonth,
-            ]);
-
-            $items[] = [
-                'competenceMonth' => $competenceMonth,
-                'dueDate' => $dueDate->format('Y-m-d'),
-                'amountBrl' => (float) $rule['amountBrl'],
-                'alreadyGenerated' => $alreadyGenerated !== false,
-            ];
-        }
-
-        return ['items' => $items];
-    }
-
     public function generateMissingEntriesForRange(User $user, \DateTimeImmutable $startDate, \DateTimeImmutable $endDate, string $runSource = 'lazy'): int
     {
         $ownerId = $this->requireOwnerId($user);

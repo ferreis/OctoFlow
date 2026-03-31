@@ -146,14 +146,6 @@ export function createFinanceSettlement(request, entryId, payload) {
   })
 }
 
-export function deleteFinanceSettlement(request, entryId, settlementId) {
-  return request({
-    url: `/finance/entries/${encodeURIComponent(entryId)}/settlements/${encodeURIComponent(settlementId)}`,
-    method: 'DELETE',
-    csrfActionId: 'finance.entries.settlements.delete',
-  })
-}
-
 export function fetchFinanceRecurringRules(request) {
   return request({
     url: '/finance/recurring-rules',
@@ -175,15 +167,6 @@ export function updateFinanceRecurringRule(request, ruleId, payload) {
     url: `/finance/recurring-rules/${encodeURIComponent(ruleId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.recurring-rules.update',
-    data: payload,
-  })
-}
-
-export function previewFinanceRecurringRule(request, ruleId, payload) {
-  return request({
-    url: `/finance/recurring-rules/${encodeURIComponent(ruleId)}/preview`,
-    method: 'POST',
-    csrfActionId: 'finance.recurring-rules.preview',
     data: payload,
   })
 }
@@ -309,13 +292,6 @@ export function fetchFinanceExports(request, params = {}) {
     url: '/finance/exports',
     method: 'GET',
     params,
-  })
-}
-
-export function fetchFinanceExportById(request, exportJobId) {
-  return request({
-    url: `/finance/exports/${encodeURIComponent(exportJobId)}`,
-    method: 'GET',
   })
 }
 

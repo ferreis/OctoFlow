@@ -109,16 +109,6 @@ final class FinanceExportService
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    public function getJob(User $user, int $jobId): array
-    {
-        $ownerId = $this->requireOwnerId($user);
-
-        return $this->getJobById($ownerId, $jobId);
-    }
-
-    /**
      * @return array{id: int, status: string}
      */
     public function deleteJob(User $user, int $jobId): array

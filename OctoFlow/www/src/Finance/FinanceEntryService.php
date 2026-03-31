@@ -510,67 +510,6 @@ final class FinanceEntryService
         });
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    public function deleteSettlement(User $user, int $entryId, int $settlementId): array
-    {
-        $ownerId = $this->requireOwnerId($user);
-
-        return $this->connection->transactional(function () use ($ownerId, $entryId, $settlementId): array {
-            $entry = $this->getEntryById($ownerId, $entryId);
-
-            /** @var array<string, mixed>|false $settlement */
-            $settlement = $this->connection->fetchAssociative(<<<'SQL'
-                SELECT id, bank_account_id, amount_brl, settled_at
-                FROM finance_entry_settlement
-                WHERE owner_id = :ownerId
-                  AND entry_id = :entryId
-                  AND id = :settlementId
-                LIMIT 1
-            SQL, [
-                'ownerId' => $ownerId,
-                'entryId' => $entryId,
-                'settlementId' => $settlementId,
-            ]);
-
-            if (!is_array($settlement)) {
-                throw new \InvalidArgumentException('Settlement not found.');
-            }
-
-            $this->connection->delete('finance_entry_settlement', [
-                'id' => $settlementId,
-                'owner_id' => $ownerId,
-            ]);
-
-            $settlementBankAccountId = isset($settlement['bank_account_id']) ? (int) $settlement['bank_account_id'] : null;
-            if ($settlementBankAccountId !== null && $settlementBankAccountId > 0) {
-                $this->applyBankAccountBalanceChange(
-                    $ownerId,
-                    $settlementBankAccountId,
-                    $entryId,
-                    $settlementId,
-                    (string) $entry['direction'],
-                    (float) $settlement['amount_brl'],
-                    new \DateTimeImmutable((string) $settlement['settled_at']),
-                    true,
-                );
-            }
-
-            return $this->recalculateEntrySettlement($ownerId, $entryId, 'SETTLEMENT_REMOVED');
-        });
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function refreshEntryStatus(User $user, int $entryId): array
-    {
-        $ownerId = $this->requireOwnerId($user);
-
-        return $this->recalculateEntrySettlement($ownerId, $entryId, 'STATUS_REFRESH');
-    }
-
     public function refreshOverdueStatusesForAllUsers(): int
     {
         $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
