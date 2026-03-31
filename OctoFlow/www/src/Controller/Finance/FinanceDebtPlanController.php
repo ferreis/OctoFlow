@@ -72,4 +72,18 @@ final class FinanceDebtPlanController
             return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
         }
     }
+
+    #[Route('/debt-plans/{debtPlanId<\d+>}', name: 'finance_debt_plans_delete', methods: ['DELETE'])]
+    public function deletePlan(int $debtPlanId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        try {
+            return new JsonResponse($this->financeDebtPlanService->deletePlan($user, $debtPlanId));
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
 }

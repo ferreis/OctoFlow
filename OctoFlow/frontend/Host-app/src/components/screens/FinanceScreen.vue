@@ -35,6 +35,7 @@ import {
   previewFinanceDebtPlan,
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
+  deleteFinanceDebtPlan,
   deleteFinanceEntry,
   updateFinanceCategory,
   updateFinanceBankAccount,
@@ -1998,8 +1999,28 @@ function startEditingDebtPlan() {
   notifyUnavailableListAction('planos de dívida', 'Editar')
 }
 
-function requestDeleteDebtPlan() {
-  notifyUnavailableListAction('planos de dívida', 'Excluir')
+function requestDeleteDebtPlan(debtPlan) {
+  if (!debtPlan?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Excluir plano de dívida',
+    message: 'O plano de dívida e seus vínculos serão removidos da visão e dos cálculos. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteDebtPlan(debtPlan),
+  })
+}
+
+async function executeDeleteDebtPlan(debtPlan) {
+  try {
+    await deleteFinanceDebtPlan(props.request, debtPlan.id)
+    notifyUser('Plano de dívida excluído com sucesso.', 'success')
+    await Promise.all([loadDebtPlans(), loadEntries(), loadInstallments()])
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir o plano de dívida.'), 'error')
+  }
 }
 
 function startEditingCurrencyRate() {

@@ -238,6 +238,14 @@ export function createFinanceDebtPlan(request, payload) {
   })
 }
 
+export function deleteFinanceDebtPlan(request, debtPlanId) {
+  return request({
+    url: `/finance/debt-plans/${encodeURIComponent(debtPlanId)}`,
+    method: 'DELETE',
+    csrfActionId: 'finance.debt-plans.delete',
+  })
+}
+
 export function renegotiateFinanceInstallmentPlan(request, planId, payload) {
   return request({
     url: `/finance/installment-plans/${encodeURIComponent(planId)}/renegotiate`,

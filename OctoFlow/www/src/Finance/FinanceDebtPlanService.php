@@ -62,9 +62,11 @@ final class FinanceDebtPlanService
             LEFT JOIN finance_category category ON category.id = debt_plan.category_id
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = debt_plan.default_bank_account_id
             LEFT JOIN finance_installment_plan installment_plan ON installment_plan.id = debt_plan.linked_installment_plan_id
+              AND installment_plan.deleted_at IS NULL
             LEFT JOIN finance_entry full_entry ON full_entry.id = debt_plan.full_payment_entry_id
               AND full_entry.deleted_at IS NULL
             WHERE debt_plan.owner_id = :ownerId
+              AND debt_plan.deleted_at IS NULL
             ORDER BY debt_plan.created_at DESC, debt_plan.id DESC
         SQL, [
             'ownerId' => $ownerId,
@@ -225,6 +227,45 @@ final class FinanceDebtPlanService
         return [
             'item' => $this->getPlanById($ownerId, $createdDebtPlanId),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function deletePlan(User $user, int $debtPlanId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+
+        return $this->connection->transactional(function () use ($user, $ownerId, $debtPlanId): array {
+            $debtPlan = $this->getPlanById($ownerId, $debtPlanId);
+
+            $linkedInstallmentPlanId = (int) ($debtPlan['installmentPlanId'] ?? 0);
+            if ($linkedInstallmentPlanId > 0) {
+                $this->financeInstallmentService->softDeletePlan($user, $linkedInstallmentPlanId);
+            }
+
+            $fullPaymentEntryId = (int) ($debtPlan['fullPaymentEntryId'] ?? 0);
+            if ($fullPaymentEntryId > 0) {
+                $this->financeEntryService->softDeleteEntry($user, $fullPaymentEntryId);
+            }
+
+            $deletedAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+            $this->connection->update('finance_debt_plan', [
+                'status' => 'CANCELED',
+                'deleted_at' => $deletedAt,
+                'updated_at' => $deletedAt,
+            ], [
+                'id' => $debtPlanId,
+                'owner_id' => $ownerId,
+            ]);
+
+            return [
+                'id' => $debtPlanId,
+                'status' => 'CANCELED',
+                'deletedAt' => $deletedAt,
+            ];
+        });
     }
 
     /**
@@ -585,10 +626,12 @@ final class FinanceDebtPlanService
             LEFT JOIN finance_category category ON category.id = debt_plan.category_id
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = debt_plan.default_bank_account_id
             LEFT JOIN finance_installment_plan installment_plan ON installment_plan.id = debt_plan.linked_installment_plan_id
+              AND installment_plan.deleted_at IS NULL
             LEFT JOIN finance_entry full_entry ON full_entry.id = debt_plan.full_payment_entry_id
               AND full_entry.deleted_at IS NULL
             WHERE debt_plan.owner_id = :ownerId
               AND debt_plan.id = :debtPlanId
+              AND debt_plan.deleted_at IS NULL
             LIMIT 1
         SQL, [
             'ownerId' => $ownerId,

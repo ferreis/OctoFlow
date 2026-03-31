@@ -9,6 +9,7 @@ final class FinanceInstallmentService
 {
     public function __construct(
         private readonly Connection $connection,
+        private readonly FinanceEntryService $financeEntryService,
     ) {
     }
 
@@ -64,6 +65,7 @@ final class FinanceInstallmentService
             LEFT JOIN finance_category category ON category.id = plan.category_id
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = plan.default_bank_account_id
             WHERE plan.owner_id = :ownerId
+              AND plan.deleted_at IS NULL
             ORDER BY plan.created_at DESC, plan.id DESC
         SQL, ['ownerId' => $ownerId]);
 
@@ -115,6 +117,57 @@ final class FinanceInstallmentService
         }
 
         return $this->getPlanById($ownerId, $planId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function softDeletePlan(User $user, int $planId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+
+        return $this->connection->transactional(function () use ($user, $ownerId, $planId): array {
+            $plan = $this->getPlanById($ownerId, $planId);
+
+            /** @var list<int|string> $installmentEntryIds */
+            $installmentEntryIds = $this->connection->fetchFirstColumn(<<<'SQL'
+                SELECT entry.id
+                FROM finance_installment_item item
+                INNER JOIN finance_entry entry ON entry.id = item.entry_id
+                WHERE item.plan_id = :planId
+                  AND entry.deleted_at IS NULL
+            SQL, [
+                'planId' => $planId,
+            ]);
+
+            foreach ($installmentEntryIds as $entryIdValue) {
+                $entryId = (int) $entryIdValue;
+                if ($entryId <= 0) {
+                    continue;
+                }
+
+                $this->financeEntryService->softDeleteEntry($user, $entryId);
+            }
+
+            $this->softDeleteDownPaymentEntriesForPlan($user, $ownerId, $plan);
+
+            $deletedAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+            $this->connection->update('finance_installment_plan', [
+                'status' => 'CANCELED',
+                'deleted_at' => $deletedAt,
+                'updated_at' => $deletedAt,
+            ], [
+                'id' => $planId,
+                'owner_id' => $ownerId,
+            ]);
+
+            return [
+                'id' => $planId,
+                'status' => 'CANCELED',
+                'deletedAt' => $deletedAt,
+            ];
+        });
     }
 
     /**
@@ -409,6 +462,79 @@ final class FinanceInstallmentService
     }
 
     /**
+     * @param array<string, mixed> $plan
+     */
+    private function softDeleteDownPaymentEntriesForPlan(User $user, int $ownerId, array $plan): void
+    {
+        $downPaymentBrl = (float) ($plan['downPaymentBrl'] ?? 0);
+        if ($downPaymentBrl <= 0.00001) {
+            return;
+        }
+
+        $downPaymentTitle = sprintf('%s (Down Payment)', (string) ($plan['title'] ?? ''));
+        $firstDueDate = (string) ($plan['firstDueDate'] ?? '');
+        $direction = (string) ($plan['direction'] ?? '');
+        $categoryId = isset($plan['categoryId']) ? (int) $plan['categoryId'] : null;
+        $bankAccountId = isset($plan['bankAccountId']) ? (int) $plan['bankAccountId'] : null;
+        if ($downPaymentTitle === ' (Down Payment)' || $firstDueDate === '') {
+            return;
+        }
+
+        $categoryFilterSql = 'AND entry.category_id IS NULL';
+        $bankAccountFilterSql = 'AND entry.bank_account_id IS NULL';
+        $queryParameters = [
+            'ownerId' => $ownerId,
+            'direction' => $direction,
+            'title' => $downPaymentTitle,
+            'dueDate' => $firstDueDate,
+            'amountBrl' => $downPaymentBrl,
+        ];
+
+        if ($categoryId !== null && $categoryId > 0) {
+            $categoryFilterSql = 'AND entry.category_id = :categoryId';
+            $queryParameters['categoryId'] = $categoryId;
+        }
+
+        if ($bankAccountId !== null && $bankAccountId > 0) {
+            $bankAccountFilterSql = 'AND entry.bank_account_id = :bankAccountId';
+            $queryParameters['bankAccountId'] = $bankAccountId;
+        }
+
+        $downPaymentEntryQuery = sprintf(
+            <<<'SQL'
+            SELECT entry.id
+            FROM finance_entry entry
+            WHERE entry.owner_id = :ownerId
+              AND entry.deleted_at IS NULL
+              AND entry.installment_item_id IS NULL
+              AND entry.direction = :direction
+              %s
+              %s
+              AND entry.source_system = 'INSTALLMENT_ENGINE'
+              AND entry.source_origin = 'SYSTEM'
+              AND entry.entry_type = 'ONE_OFF'
+              AND entry.title = :title
+              AND entry.due_date = :dueDate
+              AND entry.expected_amount_brl = :amountBrl
+            SQL,
+            $categoryFilterSql,
+            $bankAccountFilterSql,
+        );
+
+        /** @var list<int|string> $downPaymentEntryIds */
+        $downPaymentEntryIds = $this->connection->fetchFirstColumn($downPaymentEntryQuery, $queryParameters);
+
+        foreach ($downPaymentEntryIds as $entryIdValue) {
+            $entryId = (int) $entryIdValue;
+            if ($entryId <= 0) {
+                continue;
+            }
+
+            $this->financeEntryService->softDeleteEntry($user, $entryId);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function getPlanById(int $ownerId, int $planId): array
@@ -446,6 +572,7 @@ final class FinanceInstallmentService
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = plan.default_bank_account_id
             WHERE plan.owner_id = :ownerId
               AND plan.id = :planId
+              AND plan.deleted_at IS NULL
             LIMIT 1
         SQL, [
             'ownerId' => $ownerId,
