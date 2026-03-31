@@ -2,7 +2,7 @@
 
 return [
     'key' => 'bug-report',
-    'name' => 'Bug report',
+    'name' => 'Bug - Reporte de erro',
     'description' => 'Modelo para falhas com contexto, reproducao e severidade.',
     'access' => [],
     'titlePrefix' => 'bug',

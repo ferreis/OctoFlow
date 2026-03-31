@@ -43,7 +43,7 @@ final class GithubIssueTemplateCatalog
     private function loadTemplates(): array
     {
         $templates = [];
-        $templateFiles = glob(__DIR__ . '/Templates/create/*.php') ?: [];
+        $templateFiles = glob(dirname(__DIR__) . '/Templates/create/*.php') ?: [];
         sort($templateFiles);
 
         foreach ($templateFiles as $templateFile) {

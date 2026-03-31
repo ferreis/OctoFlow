@@ -1,7 +1,7 @@
-# Templates GitHub (Backend)
+# Templates de Tasks e Issues (Backend)
 
 ## Objetivo
-Catálogo central de templates usados na criação e atualização de issues.
+Catálogo central de templates usados na criação e atualização de issues e tarefas locais.
 
 ## Estrutura
 
