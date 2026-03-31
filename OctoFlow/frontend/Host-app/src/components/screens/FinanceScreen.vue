@@ -2749,7 +2749,7 @@ function applyAccountsDirectionContext() {
 
 <template>
   <section class="finance-screen">
-    <section v-if="activeTab === 'reports'" class="finance-section">
+    <section v-if="activeTab === 'reports'" class="finance-section finance-dashboard-section">
       <div class="finance-kpi-grid">
         <RemoteFinanceKpiCard
           v-for="kpiCard in kpiCards"
@@ -2781,16 +2781,19 @@ function applyAccountsDirectionContext() {
             >
               <div class="finance-dashboard-chart-card-header">
                 <h4>{{ chartCard.title }}</h4>
-                <small>{{ chartCard.summaryLabel }}</small>
+                <small class="finance-dashboard-chart-summary">{{ chartCard.summaryLabel }}</small>
               </div>
 
               <RemoteFinanceTrendMiniChart
+                class="finance-dashboard-mini-chart"
                 :points="chartCard.points"
                 :stroke-color="chartCard.strokeColor"
               />
 
               <p class="finance-dashboard-chart-caption">{{ chartCard.caption }}</p>
-              <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
+              <div class="finance-dashboard-chart-meta">
+                <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
+              </div>
             </article>
           </div>
 
@@ -2824,16 +2827,19 @@ function applyAccountsDirectionContext() {
             >
               <div class="finance-dashboard-chart-card-header">
                 <h4>{{ chartCard.title }}</h4>
-                <small>{{ chartCard.summaryLabel }}</small>
+                <small class="finance-dashboard-chart-summary">{{ chartCard.summaryLabel }}</small>
               </div>
 
               <RemoteFinanceTrendMiniChart
+                class="finance-dashboard-mini-chart"
                 :points="chartCard.points"
                 :stroke-color="chartCard.strokeColor"
               />
 
               <p class="finance-dashboard-chart-caption">{{ chartCard.caption }}</p>
-              <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
+              <div class="finance-dashboard-chart-meta">
+                <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
+              </div>
             </article>
           </div>
 
@@ -4688,6 +4694,29 @@ function applyAccountsDirectionContext() {
   gap: 16px;
 }
 
+.finance-dashboard-section {
+  gap: 18px;
+}
+
+.finance-dashboard-section .finance-panel {
+  border-radius: 16px;
+  padding: 18px;
+  gap: 16px;
+}
+
+.finance-dashboard-section :deep(.finance-kpi-card) {
+  height: 100%;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--ink, #0f172a) 8%, transparent);
+}
+
+.finance-dashboard-section :deep(.finance-kpi-card-value) {
+  font-size: 1.22rem;
+}
+
+.finance-dashboard-section :deep(.finance-kpi-card-caption) {
+  line-height: 1.38;
+}
+
 .finance-modal-header {
   display: grid;
   gap: 6px;
@@ -4776,16 +4805,23 @@ function applyAccountsDirectionContext() {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
+  align-items: stretch;
+}
+
+.finance-dashboard-section .finance-kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
 }
 
 .finance-dashboard-chart-stack {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .finance-dashboard-chart-row {
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  align-items: stretch;
 }
 
 .finance-dashboard-chart-row-double {
@@ -4797,17 +4833,23 @@ function applyAccountsDirectionContext() {
 }
 
 .finance-dashboard-chart-card {
-  border: 1px solid color-mix(in srgb, var(--accent, #1d4ed8) 24%, var(--line, #cbd5e1));
-  border-radius: 12px;
-  padding: 12px;
-  background: var(--soft-surface, linear-gradient(120deg, #ffffff 0%, #f8fafc 100%));
+  border: 1px solid color-mix(in srgb, var(--accent, #1d4ed8) 30%, var(--line, #cbd5e1));
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent, #1d4ed8) 10%, var(--surface-strong, #ffffff)) 0%,
+    color-mix(in srgb, var(--surface-strong, #ffffff) 94%, #ffffff) 100%
+  );
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--ink, #0f172a) 10%, transparent);
   display: grid;
-  gap: 10px;
+  gap: 11px;
+  align-content: start;
 }
 
 .finance-dashboard-chart-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
@@ -4815,26 +4857,55 @@ function applyAccountsDirectionContext() {
 
 .finance-dashboard-chart-card h4 {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   color: var(--ink, #0f172a);
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+.finance-dashboard-chart-summary {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line, #cbd5e1) 74%, transparent);
+  padding: 3px 9px;
+  background: color-mix(in srgb, var(--surface-strong, #ffffff) 88%, transparent);
+  color: var(--ink, #0f172a);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .finance-dashboard-chart-caption {
   margin: 0;
   color: var(--muted, #475569);
-  font-size: 0.78rem;
-  line-height: 1.4;
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+.finance-dashboard-mini-chart {
+  margin: 2px 0;
+}
+
+.finance-dashboard-chart-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .finance-dashboard-chart-secondary {
   font-size: 0.72rem;
   color: var(--muted, #64748b);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line, #cbd5e1) 68%, transparent);
+  padding: 3px 9px;
+  background: color-mix(in srgb, var(--surface-strong, #ffffff) 88%, transparent);
 }
 
 .finance-dashboard-legend {
   display: block;
   font-size: 0.73rem;
   color: var(--muted, #64748b);
+  padding-top: 4px;
+  border-top: 1px dashed color-mix(in srgb, var(--line, #cbd5e1) 72%, transparent);
 }
 
 .finance-form-grid,
@@ -5048,8 +5119,17 @@ function applyAccountsDirectionContext() {
     padding: 12px;
   }
 
+  .finance-dashboard-section .finance-panel {
+    padding: 14px;
+    gap: 14px;
+  }
+
   .finance-dashboard-chart-row-double {
     grid-template-columns: 1fr;
+  }
+
+  .finance-dashboard-chart-card-header {
+    align-items: flex-start;
   }
 
   .finance-form-grid,
