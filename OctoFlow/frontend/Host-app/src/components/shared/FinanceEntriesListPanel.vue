@@ -447,10 +447,24 @@ function deleteEntry(entryItem) {
 }
 
 .finance-actions-cell {
-  display: flex;
+  white-space: nowrap;
+}
+
+.finance-actions-cell .finance-inline-action {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.finance-actions-cell .finance-inline-action + .finance-inline-action {
+  margin-left: 8px;
+}
+
+.finance-inline-table th:last-child,
+.finance-inline-table td.finance-actions-cell {
+  width: 1%;
+  min-width: 170px;
 }
 
 .finance-pagination {

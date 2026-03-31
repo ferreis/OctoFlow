@@ -30,8 +30,10 @@ import {
   fetchFinanceInstallmentPlans,
   fetchFinanceOpenFinanceConnections,
   fetchFinanceOpenFinanceProviders,
+  fetchFinanceMigrationSnapshot,
   fetchFinanceRecurringRules,
   fetchFinanceRecurringTypes,
+  importFinanceMigrationSnapshot,
   previewFinanceDebtPlan,
   renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
@@ -131,11 +133,13 @@ const loadingState = reactive({
   debts: false,
   currencies: false,
   exports: false,
+  migration: false,
   catalogs: false,
   openFinance: false,
 })
 
 const dashboardSummary = ref(null)
+const accountsOverviewSummary = ref(null)
 const dashboardCashflow = ref([])
 const dashboardCategories = ref([])
 
@@ -291,6 +295,10 @@ function getCurrentDateInputValue() {
 const exportForm = reactive({
   exportType: 'MONTHLY_SUMMARY',
 })
+const migrationForm = reactive({
+  replaceExisting: true,
+})
+const migrationImportFile = ref(null)
 
 const debtForm = reactive({
   title: '',
@@ -850,7 +858,7 @@ const entryTypeOptionsForForm = computed(() => (
 ))
 
 const accountsOverviewComparisonRows = computed(() => {
-  const summary = dashboardSummary.value
+  const summary = accountsOverviewSummary.value || dashboardSummary.value
   if (!summary) {
     return []
   }
@@ -1039,6 +1047,12 @@ async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.val
 
   applyAccountsDirectionContext()
 
+  if (accountsTabKey === 'overview') {
+    await loadEntries()
+    await loadDashboard()
+    return
+  }
+
   if (accountsTabKey === 'debts') {
     await Promise.all([
       loadDebtPlans(),
@@ -1049,10 +1063,6 @@ async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.val
   }
 
   const accountRequests = [loadEntries()]
-
-  if (accountsTabKey === 'overview') {
-    accountRequests.push(loadDashboard())
-  }
 
   if (accountsTabKey === 'payable' || accountsTabKey === 'receivable') {
     accountRequests.push(loadRecurringRules(), loadInstallments())
@@ -1068,8 +1078,6 @@ async function loadInitialData() {
 
   await Promise.all([
     loadCatalogs(),
-    loadDashboard(),
-    loadEntries(),
     loadRecurringRules(),
     loadInstallments(),
     loadInvestments(),
@@ -1078,6 +1086,9 @@ async function loadInitialData() {
     loadOpenFinance(),
   ])
 
+  await loadEntries()
+  await loadDashboard()
+
   if (activeTab.value === 'settings') {
     await refreshCurrencyData()
   }
@@ -1085,6 +1096,7 @@ async function loadInitialData() {
 
 function resetLocalState() {
   dashboardSummary.value = null
+  accountsOverviewSummary.value = null
   dashboardCashflow.value = []
   dashboardCategories.value = []
   entriesState.value = []
@@ -1103,6 +1115,7 @@ function resetLocalState() {
   currencyRates.value = []
   exportJobs.value = []
   exportMeta.value = { page: 1, itemsPerPage: LIST_ITEMS_PER_PAGE, total: 0 }
+  migrationImportFile.value = null
   latestSimulation.value = null
   openFinanceProviders.value = []
   openFinanceConnections.value = []
@@ -1136,13 +1149,19 @@ async function loadDashboard() {
 
   try {
     const currentMonthDateRange = buildCurrentMonthDateRange()
-    const [summaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
+    const currentDate = new Date()
+    const firstDayNextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
+    const nextMonthDateRange = buildCurrentMonthDateRange(firstDayNextMonth)
+
+    const [summaryResponse, nextMonthSummaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
       fetchFinanceDashboardSummary(props.request, currentMonthDateRange),
+      fetchFinanceDashboardSummary(props.request, nextMonthDateRange),
       fetchFinanceDashboardCashflow(props.request),
       fetchFinanceDashboardCategories(props.request, { limit: LIST_ITEMS_PER_PAGE }),
     ])
 
     dashboardSummary.value = summaryResponse.data?.item || null
+    accountsOverviewSummary.value = nextMonthSummaryResponse.data?.item || null
     dashboardCashflow.value = Array.isArray(cashflowResponse.data?.items) ? cashflowResponse.data.items : []
     dashboardCategories.value = Array.isArray(categoriesResponse.data?.items) ? categoriesResponse.data.items : []
   } catch (requestError) {
@@ -1318,7 +1337,8 @@ async function createDebtPlanFromSuggestion(suggestionOption) {
     })
 
     notifyUser(`Plano criado com ${selectedInstallmentsCount} parcela(s).`, 'success')
-    await Promise.all([loadDebtPlans(), loadEntries(), loadInstallments(), loadDashboard()])
+    await Promise.all([loadDebtPlans(), loadEntries(), loadInstallments()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o plano de dívida.'), 'error')
   } finally {
@@ -1437,7 +1457,8 @@ async function submitEntry() {
       closeAccountActionModal()
 
       notifyUser('Salario cadastrado como recorrencia com sucesso.', 'success')
-      await Promise.all([loadRecurringRules(), loadEntries(), loadDashboard()])
+      await Promise.all([loadRecurringRules(), loadEntries()])
+      await loadDashboard()
       return
     }
 
@@ -1461,7 +1482,8 @@ async function submitEntry() {
 
     resetEntryForm()
     closeAccountActionModal()
-    await Promise.all([loadEntries(), loadDashboard()])
+    await loadEntries()
+    await loadDashboard()
   } catch (requestError) {
     const fallbackMessage = entryEditingId.value
       ? 'Não foi possível atualizar o lançamento.'
@@ -1657,7 +1679,8 @@ async function deleteEntry(entryItem) {
     }
 
     notifyUser('Lançamento removido com sucesso.', 'success')
-    await Promise.all([loadEntries(), loadDashboard(), loadInstallments()])
+    await Promise.all([loadEntries(), loadInstallments()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível remover o lançamento.'), 'error')
   }
@@ -1948,7 +1971,8 @@ async function submitSettlement() {
     closeAccountActionModal()
 
     notifyUser('Baixa registrada com sucesso.', 'success')
-    await Promise.all([loadEntries(), loadDashboard(), loadInstallments()])
+    await Promise.all([loadEntries(), loadInstallments()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível registrar a baixa.'), 'error')
   }
@@ -1984,6 +2008,7 @@ async function submitRecurringRule() {
     resetRecurringRuleForm()
     closeAccountActionModal()
     await Promise.all([loadRecurringRules(), loadEntries()])
+    await loadDashboard()
   } catch (requestError) {
     const fallbackErrorMessage = recurringRuleEditingId.value
       ? 'Não foi possível atualizar a recorrência.'
@@ -2047,6 +2072,7 @@ async function executeDeleteRecurringRule(recurringRuleItem) {
 
     notifyUser('Recorrência excluída com sucesso.', 'success')
     await Promise.all([loadRecurringRules(), loadEntries()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir a recorrência.'), 'error')
   }
@@ -2079,6 +2105,7 @@ async function submitInstallmentPlan() {
 
     notifyUser('Parcelamento criado com sucesso.', 'success')
     await Promise.all([loadInstallments(), loadEntries()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o parcelamento.'), 'error')
   }
@@ -2103,6 +2130,7 @@ async function submitRenegotiation() {
     closeAccountActionModal()
     notifyUser('Plano renegociado com sucesso.', 'success')
     await Promise.all([loadInstallments(), loadEntries()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível renegociar o plano.'), 'error')
   }
@@ -2146,6 +2174,7 @@ async function executeDeleteInstallmentPlan(installmentPlan) {
     })
     notifyUser('Plano de parcelamento cancelado com sucesso.', 'success')
     await Promise.all([loadInstallments(), loadEntries()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir o plano de parcelamento.'), 'error')
   }
@@ -2204,6 +2233,7 @@ async function executeDeleteDebtPlan(debtPlan) {
     await deleteFinanceDebtPlan(props.request, debtPlan.id)
     notifyUser('Plano de dívida excluído com sucesso.', 'success')
     await Promise.all([loadDebtPlans(), loadEntries(), loadInstallments()])
+    await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir o plano de dívida.'), 'error')
   }
@@ -2332,6 +2362,81 @@ async function submitExport() {
     await loadExports()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível enfileirar a exportação.'), 'error')
+  }
+}
+
+function buildMigrationSnapshotFileName(snapshotItem) {
+  const exportedAtLabel = String(snapshotItem?.exportedAt || '').trim()
+  const fileSafeDateToken = exportedAtLabel !== ''
+    ? exportedAtLabel.replace(/:/g, '-').replace(/\s+/g, '_')
+    : new Date().toISOString().replace(/:/g, '-')
+
+  return `finance-snapshot-${fileSafeDateToken}.json`
+}
+
+async function downloadFinanceMigrationSnapshot() {
+  loadingState.migration = true
+
+  try {
+    const response = await fetchFinanceMigrationSnapshot(props.request)
+    const snapshotItem = response.data?.item || null
+    if (!snapshotItem || typeof snapshotItem !== 'object') {
+      notifyUser('Não foi possível gerar o snapshot financeiro.', 'error')
+      return
+    }
+
+    const serializedSnapshot = JSON.stringify(snapshotItem, null, 2)
+    const snapshotBlob = new Blob([serializedSnapshot], { type: 'application/json;charset=utf-8' })
+    const snapshotBlobUrl = window.URL.createObjectURL(snapshotBlob)
+    const downloadAnchor = document.createElement('a')
+
+    downloadAnchor.href = snapshotBlobUrl
+    downloadAnchor.download = buildMigrationSnapshotFileName(snapshotItem)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+    window.URL.revokeObjectURL(snapshotBlobUrl)
+
+    notifyUser('Snapshot financeiro exportado com sucesso.', 'success')
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Falha ao exportar snapshot financeiro.'), 'error')
+  } finally {
+    loadingState.migration = false
+  }
+}
+
+function onMigrationImportFileChange(importFileChangeEvent) {
+  const selectedFile = importFileChangeEvent?.target?.files?.[0] || null
+  migrationImportFile.value = selectedFile || null
+}
+
+async function submitFinanceMigrationImport() {
+  if (!migrationImportFile.value) {
+    notifyUser('Selecione um arquivo JSON para importar.', 'warning')
+    return
+  }
+
+  loadingState.migration = true
+
+  try {
+    const importedFileContent = await migrationImportFile.value.text()
+    const parsedSnapshot = JSON.parse(importedFileContent)
+
+    const response = await importFinanceMigrationSnapshot(props.request, {
+      snapshot: parsedSnapshot,
+      replaceExisting: Boolean(migrationForm.replaceExisting),
+    })
+
+    const importedSummary = response.data?.item?.imported || {}
+    const importedEntriesCount = Number(importedSummary.entries || 0)
+
+    notifyUser(`Importação financeira concluída. ${importedEntriesCount} lançamento(s) restaurado(s).`, 'success')
+    migrationImportFile.value = null
+    await loadInitialData()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Falha ao importar snapshot financeiro.'), 'error')
+  } finally {
+    loadingState.migration = false
   }
 }
 
@@ -2839,7 +2944,7 @@ function applyAccountsDirectionContext() {
       <article v-if="activeAccountsTab === 'overview'" class="finance-panel">
         <header>
           <h3>Resumo rápido: pagar x receber</h3>
-          <small>Análise simples para o dia a dia. Detalhes completos em Relatórios.</small>
+          <small>Mostrando o previsto do próximo mês. Detalhes completos em Relatórios.</small>
         </header>
 
         <div v-if="accountsOverviewComparisonRows.length" class="finance-inline-table-wrap">
@@ -4044,6 +4149,40 @@ function applyAccountsDirectionContext() {
 
       <article class="finance-panel">
         <header>
+          <h3>Migração completa (JSON)</h3>
+          <small>Exporte todo o financeiro para importar em outra conta/usuário.</small>
+        </header>
+
+        <div class="finance-actions-row">
+          <button
+            type="button"
+            class="finance-action-button"
+            :disabled="loadingState.migration"
+            @click="downloadFinanceMigrationSnapshot"
+          >
+            {{ loadingState.migration ? 'Gerando JSON...' : 'Exportar snapshot JSON' }}
+          </button>
+        </div>
+
+        <form class="finance-form-grid" @submit.prevent="submitFinanceMigrationImport">
+          <label>
+            <span>Arquivo JSON</span>
+            <input type="file" accept=".json,application/json" @change="onMigrationImportFileChange">
+          </label>
+
+          <label class="finance-toggle-label">
+            <input v-model="migrationForm.replaceExisting" type="checkbox">
+            <span>Substituir dados financeiros atuais antes de importar</span>
+          </label>
+
+          <button class="finance-action-button" type="submit" :disabled="loadingState.migration || !migrationImportFile">
+            {{ loadingState.migration ? 'Importando...' : 'Importar snapshot JSON' }}
+          </button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
           <h3>Histórico de exportações</h3>
         </header>
 
@@ -4801,14 +4940,32 @@ function applyAccountsDirectionContext() {
 }
 
 .finance-actions-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  white-space: nowrap;
 }
 
 .finance-actions-cell .finance-inline-action {
   margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.finance-actions-cell .finance-inline-action + .finance-inline-action {
+  margin-left: 8px;
+}
+
+.finance-inline-table th:last-child,
+.finance-inline-table td.finance-actions-cell {
+  width: 1%;
+  min-width: 170px;
+}
+
+.finance-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .finance-toggle-label {

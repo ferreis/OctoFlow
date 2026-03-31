@@ -303,6 +303,22 @@ export function deleteFinanceExport(request, exportJobId) {
   })
 }
 
+export function fetchFinanceMigrationSnapshot(request) {
+  return request({
+    url: '/finance/migration/export',
+    method: 'GET',
+  })
+}
+
+export function importFinanceMigrationSnapshot(request, payload) {
+  return request({
+    url: '/finance/migration/import',
+    method: 'POST',
+    csrfActionId: 'finance.migration.import',
+    data: payload,
+  })
+}
+
 export function fetchFinanceOpenFinanceProviders(request) {
   return request({
     url: '/finance/open-finance/providers',
