@@ -1842,7 +1842,7 @@ GRAPHQL;
         $suffix = count($openSubIssues) > 3 ? ' e outras sub-issues abertas.' : '.';
 
         throw new \InvalidArgumentException(sprintf(
-            'Nao e possivel concluir a issue principal enquanto existirem sub-issues abertas: %s%s',
+            'Não é possível concluir a issue principal enquanto existirem sub-issues abertas: %s%s',
             implode(', ', $labels),
             $suffix
         ));
@@ -1854,7 +1854,7 @@ GRAPHQL;
     private function assertParentIssueCanReceiveSubIssues(array $issueUpdateContext): void
     {
         if ($this->normalizeIssueReference($issueUpdateContext['parent'] ?? null) !== null) {
-            throw new \InvalidArgumentException('Sub-issues nao podem ter outras sub-issues vinculadas.');
+            throw new \InvalidArgumentException('Sub-issues não podem ter outras sub-issues vinculadas.');
         }
     }
 
@@ -1967,12 +1967,12 @@ GRAPHQL;
         try {
             $normalizedSubIssueDueDate = new \DateTimeImmutable($subIssueDueDate);
         } catch (\Throwable) {
-            throw new \InvalidArgumentException(sprintf('A data de entrega da sub-issue %d e invalida.', $index));
+            throw new \InvalidArgumentException(sprintf('A data de entrega da sub-issue %d é inválida.', $index));
         }
 
         if ($parentDueDate !== null && $normalizedSubIssueDueDate > $parentDueDate) {
             throw new \InvalidArgumentException(sprintf(
-                'A data de entrega da sub-issue %d nao pode ultrapassar o prazo da issue principal (%s).',
+                'A data de entrega da sub-issue %d não pode ultrapassar o prazo da issue principal (%s).',
                 $index,
                 $parentDueDate->format('Y-m-d')
             ));
@@ -2124,7 +2124,7 @@ GRAPHQL;
         $timestamp = new \DateTimeImmutable('now', new \DateTimeZone(self::UPDATE_COMMENT_TIMEZONE));
 
         return sprintf(
-            "Atualizacao registrada automaticamente pelo OctoFlow.\n\n- Data: %s\n- Hora: %s\n- Fuso: %s\n- Usuario: %s",
+            "Atualização registrada automaticamente pelo OctoFlow.\n\n- Data: %s\n- Hora: %s\n- Fuso: %s\n- Usuário: %s",
             $timestamp->format('d/m/Y'),
             $timestamp->format('H:i:s'),
             self::UPDATE_COMMENT_TIMEZONE,
@@ -2167,13 +2167,13 @@ GRAPHQL;
                     : $assignee['login'],
                 $assignees
             ))
-            : 'Sem responsavel';
+            : 'Sem responsável';
 
         $lines = [
             sprintf('- Sub-issue: %s%s', $subIssueNumber > 0 ? '#' . $subIssueNumber . ' ' : '', $subIssueTitle),
-            sprintf('- Data de abertura: %s', $openedAt !== '' ? $openedAt : 'Nao informada'),
+            sprintf('- Data de abertura: %s', $openedAt !== '' ? $openedAt : 'Não informada'),
             sprintf('- Criada por: %s', $creatorLogin),
-            sprintf('- Responsavel definido: %s', $responsibleLabel),
+            sprintf('- Responsável definido: %s', $responsibleLabel),
             sprintf('- Origem: %s', $sourceLabel),
         ];
 

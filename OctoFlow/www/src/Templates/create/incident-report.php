@@ -3,14 +3,14 @@
 return [
     'key' => 'incident-report',
     'name' => 'Incidente operacional',
-    'description' => 'Template para indisponibilidade, degradacao ou falha critica em producao.',
+    'description' => 'Template para indisponibilidade, degradação ou falha crítica em produção.',
     'access' => [],
     'titlePrefix' => 'incident',
     'defaultLabels' => ['bug', 'blocked'],
     'fields' => [
         [
             'key' => 'affectedService',
-            'label' => 'Servico afetado',
+            'label' => 'Serviço afetado',
             'type' => 'text',
             'required' => true,
             'placeholder' => 'Ex.: auth, pagamentos, painel do cliente.',
@@ -20,7 +20,7 @@ return [
             'label' => 'Impacto percebido',
             'type' => 'textarea',
             'required' => true,
-            'placeholder' => 'Quantos usuarios ou processos foram afetados?',
+            'placeholder' => 'Quantos usuários ou processos foram afetados?',
         ],
         [
             'key' => 'detection',
@@ -31,22 +31,22 @@ return [
         ],
         [
             'key' => 'mitigation',
-            'label' => 'Mitigacao imediata',
+            'label' => 'Mitigação imediata',
             'type' => 'textarea',
             'required' => false,
-            'placeholder' => 'Acoes ja executadas para reduzir impacto.',
+            'placeholder' => 'Ações já executadas para reduzir impacto.',
         ],
         [
             'key' => 'nextActions',
-            'label' => 'Proximas acoes',
+            'label' => 'Próximas ações',
             'type' => 'list',
             'style' => 'checklist',
             'required' => true,
-            'placeholder' => 'Uma acao por linha.',
+            'placeholder' => 'Uma ação por linha.',
         ],
         [
             'key' => 'communication',
-            'label' => 'Plano de comunicacao',
+            'label' => 'Plano de comunicação',
             'type' => 'textarea',
             'required' => false,
             'placeholder' => 'Como esse incidente precisa ser comunicado para o time ou clientes?',

@@ -43,7 +43,7 @@ final class GithubIssueUpdateRenderer
      */
     private function renderTemplate(array $template, array $fieldValues, ?string $repositoryKey): string
     {
-        $lines = ['## ' . trim((string) ($template['markdownTitle'] ?? $template['label'] ?? 'Atualizacao'))];
+        $lines = ['## ' . trim((string) ($template['markdownTitle'] ?? $template['label'] ?? 'Atualização'))];
         $hasContent = false;
         $timestampLabel = $this->buildTimestampLabel();
 

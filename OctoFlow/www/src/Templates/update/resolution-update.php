@@ -9,7 +9,7 @@ return [
     'fields' => [
         [
             'key' => 'owner',
-            'label' => 'Responsavel',
+            'label' => 'Responsável',
             'type' => 'select',
             'renderAs' => 'bullet',
             'options' => [],
@@ -25,7 +25,7 @@ return [
             'key' => 'appliedFix',
             'label' => 'Ajuste aplicado',
             'type' => 'textarea',
-            'placeholder' => 'Explique a mudanca realizada.',
+            'placeholder' => 'Explique a mudança realizada.',
         ],
     ],
 ];

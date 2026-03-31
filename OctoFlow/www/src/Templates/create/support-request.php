@@ -3,17 +3,17 @@
 return [
     'key' => 'support-request',
     'name' => 'Chamado de suporte',
-    'description' => 'Template para atendimento, duvidas operacionais e apoio funcional.',
+    'description' => 'Template para atendimento, dúvidas operacionais e apoio funcional.',
     'access' => [],
     'titlePrefix' => 'support',
     'defaultLabels' => ['qa'],
     'fields' => [
         [
             'key' => 'requestArea',
-            'label' => 'Area solicitante',
+            'label' => 'Área solicitante',
             'type' => 'text',
             'required' => true,
-            'placeholder' => 'Ex.: financeiro, atendimento, produto, operacoes.',
+            'placeholder' => 'Ex.: financeiro, atendimento, produto, operações.',
         ],
         [
             'key' => 'requestSummary',
@@ -24,10 +24,10 @@ return [
         ],
         [
             'key' => 'currentSituation',
-            'label' => 'Situacao atual',
+            'label' => 'Situação atual',
             'type' => 'textarea',
             'required' => true,
-            'placeholder' => 'O que o usuario ou time esta vendo agora?',
+            'placeholder' => 'O que o usuário ou time está vendo agora?',
         ],
         [
             'key' => 'expectedOutcome',
@@ -38,7 +38,7 @@ return [
         ],
         [
             'key' => 'urgency',
-            'label' => 'Urgencia',
+            'label' => 'Urgência',
             'type' => 'select',
             'required' => true,
             'defaultValue' => 'normal',
@@ -46,12 +46,12 @@ return [
                 ['value' => 'baixa', 'label' => 'Baixa'],
                 ['value' => 'normal', 'label' => 'Normal'],
                 ['value' => 'alta', 'label' => 'Alta'],
-                ['value' => 'critica', 'label' => 'Critica'],
+                ['value' => 'critica', 'label' => 'Crítica'],
             ],
         ],
         [
             'key' => 'references',
-            'label' => 'Links, IDs ou evidencias',
+            'label' => 'Links, IDs ou evidências',
             'type' => 'list',
             'style' => 'bullets',
             'required' => false,

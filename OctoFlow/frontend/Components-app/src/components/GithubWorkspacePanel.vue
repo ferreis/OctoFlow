@@ -24,7 +24,7 @@ defineProps({
   },
   assigneePlaceholderLabel: {
     type: String,
-    default: 'Sem atribuicao inicial',
+    default: 'Sem atribuição inicial',
   },
   loading: {
     type: Boolean,
@@ -58,7 +58,7 @@ defineEmits([
 <template>
   <section class="workspace-shell">
     <LoadingState v-if="loading">
-      Carregando configuracao do repositorio, labels e Projects do GitHub...
+      Carregando configuração do repositório, labels e Projects do GitHub...
     </LoadingState>
 
     <template v-else-if="workspace">

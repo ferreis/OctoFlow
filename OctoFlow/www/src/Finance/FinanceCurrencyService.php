@@ -259,7 +259,7 @@ final class FinanceCurrencyService
     {
         $curlHandle = curl_init($url);
         if ($curlHandle === false) {
-            throw new \RuntimeException('Nao foi possivel iniciar requisicao para cotacao.');
+            throw new \RuntimeException('Não foi possível iniciar requisição para cotação.');
         }
 
         try {
@@ -278,7 +278,7 @@ final class FinanceCurrencyService
             $rawBody = curl_exec($curlHandle);
             if ($rawBody === false) {
                 $curlError = curl_error($curlHandle);
-                throw new \RuntimeException(sprintf('Falha ao consultar cotacoes externas: %s', $curlError));
+                throw new \RuntimeException(sprintf('Falha ao consultar cotações externas: %s', $curlError));
             }
 
             return [
@@ -297,7 +297,7 @@ final class FinanceCurrencyService
     {
         $decodedPayload = json_decode($rawBody, true);
         if (!is_array($decodedPayload)) {
-            throw new \RuntimeException('Resposta invalida da API de cotacao.');
+            throw new \RuntimeException('Resposta inválida da API de cotação.');
         }
 
         return $decodedPayload;

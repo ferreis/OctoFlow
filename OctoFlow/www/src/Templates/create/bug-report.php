@@ -3,7 +3,7 @@
 return [
     'key' => 'bug-report',
     'name' => 'Bug - Reporte de erro',
-    'description' => 'Modelo para falhas com contexto, reproducao e severidade.',
+    'description' => 'Modelo para falhas com contexto, reprodução e severidade.',
     'access' => [],
     'titlePrefix' => 'bug',
     'defaultLabels' => ['bug'],
@@ -13,7 +13,7 @@ return [
             'label' => 'Ambiente',
             'type' => 'text',
             'required' => true,
-            'placeholder' => 'Ex.: producao, staging, localhost, branch x.',
+            'placeholder' => 'Ex.: produção, staging, localhost, branch x.',
         ],
         [
             'key' => 'severity',
@@ -23,9 +23,9 @@ return [
             'defaultValue' => 'medium',
             'options' => [
                 ['value' => 'low', 'label' => 'Baixa'],
-                ['value' => 'medium', 'label' => 'Media'],
+                ['value' => 'medium', 'label' => 'Média'],
                 ['value' => 'high', 'label' => 'Alta'],
-                ['value' => 'critical', 'label' => 'Critica'],
+                ['value' => 'critical', 'label' => 'Crítica'],
             ],
         ],
         [
@@ -48,15 +48,7 @@ return [
             'label' => 'Comportamento atual',
             'type' => 'textarea',
             'required' => true,
-            'placeholder' => 'O que esta acontecendo de fato?',
-        ],
-        [
-            'key' => 'evidence',
-            'label' => 'Evidencias ou links',
-            'type' => 'list',
-            'style' => 'bullets',
-            'required' => false,
-            'placeholder' => 'Logs, prints, links ou IDs relacionados.',
+            'placeholder' => 'O que está acontecendo de fato?',
         ],
     ],
 ];

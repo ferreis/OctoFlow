@@ -515,7 +515,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
         );
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Nao e possivel concluir a issue principal enquanto existirem sub-issues abertas');
+        $this->expectExceptionMessage('Não é possível concluir a issue principal enquanto existirem sub-issues abertas');
 
         $service->updateIssue($this->buildTokenOnlyUser(), 'issue-node-11', [
             'title' => '[feat] Fechar epic operacional',
@@ -583,10 +583,10 @@ final class GithubAssignedIssueServiceTest extends TestCase
                     $this->assertSame('[feat] Ajustar automação', $variables['title']);
                     $this->assertSame('OPEN', $variables['state']);
                     $this->assertStringContainsString("## Contexto atual\nCorpo anterior", $variables['body']);
-                    $this->assertStringContainsString('## Atualizacao de status', $variables['body']);
-                    $this->assertStringContainsString('- Responsavel: Ana Silva (ana)', $variables['body']);
+                    $this->assertStringContainsString('## Atualização de status', $variables['body']);
+                    $this->assertStringContainsString('- Responsável: Ana Silva (ana)', $variables['body']);
                     $this->assertStringContainsString('- Commit relacionado: [abc1234](https://github.com/acme/alpha/commit/abc1234)', $variables['body']);
-                    $this->assertStringContainsString("### Situacao atual\nCorpo atualizado", $variables['body']);
+                    $this->assertStringContainsString("### Situação atual\nCorpo atualizado", $variables['body']);
                     $this->assertStringContainsString('Observacao complementar', $variables['body']);
 
                     return [
@@ -595,7 +595,7 @@ final class GithubAssignedIssueServiceTest extends TestCase
                                 'id' => 'issue-node-9',
                                 'number' => 9,
                                 'title' => '[feat] Ajustar automação',
-                                'body' => "## Contexto atual\nCorpo anterior\n\n## Atualizacao de status",
+                                'body' => "## Contexto atual\nCorpo anterior\n\n## Atualização de status",
                                 'state' => 'OPEN',
                                 'url' => 'https://github.com/acme/alpha/issues/9',
                                 'createdAt' => '2026-03-15T08:00:00Z',
@@ -682,8 +682,8 @@ final class GithubAssignedIssueServiceTest extends TestCase
 
                 $this->assertStringContainsString('addComment', $query);
                 $this->assertSame('issue-node-9', $variables['issueId']);
-                $this->assertStringContainsString('Atualizacao registrada automaticamente pelo OctoFlow.', $variables['body']);
-                $this->assertStringContainsString('Usuario: owner@example.com', $variables['body']);
+                $this->assertStringContainsString('Atualização registrada automaticamente pelo OctoFlow.', $variables['body']);
+                $this->assertStringContainsString('Usuário: owner@example.com', $variables['body']);
 
                 return [
                     'addComment' => [

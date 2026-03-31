@@ -22,7 +22,7 @@ const props = defineProps({
   },
   assigneePlaceholder: {
     type: String,
-    default: 'Sem atribuicao inicial',
+    default: 'Sem atribuição inicial',
   },
   fieldValues: {
     type: Object,
@@ -54,11 +54,11 @@ const props = defineProps({
   },
   titleLabel: {
     type: String,
-    default: 'Titulo',
+    default: 'Título',
   },
   assigneeLabel: {
     type: String,
-    default: 'Responsavel',
+    default: 'Responsável',
   },
   submitLabel: {
     type: String,
@@ -70,7 +70,7 @@ const props = defineProps({
   },
   resetLabel: {
     type: String,
-    default: 'Limpar formulario',
+    default: 'Limpar formulário',
   },
 })
 
@@ -324,11 +324,11 @@ function normalizeLabelColor(value) {
         option-value-key="id"
         option-color-key="color"
         option-description-key="description"
-        search-placeholder="Pesquisar tags padrao"
-        helper-text="Use a busca para filtrar tags. Tambem e possivel criar novas tags."
+        search-placeholder="Pesquisar tags padrão"
+        helper-text="Use a busca para filtrar tags. Também é possível criar novas tags."
         selected-count-suffix="tag(s) selecionada(s)"
         create-label-prefix="Criar tag"
-        create-helper-text="A nova tag sera criada ao salvar."
+        create-helper-text="A nova tag será criada ao salvar."
         existing-option-helper-text="Tag existente"
         empty-idle-text="Digite para buscar tags ou criar uma nova."
         empty-search-text="Nenhuma tag encontrada para essa busca."

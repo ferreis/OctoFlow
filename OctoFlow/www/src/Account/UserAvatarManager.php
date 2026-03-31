@@ -35,12 +35,12 @@ final class UserAvatarManager
 
         $rawImageContent = @file_get_contents($uploadedAvatar->getPathname());
         if (!is_string($rawImageContent) || $rawImageContent === '') {
-            throw new \InvalidArgumentException('Nao foi possivel ler o arquivo enviado.');
+            throw new \InvalidArgumentException('Não foi possível ler o arquivo enviado.');
         }
 
         $sourceImage = @imagecreatefromstring($rawImageContent);
         if ($sourceImage === false) {
-            throw new \InvalidArgumentException('Arquivo de imagem invalido.');
+            throw new \InvalidArgumentException('Arquivo de imagem inválido.');
         }
 
         $optimizedImage = null;
@@ -86,21 +86,21 @@ final class UserAvatarManager
     private function validateUploadedAvatar(UploadedFile $uploadedAvatar): void
     {
         if (!$uploadedAvatar->isValid()) {
-            throw new \InvalidArgumentException('Upload de imagem invalido.');
+            throw new \InvalidArgumentException('Upload de imagem inválido.');
         }
 
         $uploadedSize = $uploadedAvatar->getSize();
         if (!is_int($uploadedSize) || $uploadedSize <= 0) {
-            throw new \InvalidArgumentException('Nao foi possivel validar o tamanho da imagem.');
+            throw new \InvalidArgumentException('Não foi possível validar o tamanho da imagem.');
         }
 
         if ($uploadedSize > self::MAX_AVATAR_SIZE_BYTES) {
-            throw new \InvalidArgumentException('A imagem deve ter no maximo 5 MB.');
+            throw new \InvalidArgumentException('A imagem deve ter no máximo 5 MB.');
         }
 
         $mimeType = trim((string) $uploadedAvatar->getMimeType());
         if ($mimeType === '' || !in_array($mimeType, self::ALLOWED_MIME_TYPES, true)) {
-            throw new \InvalidArgumentException('Formato de imagem nao suportado. Use JPG, PNG ou WEBP.');
+            throw new \InvalidArgumentException('Formato de imagem não suportado. Use JPG, PNG ou WEBP.');
         }
     }
 
@@ -111,7 +111,7 @@ final class UserAvatarManager
         $shortSide = min($sourceWidth, $sourceHeight);
 
         if ($shortSide <= 0) {
-            throw new \InvalidArgumentException('Nao foi possivel processar as dimensoes da imagem.');
+            throw new \InvalidArgumentException('Não foi possível processar as dimensões da imagem.');
         }
 
         $sourceOffsetX = max(0, intdiv($sourceWidth - $shortSide, 2));
@@ -119,7 +119,7 @@ final class UserAvatarManager
 
         $targetImage = imagecreatetruecolor(self::TARGET_AVATAR_SIZE, self::TARGET_AVATAR_SIZE);
         if ($targetImage === false) {
-            throw new \RuntimeException('Nao foi possivel preparar a imagem otimizada.');
+            throw new \RuntimeException('Não foi possível preparar a imagem otimizada.');
         }
 
         imagealphablending($targetImage, false);
@@ -140,7 +140,7 @@ final class UserAvatarManager
 
         if (!$resampleSucceeded) {
             imagedestroy($targetImage);
-            throw new \RuntimeException('Nao foi possivel redimensionar a imagem enviada.');
+            throw new \RuntimeException('Não foi possível redimensionar a imagem enviada.');
         }
 
         return $targetImage;
@@ -155,7 +155,7 @@ final class UserAvatarManager
 
         $userId = (int) ($user->getId() ?? 0);
         if ($userId <= 0) {
-            throw new \RuntimeException('Nao foi possivel identificar o usuario da imagem de perfil.');
+            throw new \RuntimeException('Não foi possível identificar o usuário da imagem de perfil.');
         }
 
         $fileNameSeed = sprintf('user_%d_%s', $userId, bin2hex(random_bytes(8)));
@@ -175,7 +175,7 @@ final class UserAvatarManager
             : imagejpeg($optimizedImage, $targetAbsolutePath, self::JPEG_QUALITY);
 
         if ($writeSucceeded !== true) {
-            throw new \RuntimeException('Nao foi possivel salvar a imagem de perfil otimizada.');
+            throw new \RuntimeException('Não foi possível salvar a imagem de perfil otimizada.');
         }
 
         return [
@@ -191,7 +191,7 @@ final class UserAvatarManager
         }
 
         if (!@mkdir($this->storageDirectory, 0o755, true) && !is_dir($this->storageDirectory)) {
-            throw new \RuntimeException('Nao foi possivel preparar o diretorio de imagens de perfil.');
+            throw new \RuntimeException('Não foi possível preparar o diretório de imagens de perfil.');
         }
     }
 

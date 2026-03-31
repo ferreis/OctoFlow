@@ -30,9 +30,9 @@ final class GithubIssueBodyRendererTest extends TestCase
 
         $this->assertSame('[feat] Integrar workspace GitHub', $renderedIssue['title']);
         $this->assertStringContainsString('> Solicitante: owner@example.com', $renderedIssue['body']);
-        $this->assertStringContainsString('## Descriçao', $renderedIssue['body']);
-        $this->assertStringContainsString('## Regra de negocio', $renderedIssue['body']);
-        $this->assertStringContainsString('## Criterios de aceitação', $renderedIssue['body']);
+        $this->assertStringContainsString('## Descrição', $renderedIssue['body']);
+        $this->assertStringContainsString('## Regra de negócio', $renderedIssue['body']);
+        $this->assertStringContainsString('## Critérios de aceitação', $renderedIssue['body']);
         $this->assertStringContainsString('Criar issue no repositorio configurado', $renderedIssue['body']);
     }
 
@@ -68,8 +68,8 @@ final class GithubIssueBodyRendererTest extends TestCase
         ], 'owner@example.com');
 
         $this->assertSame('[question] Campo status diverge entre frontend e backend', $renderedIssue['title']);
-        $this->assertStringContainsString('## Modulo ou tela', $renderedIssue['body']);
-        $this->assertStringContainsString('## Campo ou regra em duvida', $renderedIssue['body']);
+        $this->assertStringContainsString('## Módulo ou tela', $renderedIssue['body']);
+        $this->assertStringContainsString('## Campo ou regra em dúvida', $renderedIssue['body']);
         $this->assertStringContainsString('## Comportamento observado no frontend', $renderedIssue['body']);
         $this->assertStringContainsString('## Comportamento observado no backend', $renderedIssue['body']);
         $this->assertStringContainsString('## Regra que precisa ser confirmada', $renderedIssue['body']);

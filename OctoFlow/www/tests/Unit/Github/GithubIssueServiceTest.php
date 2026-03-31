@@ -165,7 +165,7 @@ final class GithubIssueServiceTest extends TestCase
                     $this->assertSame('repo-id', $variables['repositoryId']);
                     $this->assertSame('[feat] Entregar workspace GitHub', $variables['title']);
                     $this->assertSame(['label-enhancement'], $variables['labelIds']);
-                    $this->assertStringContainsString('## Criterios de aceitação', $variables['body']);
+                    $this->assertStringContainsString('## Critérios de aceitação', $variables['body']);
                     $this->assertStringContainsString('Sincronizar backlog automaticamente', $variables['body']);
 
                     return [

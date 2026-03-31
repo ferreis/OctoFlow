@@ -54,7 +54,7 @@ async function loadTask(taskId) {
 }
 
 function statusLabel(taskEntry) {
-  return taskEntry?.completed ? 'Concluida' : 'Pendente'
+  return taskEntry?.completed ? 'Concluída' : 'Pendente'
 }
 
 function statusTone(taskEntry) {
@@ -76,12 +76,12 @@ function statusTone(taskEntry) {
         <p class="task-panel-meta-value">{{ task.id }}</p>
       </div>
       <div>
-        <p class="task-panel-meta-label">Titulo</p>
+        <p class="task-panel-meta-label">Título</p>
         <p class="task-panel-meta-value">{{ task.title }}</p>
       </div>
       <div>
-        <p class="task-panel-meta-label">Descricao</p>
-        <p class="task-panel-meta-value">{{ task.description || 'Sem descricao' }}</p>
+        <p class="task-panel-meta-label">Descrição</p>
+        <p class="task-panel-meta-value">{{ task.description || 'Sem descrição' }}</p>
       </div>
       <div>
         <p class="task-panel-meta-label">Status</p>

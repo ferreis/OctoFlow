@@ -22,7 +22,7 @@ const requesterEmail = computed(() => {
   const primaryEmail = typeof props.currentUser?.defaultEmail === 'string' ? props.currentUser.defaultEmail.trim() : ''
   const fallbackEmail = typeof props.currentUser?.email === 'string' ? props.currentUser.email.trim() : ''
 
-  return primaryEmail || fallbackEmail || 'usuario autenticado'
+  return primaryEmail || fallbackEmail || 'usuário autenticado'
 })
 </script>
 
@@ -36,10 +36,10 @@ const requesterEmail = computed(() => {
           description=""
         />
         <h3 class="repository-title">
-          {{ repository?.nameWithOwner || 'Repositorio nao configurado' }}
+          {{ repository?.nameWithOwner || 'Repositório não configurado' }}
         </h3>
         <p class="repository-copy">
-          {{ repository?.description || 'O host monta cada painel remoto de forma isolada para carregar apenas o que fizer sentido para a sessao atual.' }}
+          {{ repository?.description || 'O host monta cada painel remoto de forma isolada para carregar apenas o que fizer sentido para a sessão atual.' }}
         </p>
       </div>
 
@@ -76,10 +76,10 @@ const requesterEmail = computed(() => {
         rel="noreferrer noopener"
         class="link-button"
       >
-        Abrir repositorio
+        Abrir repositório
       </a>
       <span class="owner-pill">
-        Owner: {{ repository?.ownerLogin || 'nao definido' }}
+        Owner: {{ repository?.ownerLogin || 'não definido' }}
       </span>
     </div>
   </BaseCard>

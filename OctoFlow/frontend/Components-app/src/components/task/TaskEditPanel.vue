@@ -78,7 +78,7 @@ async function saveTask() {
 
   const title = form.title.trim()
   if (title === '') {
-    error.value = 'O titulo nao pode ficar vazio.'
+    error.value = 'O título não pode ficar vazio.'
     return
   }
 
@@ -116,7 +116,7 @@ async function saveTask() {
 
     <form v-else class="task-panel-form" @submit.prevent="saveTask">
       <label class="task-panel-field">
-        <span class="task-panel-field-label">Titulo</span>
+        <span class="task-panel-field-label">Título</span>
         <input
           v-model="form.title"
           type="text"
@@ -127,7 +127,7 @@ async function saveTask() {
       </label>
 
       <label class="task-panel-field">
-        <span class="task-panel-field-label">Descricao</span>
+        <span class="task-panel-field-label">Descrição</span>
         <textarea
           v-model="form.description"
           rows="3"
@@ -137,11 +137,11 @@ async function saveTask() {
 
       <label class="task-panel-checkbox">
         <input v-model="form.completed" type="checkbox">
-        <span>Concluida</span>
+        <span>Concluída</span>
       </label>
 
       <button type="submit" :disabled="saving" class="task-panel-button task-panel-button--primary">
-        {{ saving ? 'Salvando...' : 'Salvar alteracoes' }}
+        {{ saving ? 'Salvando...' : 'Salvar alterações' }}
       </button>
     </form>
 

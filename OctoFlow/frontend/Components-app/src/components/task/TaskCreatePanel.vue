@@ -27,7 +27,7 @@ const form = reactive({
 async function createTask() {
   const title = form.title.trim()
   if (title === '') {
-    error.value = 'Informe um titulo para criar a tarefa.'
+    error.value = 'Informe um título para criar a tarefa.'
     return
   }
 
@@ -67,7 +67,7 @@ async function createTask() {
 
     <form class="task-panel-form" @submit.prevent="createTask">
       <label class="task-panel-field">
-        <span class="task-panel-field-label">Titulo</span>
+        <span class="task-panel-field-label">Título</span>
         <input
           v-model="form.title"
           type="text"
@@ -78,7 +78,7 @@ async function createTask() {
       </label>
 
       <label class="task-panel-field">
-        <span class="task-panel-field-label">Descricao</span>
+        <span class="task-panel-field-label">Descrição</span>
         <textarea
           v-model="form.description"
           rows="3"
@@ -88,7 +88,7 @@ async function createTask() {
 
       <label class="task-panel-checkbox">
         <input v-model="form.completed" type="checkbox">
-        <span>Ja concluir</span>
+        <span>Já concluída</span>
       </label>
 
       <button type="submit" :disabled="saving" class="task-panel-button task-panel-button--primary">

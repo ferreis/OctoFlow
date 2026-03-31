@@ -3,13 +3,13 @@
 return [
     'key' => 'handoff-update',
     'label' => 'Repasse',
-    'description' => 'Contexto pronto para troca de responsavel.',
+    'description' => 'Contexto pronto para troca de responsável.',
     'access' => [],
     'markdownTitle' => 'Repasse de atendimento',
     'fields' => [
         [
             'key' => 'nextOwner',
-            'label' => 'Proximo responsavel',
+            'label' => 'Próximo responsável',
             'type' => 'select',
             'renderAs' => 'bullet',
             'options' => [],
@@ -25,21 +25,21 @@ return [
             'key' => 'currentContext',
             'label' => 'Contexto atual',
             'type' => 'textarea',
-            'placeholder' => 'Resumo do que ja foi feito e da situacao atual.',
+            'placeholder' => 'Resumo do que já foi feito e da situação atual.',
         ],
         [
             'key' => 'doneItems',
-            'label' => 'Itens concluidos',
+            'label' => 'Itens concluídos',
             'type' => 'list',
             'listStyle' => 'bullet',
             'placeholder' => 'Um item por linha.',
         ],
         [
             'key' => 'pendingItems',
-            'label' => 'Pendencias',
+            'label' => 'Pendências',
             'type' => 'list',
             'listStyle' => 'checklist',
-            'placeholder' => 'Uma pendencia por linha.',
+            'placeholder' => 'Uma pendência por linha.',
         ],
     ],
 ];

@@ -115,7 +115,7 @@ async function toggleStatus(task) {
     }
 
     tasks.value = tasks.value.map((item) => (item.id === task.id ? updatedTask : item))
-    emit('task-status', `Status da tarefa ${task.id} atualizado para ${updatedTask.completed ? 'Concluida' : 'Pendente'}.`)
+    emit('task-status', `Status da tarefa ${task.id} atualizado para ${updatedTask.completed ? 'Concluída' : 'Pendente'}.`)
   } catch (requestError) {
     error.value = extractRequestErrorMessage(requestError, 'Falha ao atualizar status da tarefa.')
   } finally {
@@ -124,7 +124,7 @@ async function toggleStatus(task) {
 }
 
 function statusLabel(task) {
-  return task.completed ? 'Concluida' : 'Pendente'
+  return task.completed ? 'Concluída' : 'Pendente'
 }
 
 function statusTone(task) {
@@ -146,7 +146,7 @@ function statusTone(task) {
       <select v-model="statusFilter" :disabled="loading" class="app-field-control task-panel-field-control">
         <option value="all">Todos</option>
         <option value="pending">Pendentes</option>
-        <option value="completed">Concluidas</option>
+        <option value="completed">Concluídas</option>
       </select>
     </label>
 
@@ -174,7 +174,7 @@ function statusTone(task) {
               {{ statusLabel(task) }}
             </span>
           </div>
-          <p class="task-panel-item-description">{{ task.description || 'Sem descricao' }}</p>
+          <p class="task-panel-item-description">{{ task.description || 'Sem descrição' }}</p>
         </div>
 
         <div class="task-panel-actions">

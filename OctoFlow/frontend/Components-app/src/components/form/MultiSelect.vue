@@ -30,23 +30,23 @@ const props = defineProps({
   },
   createHelperText: {
     type: String,
-    default: 'A nova opcao sera criada ao salvar.',
+    default: 'A nova opção será criada ao salvar.',
   },
   existingOptionHelperText: {
     type: String,
-    default: 'Opcao existente',
+    default: 'Opção existente',
   },
   emptyOptionsText: {
     type: String,
-    default: 'Nenhuma opcao cadastrada. Digite para criar a primeira.',
+    default: 'Nenhuma opção cadastrada. Digite para criar a primeira.',
   },
   emptySearchText: {
     type: String,
-    default: 'Nenhuma opcao encontrada para essa busca.',
+    default: 'Nenhuma opção encontrada para essa busca.',
   },
   emptyIdleText: {
     type: String,
-    default: 'Digite para pesquisar opcoes existentes.',
+    default: 'Digite para pesquisar opções existentes.',
   },
   emptyCreateText: {
     type: String,

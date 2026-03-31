@@ -44,10 +44,10 @@ final class GithubIssueUpdateRendererTest extends TestCase
         );
 
         $this->assertStringContainsString("## Contexto\nConteudo anterior", $body);
-        $this->assertStringContainsString('## Atualizacao de status', $body);
-        $this->assertStringContainsString('- Responsavel: Ana Silva (ana)', $body);
+        $this->assertStringContainsString('## Atualização de status', $body);
+        $this->assertStringContainsString('- Responsável: Ana Silva (ana)', $body);
         $this->assertStringContainsString('- Commit relacionado: [abc1234](https://github.com/acme/alpha/commit/abc1234)', $body);
-        $this->assertStringContainsString("### Situacao atual\nFluxo revisado no backend.", $body);
+        $this->assertStringContainsString("### Situação atual\nFluxo revisado no backend.", $body);
         $this->assertStringContainsString('Observacao complementar', $body);
     }
 
@@ -64,7 +64,7 @@ final class GithubIssueUpdateRendererTest extends TestCase
         ];
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('The value "user-invalido" is not valid for the field "Responsavel".');
+        $this->expectExceptionMessage('The value "user-invalido" is not valid for the field "Responsável".');
 
         $this->renderer->render(
             $template,

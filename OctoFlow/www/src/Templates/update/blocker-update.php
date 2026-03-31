@@ -3,13 +3,13 @@
 return [
     'key' => 'blocker-update',
     'label' => 'Bloqueio',
-    'description' => 'Padrao para registrar impedimento e acao necessaria.',
+    'description' => 'Padrão para registrar impedimento e ação necessária.',
     'access' => [],
     'markdownTitle' => 'Bloqueio',
     'fields' => [
         [
             'key' => 'owner',
-            'label' => 'Responsavel',
+            'label' => 'Responsável',
             'type' => 'select',
             'renderAs' => 'bullet',
             'options' => [],
@@ -31,11 +31,11 @@ return [
             'key' => 'impact',
             'label' => 'Impacto',
             'type' => 'textarea',
-            'placeholder' => 'O que esta sendo afetado por este bloqueio.',
+            'placeholder' => 'O que está sendo afetado por este bloqueio.',
         ],
         [
             'key' => 'requiredAction',
-            'label' => 'Acao necessaria',
+            'label' => 'Ação necessária',
             'type' => 'textarea',
             'placeholder' => 'O que precisa acontecer para liberar o fluxo.',
         ],

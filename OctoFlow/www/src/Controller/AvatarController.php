@@ -24,18 +24,18 @@ final class AvatarController
     {
         $normalizedFileName = trim($fileName);
         if ($normalizedFileName === '' || preg_match('/^[A-Za-z0-9._-]{8,255}$/', $normalizedFileName) !== 1) {
-            return new JsonResponse(['message' => 'Avatar nao encontrado.'], JsonResponse::HTTP_NOT_FOUND);
+            return new JsonResponse(['message' => 'Avatar não encontrado.'], JsonResponse::HTTP_NOT_FOUND);
         }
 
         $avatarPath = '/uploads/avatars/' . $normalizedFileName;
         $ownerUser = $this->userRepository->findOneBy(['avatarPath' => $avatarPath]);
         if ($ownerUser === null) {
-            return new JsonResponse(['message' => 'Avatar nao encontrado.'], JsonResponse::HTTP_NOT_FOUND);
+            return new JsonResponse(['message' => 'Avatar não encontrado.'], JsonResponse::HTTP_NOT_FOUND);
         }
 
         $absoluteAvatarPath = $this->userAvatarManager->resolveAbsolutePathFromAvatarPath($avatarPath);
         if ($absoluteAvatarPath === null || !is_file($absoluteAvatarPath)) {
-            return new JsonResponse(['message' => 'Avatar nao encontrado.'], JsonResponse::HTTP_NOT_FOUND);
+            return new JsonResponse(['message' => 'Avatar não encontrado.'], JsonResponse::HTTP_NOT_FOUND);
         }
 
         $response = new BinaryFileResponse($absoluteAvatarPath);

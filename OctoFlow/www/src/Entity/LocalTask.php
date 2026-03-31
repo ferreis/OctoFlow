@@ -287,9 +287,9 @@ class LocalTask
                 $normalizedKind = 'updated';
             }
 
-            $normalizedTitle = trim((string) ($historyEntry['title'] ?? 'Atualizacao registrada'));
+            $normalizedTitle = trim((string) ($historyEntry['title'] ?? 'Atualização registrada'));
             if ($normalizedTitle === '') {
-                $normalizedTitle = 'Atualizacao registrada';
+                $normalizedTitle = 'Atualização registrada';
             }
 
             $normalizedDescription = trim((string) ($historyEntry['description'] ?? 'Sem detalhes adicionais.'));
@@ -342,7 +342,7 @@ class LocalTask
 
         $normalizedTitle = trim($title);
         if ($normalizedTitle === '') {
-            $normalizedTitle = 'Atualizacao registrada';
+            $normalizedTitle = 'Atualização registrada';
         }
 
         $normalizedDescription = trim($description);

@@ -41,7 +41,7 @@ function projectStatusStyle(option) {
     <SectionHeader
       kicker="Projects"
       title="Painel do owner"
-      description="O host monta este bloco apenas quando o workspace do usuario estiver pronto, sem puxar a tela remota inteira."
+      description="O host monta este bloco apenas quando o workspace do usuário estiver pronto, sem puxar a tela remota inteira."
     />
 
     <BaseAlert
@@ -60,7 +60,7 @@ function projectStatusStyle(option) {
         <div class="project-top">
           <div class="project-copy">
             <strong>{{ project.title }}</strong>
-            <p>{{ project.shortDescription || 'Sem Descricao curta.' }}</p>
+            <p>{{ project.shortDescription || 'Sem descrição curta.' }}</p>
           </div>
 
           <a
@@ -88,7 +88,7 @@ function projectStatusStyle(option) {
     </div>
 
     <EmptyState v-else>
-      Nenhum project disponivel para este owner ou o token nao possui o escopo necessario.
+      Nenhum project disponível para este owner ou o token não possui o escopo necessário.
     </EmptyState>
   </BaseCard>
 </template>

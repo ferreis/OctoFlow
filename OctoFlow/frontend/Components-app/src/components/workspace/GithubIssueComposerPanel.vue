@@ -17,7 +17,7 @@ const props = defineProps({
   },
   assigneePlaceholderLabel: {
     type: String,
-    default: 'Sem atribuicao inicial',
+    default: 'Sem atribuição inicial',
   },
   submitting: {
     type: Boolean,
@@ -61,7 +61,7 @@ const labelOptions = computed(() => labels.value
       <SectionHeader
         kicker="Templates"
         title="Abrir novo chamado"
-        description="O host resolve permissao, dados e callbacks. O remote apenas renderiza o fluxo compartilhado."
+        description="O host resolve permissão, dados e callbacks. O remote apenas renderiza o fluxo compartilhado."
       />
 
       <div v-if="templates.length" class="template-grid">
@@ -80,7 +80,7 @@ const labelOptions = computed(() => labels.value
       </div>
 
       <EmptyState v-else>
-        O backend nao retornou templates disponiveis para este workspace.
+        O backend não retornou templates disponíveis para este workspace.
       </EmptyState>
 
       <IssueTemplateForm
@@ -108,7 +108,7 @@ const labelOptions = computed(() => labels.value
     </BaseCard>
 
     <IssueTemplatePreview
-      :title="composer?.previewTitle || 'Titulo da issue'"
+      :title="composer?.previewTitle || 'Título da issue'"
       :body="composer?.previewBody || ''"
       kicker="Preview"
       heading="Como a issue vai subir"

@@ -2,14 +2,14 @@
 
 return [
     'key' => 'status-update',
-    'label' => 'Atualizacao de status',
-    'description' => 'Resumo rapido do andamento atual do chamado.',
+    'label' => 'Atualização de status',
+    'description' => 'Resumo rápido do andamento atual do chamado.',
     'access' => [],
-    'markdownTitle' => 'Atualizacao de status',
+    'markdownTitle' => 'Atualização de status',
     'fields' => [
         [
             'key' => 'owner',
-            'label' => 'Responsavel',
+            'label' => 'Responsável',
             'type' => 'select',
             'renderAs' => 'bullet',
             'options' => [],
@@ -23,19 +23,19 @@ return [
         ],
         [
             'key' => 'currentStatus',
-            'label' => 'Situacao atual',
+            'label' => 'Situação atual',
             'type' => 'textarea',
             'placeholder' => 'Descreva o estado atual do chamado.',
         ],
         [
             'key' => 'nextStep',
-            'label' => 'Proximo passo',
+            'label' => 'Próximo passo',
             'type' => 'textarea',
-            'placeholder' => 'Informe a proxima acao prevista.',
+            'placeholder' => 'Informe a próxima ação prevista.',
         ],
         [
             'key' => 'notes',
-            'label' => 'Observacoes',
+            'label' => 'Observações',
             'type' => 'textarea',
             'placeholder' => 'Riscos, alinhamentos ou contexto adicional.',
         ],

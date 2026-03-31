@@ -75,7 +75,7 @@ function closeAction() {
 
   activeAction.value = null
   mountKey.value += 1
-  panelStatus.value = 'Componente encerrado e destruido. Clique em uma ação para montar novamente.'
+  panelStatus.value = 'Componente encerrado e destruído. Clique em uma ação para montar novamente.'
 }
 
 function onTaskSelected(taskId) {
@@ -112,12 +112,12 @@ function onStatus(message) {
   <article class="task-shell">
     <header class="task-shell-header">
       <p class="task-shell-kicker">Componente remoto de task</p>
-      <h3 class="task-shell-title">Acoes sob demanda</h3>
+      <h3 class="task-shell-title">Ações sob demanda</h3>
       <p class="task-shell-copy">
-        Lista, create, view e edit sao montados apenas quando voce clica na ação correspondente.
+        Lista, create, view e edit são montados apenas quando você clica na ação correspondente.
       </p>
       <p class="task-shell-copy">
-        Ao fechar ou trocar de ação, o componente atual e destruido.
+        Ao fechar ou trocar de ação, o componente atual é destruído.
       </p>
     </header>
 
@@ -139,7 +139,7 @@ function onStatus(message) {
 
     <div class="task-shell-mount">
       <p v-if="!currentComponent" class="task-panel-empty">
-        Nenhum componente ativo. Clique em um botao para montar um componente de task.
+        Nenhum componente ativo. Clique em um botão para montar um componente de task.
       </p>
 
       <Suspense v-else>
