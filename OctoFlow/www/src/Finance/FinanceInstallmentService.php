@@ -94,21 +94,15 @@ final class FinanceInstallmentService
         $ownerId = $this->requireOwnerId($user);
         $existingPlan = $this->getPlanById($ownerId, $planId);
 
-        $status = array_key_exists('status', $payload)
-            ? strtoupper(trim((string) $payload['status']))
-            : strtoupper(trim((string) ($existingPlan['status'] ?? '')));
-
-        if ($status === '') {
-            throw new \InvalidArgumentException('The installment plan status is required.');
+        $requestedStatus = strtoupper(trim((string) ($payload['status'] ?? '')));
+        if ($requestedStatus !== 'CANCELED') {
+            throw new \InvalidArgumentException('Only CANCELED status is allowed in this operation.');
         }
 
-        if (!in_array($status, ['ACTIVE', 'RENEGOTIATED', 'CANCELED'], true)) {
-            throw new \InvalidArgumentException('The installment plan status is invalid.');
-        }
-
-        if ($status !== strtoupper(trim((string) ($existingPlan['status'] ?? '')))) {
+        $currentStatus = strtoupper(trim((string) ($existingPlan['status'] ?? '')));
+        if ($currentStatus !== 'CANCELED') {
             $this->connection->update('finance_installment_plan', [
-                'status' => $status,
+                'status' => 'CANCELED',
                 'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
             ], [
                 'id' => $planId,
