@@ -204,6 +204,15 @@ export function createFinanceInstallmentPlan(request, payload) {
   })
 }
 
+export function updateFinanceInstallmentPlan(request, planId, payload) {
+  return request({
+    url: `/finance/installment-plans/${encodeURIComponent(planId)}`,
+    method: 'PATCH',
+    csrfActionId: 'finance.installments.update',
+    data: payload,
+  })
+}
+
 export function fetchFinanceDebtPlans(request) {
   return request({
     url: '/finance/debt-plans',

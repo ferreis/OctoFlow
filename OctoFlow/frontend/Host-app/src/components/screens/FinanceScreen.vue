@@ -40,12 +40,15 @@ import {
   updateFinanceBankAccount,
   updateFinanceBankAccountStatus,
   updateFinanceEntry,
+  updateFinanceInstallmentPlan,
+  updateFinanceRecurringRule,
   updateFinanceRecurringType,
 } from '../../services/finance'
 import {
   convertFinanceSimulationToPlan,
   createFinanceSimulation,
   fetchFinanceInvestmentPlans,
+  updateFinanceInvestmentPlan,
 } from '../../services/financeInvestments'
 import {
   FINANCE_BANK_ACCOUNT_TYPE_OPTIONS,
@@ -64,6 +67,7 @@ import { useNotification } from '../../composables/useNotification'
 import { formatDate, formatDateTime } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
+import FinanceEntriesListPanel from '../shared/FinanceEntriesListPanel.vue'
 
 const props = defineProps({
   request: {
@@ -231,6 +235,7 @@ const recurringForm = reactive({
   categoryId: '',
   defaultBankAccountId: '',
 })
+const recurringRuleEditingId = ref(null)
 
 const installmentForm = reactive({
   direction: 'PAYABLE',
@@ -646,8 +651,6 @@ const totalsLabel = computed(() => {
 const paginatedBankAccounts = computed(() => getPaginatedLocalItems(bankAccounts.value, 'bankAccounts'))
 const paginatedCategories = computed(() => getPaginatedLocalItems(categories.value, 'categories'))
 const paginatedRecurringTypes = computed(() => getPaginatedLocalItems(recurringTypes.value, 'recurringTypes'))
-const paginatedRecurringRules = computed(() => getPaginatedLocalItems(recurringRules.value, 'recurringRules'))
-const paginatedInstallmentPlans = computed(() => getPaginatedLocalItems(installmentPlans.value, 'installmentPlans'))
 const paginatedInvestmentPlans = computed(() => getPaginatedLocalItems(investmentPlans.value, 'investmentPlans'))
 const paginatedDebtPlans = computed(() => getPaginatedLocalItems(debtPlans.value, 'debtPlans'))
 const paginatedCurrencyRates = computed(() => getPaginatedLocalItems(currencyRates.value, 'currencyRates'))
@@ -693,6 +696,79 @@ const accountsDirectionByTab = computed(() => {
   return ''
 })
 
+const isOverviewAccountsTab = computed(() => activeAccountsTab.value === 'overview')
+const isPayableAccountsTab = computed(() => activeAccountsTab.value === 'payable')
+const isReceivableAccountsTab = computed(() => activeAccountsTab.value === 'receivable')
+const isDebtsAccountsTab = computed(() => activeAccountsTab.value === 'debts')
+const shouldShowEntryManagement = computed(() => isPayableAccountsTab.value || isReceivableAccountsTab.value)
+const shouldShowRecurringSection = computed(() => isPayableAccountsTab.value || isReceivableAccountsTab.value)
+const shouldShowInstallmentSection = computed(() => isPayableAccountsTab.value || isDebtsAccountsTab.value)
+
+const recurringDirectionByTab = computed(() => {
+  if (isPayableAccountsTab.value) {
+    return 'PAYABLE'
+  }
+
+  if (isReceivableAccountsTab.value) {
+    return 'RECEIVABLE'
+  }
+
+  return ''
+})
+
+const recurringDirectionLabel = computed(() => (
+  recurringDirectionByTab.value
+    ? translateFinanceTerm(recurringDirectionByTab.value, '-')
+    : '-'
+))
+
+const installmentDirectionByTab = computed(() => (
+  shouldShowInstallmentSection.value
+    ? 'PAYABLE'
+    : ''
+))
+
+const installmentDirectionLabel = computed(() => (
+  installmentDirectionByTab.value
+    ? translateFinanceTerm(installmentDirectionByTab.value, '-')
+    : '-'
+))
+
+const filteredRecurringRules = computed(() => {
+  if (!shouldShowRecurringSection.value) {
+    return []
+  }
+
+  const targetDirection = recurringDirectionByTab.value
+  return recurringRules.value.filter((ruleItem) => {
+    const normalizedDirection = String(ruleItem?.direction || '').toUpperCase()
+    if (normalizedDirection === '') {
+      return targetDirection === 'PAYABLE'
+    }
+
+    return normalizedDirection === targetDirection
+  })
+})
+
+const filteredInstallmentPlans = computed(() => {
+  if (!shouldShowInstallmentSection.value) {
+    return []
+  }
+
+  const targetDirection = installmentDirectionByTab.value
+  return installmentPlans.value.filter((planItem) => {
+    const normalizedDirection = String(planItem?.direction || '').toUpperCase()
+    if (normalizedDirection === '') {
+      return targetDirection === 'PAYABLE'
+    }
+
+    return normalizedDirection === targetDirection
+  })
+})
+
+const paginatedRecurringRules = computed(() => getPaginatedLocalItems(filteredRecurringRules.value, 'recurringRules'))
+const paginatedInstallmentPlans = computed(() => getPaginatedLocalItems(filteredInstallmentPlans.value, 'installmentPlans'))
+
 const accountsCurrentDirectionLabel = computed(() => (
   accountsDirectionByTab.value
     ? translateFinanceTerm(accountsDirectionByTab.value, 'Todas as direções')
@@ -708,7 +784,7 @@ const accountsEntriesTitle = computed(() => {
     return 'Lançamentos - Contas a receber'
   }
 
-  return 'Lançamentos'
+  return 'Lançamentos unificados (pagar e receber)'
 })
 
 const entryTypeOptionsForForm = computed(() => (
@@ -804,21 +880,7 @@ watch(
 
 watch(activeTab, async (nextTabKey) => {
   if (nextTabKey === 'accounts') {
-    applyAccountsDirectionContext()
-    if (activeAccountsTab.value === 'debts') {
-      await Promise.all([
-        loadDebtPlans(),
-        loadCatalogs(),
-      ])
-      return
-    }
-
-    const accountRequests = [loadEntries()]
-    if (activeAccountsTab.value === 'overview') {
-      accountRequests.push(loadDashboard(), loadRecurringRules(), loadInstallments())
-    }
-
-    await Promise.all(accountRequests)
+    await loadAccountsCurrentTabData()
     return
   }
 
@@ -858,30 +920,16 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
     resetEntryForm()
   }
 
+  if (recurringRuleEditingId.value) {
+    resetRecurringRuleForm()
+  }
+
   applyAccountsDirectionContext()
   entryFilters.page = 1
+  localListPages.recurringRules = 1
+  localListPages.installmentPlans = 1
 
-  if (nextAccountsTab === 'debts') {
-    await Promise.all([
-      loadDebtPlans(),
-      loadCatalogs(),
-    ])
-
-    return
-  }
-
-  if (nextAccountsTab === 'overview') {
-    await Promise.all([
-      loadDashboard(),
-      loadEntries(),
-      loadRecurringRules(),
-      loadInstallments(),
-    ])
-
-    return
-  }
-
-  await loadEntries()
+  await loadAccountsCurrentTabData(nextAccountsTab)
 })
 
 watch(
@@ -892,6 +940,35 @@ watch(
     }
   },
 )
+
+async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.value) {
+  if (activeTab.value !== 'accounts') {
+    return
+  }
+
+  applyAccountsDirectionContext()
+
+  if (accountsTabKey === 'debts') {
+    await Promise.all([
+      loadDebtPlans(),
+      loadCatalogs(),
+      loadInstallments(),
+    ])
+    return
+  }
+
+  const accountRequests = [loadEntries()]
+
+  if (accountsTabKey === 'overview') {
+    accountRequests.push(loadDashboard())
+  }
+
+  if (accountsTabKey === 'payable' || accountsTabKey === 'receivable') {
+    accountRequests.push(loadRecurringRules(), loadInstallments())
+  }
+
+  await Promise.all(accountRequests)
+}
 
 async function loadInitialData() {
   if (!props.currentUser?.id) {
@@ -1000,6 +1077,16 @@ async function loadEntries() {
   } finally {
     loadingState.entries = false
   }
+}
+
+function applyEntryFilters(nextFilters = {}) {
+  entryFilters.search = String(nextFilters.search || '').trim()
+  entryFilters.direction = String(nextFilters.direction || '')
+  entryFilters.status = String(nextFilters.status || '')
+  entryFilters.startDate = String(nextFilters.startDate || '')
+  entryFilters.endDate = String(nextFilters.endDate || '')
+  entryFilters.page = 1
+  void loadEntries()
 }
 
 function setEntriesPage(page) {
@@ -1374,9 +1461,9 @@ function requestDeleteEntry(entryItem) {
   }
 
   openConfirmDialog({
-    title: 'Deletar lançamento',
+    title: 'Excluir lançamento',
     message: 'Esse lançamento será removido. Deseja continuar?',
-    confirmLabel: 'Deletar',
+    confirmLabel: 'Excluir',
     confirmTone: 'danger',
     onConfirm: () => deleteEntry(entryItem),
   })
@@ -1689,9 +1776,15 @@ async function submitSettlement() {
 }
 
 async function submitRecurringRule() {
+  const targetDirection = recurringDirectionByTab.value
+  if (targetDirection === '') {
+    notifyUser('Abra Contas a pagar ou Contas a receber para criar recorrência.', 'warning')
+    return
+  }
+
   try {
-    await createFinanceRecurringRule(props.request, {
-      direction: recurringForm.direction,
+    const recurringRulePayload = {
+      direction: targetDirection,
       title: recurringForm.title,
       amountBrl: Number(recurringForm.amountBrl),
       dayOfMonth: Number(recurringForm.dayOfMonth),
@@ -1699,21 +1792,95 @@ async function submitRecurringRule() {
       recurringTypeId: Number(recurringForm.recurringTypeId),
       categoryId: normalizeOptionalNumber(recurringForm.categoryId),
       defaultBankAccountId: normalizeOptionalNumber(recurringForm.defaultBankAccountId),
-    })
+    }
 
-    recurringForm.title = ''
-    recurringForm.amountBrl = ''
-    notifyUser('Recorrência criada com sucesso.', 'success')
+    if (recurringRuleEditingId.value) {
+      await updateFinanceRecurringRule(props.request, recurringRuleEditingId.value, recurringRulePayload)
+      notifyUser('Recorrência atualizada com sucesso.', 'success')
+    } else {
+      await createFinanceRecurringRule(props.request, recurringRulePayload)
+      notifyUser('Recorrência criada com sucesso.', 'success')
+    }
+
+    resetRecurringRuleForm()
     await Promise.all([loadRecurringRules(), loadEntries()])
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar a recorrência.'), 'error')
+    const fallbackErrorMessage = recurringRuleEditingId.value
+      ? 'Não foi possível atualizar a recorrência.'
+      : 'Não foi possível criar a recorrência.'
+    notifyUser(extractHttpMessage(requestError, fallbackErrorMessage), 'error')
+  }
+}
+
+function startEditingRecurringRule(recurringRuleItem) {
+  if (!recurringRuleItem?.id) {
+    return
+  }
+
+  recurringRuleEditingId.value = Number(recurringRuleItem.id)
+  recurringForm.direction = recurringDirectionByTab.value || String(recurringRuleItem.direction || 'PAYABLE')
+  recurringForm.title = String(recurringRuleItem.title || '')
+  recurringForm.amountBrl = String(recurringRuleItem.amountBrl ?? '')
+  recurringForm.dayOfMonth = Number(recurringRuleItem.dayOfMonth || 1)
+  recurringForm.startsAt = String(recurringRuleItem.startsAt || '').slice(0, 10)
+  recurringForm.recurringTypeId = recurringRuleItem.recurringTypeId ? String(recurringRuleItem.recurringTypeId) : ''
+  recurringForm.categoryId = recurringRuleItem.categoryId ? String(recurringRuleItem.categoryId) : ''
+  recurringForm.defaultBankAccountId = recurringRuleItem.bankAccountId ? String(recurringRuleItem.bankAccountId) : ''
+}
+
+function resetRecurringRuleForm() {
+  recurringRuleEditingId.value = null
+  recurringForm.direction = recurringDirectionByTab.value || 'PAYABLE'
+  recurringForm.title = ''
+  recurringForm.amountBrl = ''
+  recurringForm.dayOfMonth = 5
+  recurringForm.startsAt = ''
+  recurringForm.recurringTypeId = ''
+  recurringForm.categoryId = ''
+  recurringForm.defaultBankAccountId = ''
+}
+
+function requestDeleteRecurringRule(recurringRuleItem) {
+  if (!recurringRuleItem?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Excluir recorrência',
+    message: 'A recorrência será inativada e deixará de gerar novos lançamentos. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteRecurringRule(recurringRuleItem),
+  })
+}
+
+async function executeDeleteRecurringRule(recurringRuleItem) {
+  try {
+    await updateFinanceRecurringRule(props.request, recurringRuleItem.id, {
+      isActive: false,
+    })
+
+    if (recurringRuleEditingId.value === Number(recurringRuleItem.id)) {
+      resetRecurringRuleForm()
+    }
+
+    notifyUser('Recorrência excluída com sucesso.', 'success')
+    await Promise.all([loadRecurringRules(), loadEntries()])
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir a recorrência.'), 'error')
   }
 }
 
 async function submitInstallmentPlan() {
+  const targetDirection = installmentDirectionByTab.value
+  if (targetDirection === '') {
+    notifyUser('Abra Contas a pagar ou Dívidas para criar parcelamento.', 'warning')
+    return
+  }
+
   try {
     await createFinanceInstallmentPlan(props.request, {
-      direction: installmentForm.direction,
+      direction: targetDirection,
       title: installmentForm.title,
       totalAmountBrl: Number(installmentForm.totalAmountBrl),
       downPaymentBrl: Number(installmentForm.downPaymentBrl || 0),
@@ -1754,6 +1921,109 @@ async function submitRenegotiation() {
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível renegociar o plano.'), 'error')
   }
+}
+
+function notifyUnavailableListAction(listLabel, actionLabel) {
+  notifyUser(`A opção "${actionLabel}" ainda não está disponível para ${listLabel}.`, 'warning')
+}
+
+function startEditingInstallmentPlan(installmentPlan) {
+  if (!installmentPlan?.id) {
+    return
+  }
+
+  renegotiationForm.planId = String(installmentPlan.id)
+  renegotiationForm.installmentsCount = Number(installmentPlan.installmentsCount || 1)
+  renegotiationForm.reason = `Ajuste manual - ${String(installmentPlan.title || 'Plano')}`
+  notifyUser('Plano carregado no bloco "Renegociar". Ajuste os campos e confirme.', 'info')
+}
+
+function requestDeleteInstallmentPlan(installmentPlan) {
+  if (!installmentPlan?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Excluir plano de parcelamento',
+    message: 'O plano será marcado como cancelado. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteInstallmentPlan(installmentPlan),
+  })
+}
+
+async function executeDeleteInstallmentPlan(installmentPlan) {
+  try {
+    await updateFinanceInstallmentPlan(props.request, installmentPlan.id, {
+      status: 'CANCELED',
+    })
+    notifyUser('Plano de parcelamento cancelado com sucesso.', 'success')
+    await Promise.all([loadInstallments(), loadEntries()])
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir o plano de parcelamento.'), 'error')
+  }
+}
+
+function startEditingInvestmentPlan() {
+  notifyUnavailableListAction('planos de investimento', 'Editar')
+}
+
+function requestDeleteInvestmentPlan(investmentPlan) {
+  if (!investmentPlan?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Excluir plano de investimento',
+    message: 'O plano será marcado como cancelado. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteInvestmentPlan(investmentPlan),
+  })
+}
+
+async function executeDeleteInvestmentPlan(investmentPlan) {
+  try {
+    await updateFinanceInvestmentPlan(props.request, investmentPlan.id, {
+      status: 'CANCELED',
+    })
+    notifyUser('Plano de investimento cancelado com sucesso.', 'success')
+    await loadInvestments()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir o plano de investimento.'), 'error')
+  }
+}
+
+function startEditingDebtPlan() {
+  notifyUnavailableListAction('planos de dívida', 'Editar')
+}
+
+function requestDeleteDebtPlan() {
+  notifyUnavailableListAction('planos de dívida', 'Excluir')
+}
+
+function startEditingCurrencyRate() {
+  notifyUnavailableListAction('cotações de moedas', 'Editar')
+}
+
+function requestDeleteCurrencyRate() {
+  notifyUnavailableListAction('cotações de moedas', 'Excluir')
+}
+
+function startEditingExportJob() {
+  notifyUnavailableListAction('exportações', 'Editar')
+}
+
+function requestDeleteExportJob() {
+  notifyUnavailableListAction('exportações', 'Excluir')
+}
+
+function startEditingOpenFinanceConnection() {
+  notifyUnavailableListAction('conexões Open Finance', 'Editar')
+}
+
+function requestDeleteOpenFinanceConnection() {
+  notifyUnavailableListAction('conexões Open Finance', 'Excluir')
 }
 
 async function submitSimulation() {
@@ -2111,6 +2381,14 @@ function applyAccountsDirectionContext() {
     entryForm.direction = accountsDirectionByTab.value
   }
 
+  if (recurringDirectionByTab.value !== '') {
+    recurringForm.direction = recurringDirectionByTab.value
+  }
+
+  if (installmentDirectionByTab.value !== '') {
+    installmentForm.direction = installmentDirectionByTab.value
+  }
+
   if (entryForm.direction === 'RECEIVABLE' && entryForm.entryType === 'DEBT') {
     entryForm.entryType = 'ONE_OFF'
   }
@@ -2346,26 +2624,13 @@ function applyAccountsDirectionContext() {
         />
       </article>
 
-      <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
+      <article v-if="shouldShowEntryManagement" class="finance-panel">
         <header>
           <h3>{{ entryEditingId ? 'Editar lançamento' : 'Novo lançamento' }}</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitEntry">
-          <label v-if="activeAccountsTab === 'overview'">
-            <span>Direção</span>
-            <select v-model="entryForm.direction">
-              <option
-                v-for="directionOption in directionOptions"
-                :key="directionOption.value"
-                :value="directionOption.value"
-              >
-                {{ directionOption.label }}
-              </option>
-            </select>
-          </label>
-
-          <label v-else>
+          <label>
             <span>Direção</span>
             <input :value="accountsCurrentDirectionLabel" type="text" readonly>
           </label>
@@ -2428,7 +2693,7 @@ function applyAccountsDirectionContext() {
         </form>
       </article>
 
-      <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
+      <article v-if="shouldShowEntryManagement" class="finance-panel">
         <header>
           <h3>Baixa de lançamento</h3>
         </header>
@@ -2464,143 +2729,24 @@ function applyAccountsDirectionContext() {
         </form>
       </article>
 
-      <article v-if="activeAccountsTab !== 'debts'" class="finance-panel">
-        <header>
-          <h3>{{ accountsEntriesTitle }}</h3>
-          <small>{{ totalsLabel }}</small>
-        </header>
-
-        <form class="finance-filter-grid" @submit.prevent="loadEntries">
-          <label>
-            <span>Busca</span>
-            <input v-model="entryFilters.search" type="text" placeholder="Título ou descrição">
-          </label>
-
-          <label v-if="activeAccountsTab === 'overview'">
-            <span>Direção</span>
-            <select v-model="entryFilters.direction">
-              <option value="">Todas as direções</option>
-              <option
-                v-for="directionOption in directionOptions"
-                :key="directionOption.value"
-                :value="directionOption.value"
-              >
-                {{ directionOption.label }}
-              </option>
-            </select>
-          </label>
-
-          <label v-else>
-            <span>Direção atual</span>
-            <input :value="accountsCurrentDirectionLabel" type="text" readonly>
-          </label>
-
-          <label>
-            <span>Status</span>
-            <select v-model="entryFilters.status">
-              <option value="">Todos</option>
-              <option
-                v-for="statusOption in entryStatusOptions"
-                :key="statusOption.value"
-                :value="statusOption.value"
-              >
-                {{ statusOption.label }}
-              </option>
-            </select>
-          </label>
-
-          <label>
-            <span>Início</span>
-            <input v-model="entryFilters.startDate" type="date">
-          </label>
-
-          <label>
-            <span>Fim</span>
-            <input v-model="entryFilters.endDate" type="date">
-          </label>
-
-          <button class="finance-action-button" type="submit">Filtrar</button>
-        </form>
-
-        <div v-if="entriesState.length" class="finance-inline-table-wrap">
-          <table class="finance-inline-table">
-            <thead>
-              <tr>
-                <th>Título</th>
-                <th>Tipo</th>
-                <th>Status</th>
-                <th>Vencimento</th>
-                <th>Esperado</th>
-                <th>Restante</th>
-                <th>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="entry in entriesState" :key="entry.id">
-                <td>
-                  <strong>{{ entry.title }}</strong>
-                  <small class="finance-muted-block">{{ entry.categoryName || 'Sem categoria' }}</small>
-                </td>
-                <td>{{ getFinanceLabel(entry.entryType, '-') }}</td>
-                <td>
-                  <RemoteFinanceStatusBadge
-                    :status="entry.status"
-                    :label="getFinanceLabel(entry.status)"
-                  />
-                </td>
-                <td>{{ formatDate(entry.dueDate, '-') }}</td>
-                <td>{{ formatCurrency(entry.expectedAmountBrl) }}</td>
-                <td>{{ formatCurrency(entry.remainingAmountBrl) }}</td>
-                <td>
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingEntry(entry)"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="requestDeleteEntry(entry)"
-                  >
-                    Deletar
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-if="entriesState.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ totalsLabel }}</span>
-          <div v-if="Math.ceil(Number(entriesMeta.total || 0) / Math.max(1, Number(entriesMeta.itemsPerPage || 1))) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
-              :disabled="Number(entriesMeta.page || 1) <= 1"
-              @click="setEntriesPage(Number(entriesMeta.page || 1) - 1)"
-            >
-              Anterior
-            </button>
-            <span class="finance-pagination-page">
-              Página {{ Number(entriesMeta.page || 1) }} de {{ Math.max(1, Math.ceil(Number(entriesMeta.total || 0) / Math.max(1, Number(entriesMeta.itemsPerPage || 1)))) }}
-            </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
-              :disabled="Number(entriesMeta.page || 1) >= Math.max(1, Math.ceil(Number(entriesMeta.total || 0) / Math.max(1, Number(entriesMeta.itemsPerPage || 1))))"
-              @click="setEntriesPage(Number(entriesMeta.page || 1) + 1)"
-            >
-              Próxima
-            </button>
-          </div>
-        </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem lançamentos"
-          description="Cadastre o primeiro lançamento para começar seu fluxo financeiro."
-        />
-      </article>
+      <FinanceEntriesListPanel
+        v-if="!isDebtsAccountsTab"
+        :panel-title="accountsEntriesTitle"
+        :totals-label="totalsLabel"
+        :entries-items="entriesState"
+        :entries-meta="entriesMeta"
+        :filters="entryFilters"
+        :show-direction-filter="isOverviewAccountsTab"
+        :current-direction-label="accountsCurrentDirectionLabel"
+        :direction-options="directionOptions"
+        :status-options="entryStatusOptions"
+        :resolve-finance-label="getFinanceLabel"
+        :loading="loadingState.entries"
+        @submit-filters="applyEntryFilters"
+        @set-page="setEntriesPage"
+        @edit-entry="startEditingEntry"
+        @delete-entry="requestDeleteEntry"
+      />
     </section>
 
     <section v-if="activeTab === 'banks'" class="finance-section">
@@ -2688,7 +2834,7 @@ function applyAccountsDirectionContext() {
                     :label="bankAccount.isActive ? 'Ativa' : 'Inativa'"
                   />
                 </td>
-                <td>
+                <td class="finance-actions-cell">
                   <button
                     type="button"
                     class="finance-inline-action"
@@ -2709,7 +2855,7 @@ function applyAccountsDirectionContext() {
                     :disabled="!bankAccount.isActive"
                     @click="deleteBankAccount(bankAccount)"
                   >
-                    Deletar
+                    Excluir
                   </button>
                 </td>
               </tr>
@@ -2815,7 +2961,7 @@ function applyAccountsDirectionContext() {
                     :label="category.isActive ? 'Ativa' : 'Inativa'"
                   />
                 </td>
-                <td>
+                <td class="finance-actions-cell">
                   <button
                     type="button"
                     class="finance-inline-action"
@@ -2931,7 +3077,7 @@ function applyAccountsDirectionContext() {
                     :label="recurringType.isActive ? 'Ativo' : 'Inativo'"
                   />
                 </td>
-                <td>
+                <td class="finance-actions-cell">
                   <button
                     type="button"
                     class="finance-inline-action"
@@ -2991,24 +3137,16 @@ function applyAccountsDirectionContext() {
       </article>
     </section>
 
-    <section v-if="activeTab === 'accounts' && activeAccountsTab === 'overview'" class="finance-section">
+    <section v-if="activeTab === 'accounts' && shouldShowRecurringSection" class="finance-section">
       <article class="finance-panel">
         <header>
-          <h3>Nova recorrência</h3>
+          <h3>{{ recurringRuleEditingId ? 'Editar recorrência' : 'Nova recorrência' }}</h3>
         </header>
 
         <form class="finance-form-grid" @submit.prevent="submitRecurringRule">
           <label>
-            <span>Direção</span>
-            <select v-model="recurringForm.direction">
-              <option
-                v-for="directionOption in directionOptions"
-                :key="directionOption.value"
-                :value="directionOption.value"
-              >
-                {{ directionOption.label }}
-              </option>
-            </select>
+            <span>Direção da aba</span>
+            <input :value="recurringDirectionLabel" type="text" readonly>
           </label>
 
           <label>
@@ -3039,7 +3177,17 @@ function applyAccountsDirectionContext() {
             </select>
           </label>
 
-          <button class="finance-action-button" type="submit">Criar recorrência</button>
+          <button class="finance-action-button" type="submit">
+            {{ recurringRuleEditingId ? 'Salvar alterações' : 'Criar recorrência' }}
+          </button>
+          <button
+            v-if="recurringRuleEditingId"
+            type="button"
+            class="finance-inline-action"
+            @click="resetRecurringRuleForm"
+          >
+            Cancelar edição
+          </button>
         </form>
       </article>
 
@@ -3048,7 +3196,7 @@ function applyAccountsDirectionContext() {
           <h3>Regras recorrentes</h3>
         </header>
 
-        <div v-if="recurringRules.length" class="finance-inline-table-wrap">
+        <div v-if="filteredRecurringRules.length" class="finance-inline-table-wrap">
           <table class="finance-inline-table">
             <thead>
               <tr>
@@ -3056,6 +3204,8 @@ function applyAccountsDirectionContext() {
                 <th>Tipo</th>
                 <th>Valor</th>
                 <th>Próxima execução</th>
+                <th>Status</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -3064,29 +3214,52 @@ function applyAccountsDirectionContext() {
                 <td>{{ rule.recurringTypeName }}</td>
                 <td>{{ formatCurrency(rule.amountBrl) }}</td>
                 <td>{{ formatDate(rule.nextRunDate, '-') }}</td>
+                <td>
+                  <RemoteFinanceStatusBadge
+                    :status="rule.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="rule.isActive ? 'Ativa' : 'Inativa'"
+                  />
+                </td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingRecurringRule(rule)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    :disabled="!rule.isActive"
+                    @click="requestDeleteRecurringRule(rule)"
+                  >
+                    Excluir
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-if="recurringRules.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(recurringRules, 'recurringRules', 'regras') }}</span>
-          <div v-if="getLocalListPageCount(recurringRules) > 1" class="finance-pagination-actions">
+        <div v-if="filteredRecurringRules.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(filteredRecurringRules, 'recurringRules', 'regras') }}</span>
+          <div v-if="getLocalListPageCount(filteredRecurringRules) > 1" class="finance-pagination-actions">
             <button
               type="button"
               class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('recurringRules', recurringRules) <= 1"
-              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', recurringRules) - 1, recurringRules)"
+              :disabled="getLocalListPage('recurringRules', filteredRecurringRules) <= 1"
+              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', filteredRecurringRules) - 1, filteredRecurringRules)"
             >
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('recurringRules', recurringRules) }} de {{ getLocalListPageCount(recurringRules) }}
+              Página {{ getLocalListPage('recurringRules', filteredRecurringRules) }} de {{ getLocalListPageCount(filteredRecurringRules) }}
             </span>
             <button
               type="button"
               class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('recurringRules', recurringRules) >= getLocalListPageCount(recurringRules)"
-              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', recurringRules) + 1, recurringRules)"
+              :disabled="getLocalListPage('recurringRules', filteredRecurringRules) >= getLocalListPageCount(filteredRecurringRules)"
+              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', filteredRecurringRules) + 1, filteredRecurringRules)"
             >
               Próxima
             </button>
@@ -3095,12 +3268,12 @@ function applyAccountsDirectionContext() {
         <RemoteFinanceEmptyState
           v-else
           title="Sem regras recorrentes"
-          description="Cadastre regras para gerar lançamentos automaticamente mês a mês."
+          description="Cadastre regras para gerar automaticamente os lançamentos da direção desta aba."
         />
       </article>
     </section>
 
-    <section v-if="activeTab === 'accounts' && activeAccountsTab === 'overview'" class="finance-section">
+    <section v-if="activeTab === 'accounts' && shouldShowInstallmentSection" class="finance-section">
       <article class="finance-panel">
         <header>
           <h3>Novo parcelamento</h3>
@@ -3108,16 +3281,8 @@ function applyAccountsDirectionContext() {
 
         <form class="finance-form-grid" @submit.prevent="submitInstallmentPlan">
           <label>
-            <span>Direção</span>
-            <select v-model="installmentForm.direction">
-              <option
-                v-for="directionOption in directionOptions"
-                :key="directionOption.value"
-                :value="directionOption.value"
-              >
-                {{ directionOption.label }}
-              </option>
-            </select>
+            <span>Direção da aba</span>
+            <input :value="installmentDirectionLabel" type="text" readonly>
           </label>
 
           <label>
@@ -3159,7 +3324,7 @@ function applyAccountsDirectionContext() {
             <span>Plano</span>
             <select v-model="renegotiationForm.planId">
               <option value="">Selecione</option>
-              <option v-for="plan in installmentPlans" :key="plan.id" :value="plan.id">{{ plan.title }}</option>
+              <option v-for="plan in filteredInstallmentPlans" :key="plan.id" :value="plan.id">{{ plan.title }}</option>
             </select>
           </label>
 
@@ -3182,7 +3347,7 @@ function applyAccountsDirectionContext() {
           <h3>Planos de parcelamento</h3>
         </header>
 
-        <div v-if="installmentPlans.length" class="finance-inline-table-wrap">
+        <div v-if="filteredInstallmentPlans.length" class="finance-inline-table-wrap">
           <table class="finance-inline-table">
             <thead>
               <tr>
@@ -3190,6 +3355,7 @@ function applyAccountsDirectionContext() {
                 <th>Status</th>
                 <th>Total</th>
                 <th>Restante</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -3203,29 +3369,46 @@ function applyAccountsDirectionContext() {
                 </td>
                 <td>{{ formatCurrency(plan.totalAmountBrl) }}</td>
                 <td>{{ formatCurrency(plan.remainingAmountBrl) }}</td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingInstallmentPlan(plan)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    :disabled="String(plan.status || '').toUpperCase() === 'CANCELED'"
+                    @click="requestDeleteInstallmentPlan(plan)"
+                  >
+                    Excluir
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-if="installmentPlans.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(installmentPlans, 'installmentPlans', 'parcelamentos') }}</span>
-          <div v-if="getLocalListPageCount(installmentPlans) > 1" class="finance-pagination-actions">
+        <div v-if="filteredInstallmentPlans.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(filteredInstallmentPlans, 'installmentPlans', 'parcelamentos') }}</span>
+          <div v-if="getLocalListPageCount(filteredInstallmentPlans) > 1" class="finance-pagination-actions">
             <button
               type="button"
               class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('installmentPlans', installmentPlans) <= 1"
-              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', installmentPlans) - 1, installmentPlans)"
+              :disabled="getLocalListPage('installmentPlans', filteredInstallmentPlans) <= 1"
+              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', filteredInstallmentPlans) - 1, filteredInstallmentPlans)"
             >
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('installmentPlans', installmentPlans) }} de {{ getLocalListPageCount(installmentPlans) }}
+              Página {{ getLocalListPage('installmentPlans', filteredInstallmentPlans) }} de {{ getLocalListPageCount(filteredInstallmentPlans) }}
             </span>
             <button
               type="button"
               class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('installmentPlans', installmentPlans) >= getLocalListPageCount(installmentPlans)"
-              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', installmentPlans) + 1, installmentPlans)"
+              :disabled="getLocalListPage('installmentPlans', filteredInstallmentPlans) >= getLocalListPageCount(filteredInstallmentPlans)"
+              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', filteredInstallmentPlans) + 1, filteredInstallmentPlans)"
             >
               Próxima
             </button>
@@ -3234,7 +3417,7 @@ function applyAccountsDirectionContext() {
         <RemoteFinanceEmptyState
           v-else
           title="Sem parcelamentos"
-          description="Crie parcelamentos para gerar todas as parcelas automaticamente."
+          description="Crie parcelamentos para gerar automaticamente as parcelas deste fluxo."
         />
       </article>
     </section>
@@ -3355,6 +3538,7 @@ function applyAccountsDirectionContext() {
                 <th>Status</th>
                 <th>Aporte mensal</th>
                 <th>Taxa mensal efetiva</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -3368,6 +3552,23 @@ function applyAccountsDirectionContext() {
                 </td>
                 <td>{{ formatCurrency(plan.monthlyContributionBrl) }}</td>
                 <td>{{ Number(plan.effectiveMonthlyRate || 0).toFixed(6) }}</td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingInvestmentPlan(plan)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    :disabled="String(plan.status || '').toUpperCase() === 'CANCELED'"
+                    @click="requestDeleteInvestmentPlan(plan)"
+                  >
+                    Excluir
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -3613,6 +3814,7 @@ function applyAccountsDirectionContext() {
                 <th>Valor planejado</th>
                 <th>Parcela mensal</th>
                 <th>Status</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -3624,6 +3826,22 @@ function applyAccountsDirectionContext() {
                 <td>{{ formatCurrency(debtPlan.selectedMonthlyPaymentBrl) }}</td>
                 <td>
                   <RemoteFinanceStatusBadge :status="debtPlan.status" :label="getFinanceLabel(debtPlan.status)" />
+                </td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingDebtPlan(debtPlan)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteDebtPlan(debtPlan)"
+                  >
+                    Excluir
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -3703,6 +3921,7 @@ function applyAccountsDirectionContext() {
                 <th>Venda (BRL)</th>
                 <th>Data da cotação</th>
                 <th>Data/hora da API</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -3712,6 +3931,22 @@ function applyAccountsDirectionContext() {
                 <td>{{ formatExchangeRate(currencyRateItem.sellRateBrl) }}</td>
                 <td>{{ formatDate(currencyRateItem.quoteDate, '-') }}</td>
                 <td>{{ formatDateTime(currencyRateItem.quoteDateTime, '-') }}</td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingCurrencyRate(currencyRateItem)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteCurrencyRate(currencyRateItem)"
+                  >
+                    Excluir
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -3797,7 +4032,21 @@ function applyAccountsDirectionContext() {
                   />
                 </td>
                 <td>{{ formatDateTime(exportJob.requestedAt, '-') }}</td>
-                <td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingExportJob(exportJob)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteExportJob(exportJob)"
+                  >
+                    Excluir
+                  </button>
                   <button
                     type="button"
                     class="finance-inline-action"
@@ -3897,7 +4146,21 @@ function applyAccountsDirectionContext() {
                   />
                 </td>
                 <td>{{ formatDateTime(connection.lastSyncAt, '-') }}</td>
-                <td>
+                <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    @click="startEditingOpenFinanceConnection(connection)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteOpenFinanceConnection(connection)"
+                  >
+                    Excluir
+                  </button>
                   <button type="button" class="finance-inline-action" @click="runOpenFinanceSync(connection.id)">Sincronizar</button>
                 </td>
               </tr>
@@ -4016,7 +4279,7 @@ function applyAccountsDirectionContext() {
 .finance-panel {
   border: 1px solid var(--line, #cbd5e1);
   border-radius: 14px;
-  background: var(--surface-strong, #ffffff);
+  background: var(--surface-strong, #1d4ed8);
   padding: 16px;
   display: grid;
   gap: 14px;
@@ -4206,6 +4469,17 @@ function applyAccountsDirectionContext() {
 .finance-inline-action-danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 22%, transparent);
   border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+}
+
+.finance-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.finance-actions-cell .finance-inline-action {
+  margin-left: 0;
 }
 
 .finance-toggle-label {

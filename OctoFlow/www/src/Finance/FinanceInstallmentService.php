@@ -87,6 +87,41 @@ final class FinanceInstallmentService
      *
      * @return array<string, mixed>
      */
+    public function updatePlan(User $user, int $planId, array $payload): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $existingPlan = $this->getPlanById($ownerId, $planId);
+
+        $status = array_key_exists('status', $payload)
+            ? strtoupper(trim((string) $payload['status']))
+            : strtoupper(trim((string) ($existingPlan['status'] ?? '')));
+
+        if ($status === '') {
+            throw new \InvalidArgumentException('The installment plan status is required.');
+        }
+
+        if (!in_array($status, ['ACTIVE', 'RENEGOTIATED', 'CANCELED'], true)) {
+            throw new \InvalidArgumentException('The installment plan status is invalid.');
+        }
+
+        if ($status !== strtoupper(trim((string) ($existingPlan['status'] ?? '')))) {
+            $this->connection->update('finance_installment_plan', [
+                'status' => $status,
+                'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ], [
+                'id' => $planId,
+                'owner_id' => $ownerId,
+            ]);
+        }
+
+        return $this->getPlanById($ownerId, $planId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
     public function renegotiatePlan(User $user, int $planId, array $payload): array
     {
         $ownerId = $this->requireOwnerId($user);
