@@ -13,13 +13,13 @@ export const navigationItems = [
     eyebrow: 'Issues do GitHub',
     title: 'Inbox operacional do OctoFlow',
   },
-  {
-    key: 'test',
-    short: 'TS',
-    label: 'Teste',
-    eyebrow: 'Debug',
-    title: 'POST de teste para backend',
-  },
+  // {
+  //   key: 'test',
+  //   short: 'TS',
+  //   label: 'Teste',
+  //   eyebrow: 'Debug',
+  //   title: 'POST de teste para backend',
+  // },
   {
     key: 'finance-group',
     type: 'group',

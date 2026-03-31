@@ -93,4 +93,18 @@ final class FinanceExportController
             return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
         }
     }
+
+    #[Route('/exports/{exportJobId<\d+>}', name: 'finance_exports_delete', methods: ['DELETE'])]
+    public function deleteExport(int $exportJobId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        try {
+            return new JsonResponse($this->financeExportService->deleteJob($user, $exportJobId));
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
 }

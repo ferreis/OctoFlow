@@ -7,7 +7,7 @@ use Doctrine\DBAL\Connection;
 
 final class FinanceDebtPlanService
 {
-    private const DEFAULT_MAX_COMMITMENT_PERCENT = 40.0;
+    private const DEFAULT_MAX_COMMITMENT_PERCENT = 30.0;
     private const MIN_MAX_COMMITMENT_PERCENT = 5.0;
     private const MAX_MAX_COMMITMENT_PERCENT = 90.0;
 
@@ -98,15 +98,29 @@ final class FinanceDebtPlanService
     {
         $ownerId = $this->requireOwnerId($user);
         $preview = $this->buildPreviewByOwnerId($ownerId, $payload);
+        $selectedSuggestion = $this->resolveSelectedSuggestion($payload, $preview);
 
-        $selectedSettlementMode = $this->normalizeSettlementMode($payload['settlementMode'] ?? null);
-        $selectedInstallmentsCount = $this->resolveSelectedInstallmentsCount($selectedSettlementMode, $payload, $preview);
-        $selectedMonthlyPaymentBrl = $this->roundMoney($preview['plannedTotalAmountBrl'] / $selectedInstallmentsCount);
+        if ($selectedSuggestion !== null) {
+            $selectedSettlementMode = $this->normalizeSettlementMode($selectedSuggestion['settlementMode'] ?? null);
+            $selectedInstallmentsCount = max(1, (int) ($selectedSuggestion['installmentsCount'] ?? 1));
+            $selectedMonthlyPaymentBrl = $this->roundMoney((float) ($selectedSuggestion['monthlyPaymentBrl'] ?? 0));
+        } else {
+            $selectedSettlementMode = $this->normalizeSettlementMode($payload['settlementMode'] ?? null);
+            $selectedInstallmentsCount = $this->resolveSelectedInstallmentsCount($selectedSettlementMode, $payload, $preview);
+            $selectedMonthlyPaymentBrl = $this->roundMoney($preview['plannedTotalAmountBrl'] / $selectedInstallmentsCount);
+        }
+
+        if ($selectedMonthlyPaymentBrl <= 0) {
+            throw new \InvalidArgumentException('A opção selecionada para o plano de dívida é inválida.');
+        }
 
         $maxRecommendedPaymentBrl = (float) $preview['maxRecommendedPaymentBrl'];
-        $allowExceedLimit = FinanceInput::normalizeBoolean($payload['allowExceedLimit'] ?? false, false);
-        if ($maxRecommendedPaymentBrl > 0 && $selectedMonthlyPaymentBrl > $maxRecommendedPaymentBrl && !$allowExceedLimit) {
-            throw new \InvalidArgumentException('A parcela escolhida ultrapassa o limite recomendado para seu orçamento mensal. Ajuste o plano ou habilite exceção.');
+        if ($selectedMonthlyPaymentBrl > ($maxRecommendedPaymentBrl + 0.01)) {
+            throw new \InvalidArgumentException('A opção selecionada ultrapassa o limite recomendado para sua renda disponível.');
+        }
+
+        if ($selectedSuggestion !== null && ($selectedSuggestion['withinLimit'] ?? false) !== true) {
+            throw new \InvalidArgumentException('A opção selecionada está fora do limite permitido. Refaça a simulação e selecione uma opção válida.');
         }
 
         $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? null);
@@ -118,10 +132,6 @@ final class FinanceDebtPlanService
         }
 
         $creditorName = trim((string) ($payload['creditorName'] ?? ''));
-        $notes = trim((string) ($payload['notes'] ?? ''));
-        $negotiationNote = trim((string) ($payload['negotiationNote'] ?? ''));
-        $proposalNote = trim((string) ($payload['proposalNote'] ?? ''));
-
         $firstDueDate = FinanceInput::normalizeDate($payload['firstDueDate'] ?? 'today', 'firstDueDate')->format('Y-m-d');
         $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
 
@@ -136,9 +146,6 @@ final class FinanceDebtPlanService
             $defaultBankAccountId,
             $title,
             $creditorName,
-            $notes,
-            $negotiationNote,
-            $proposalNote,
             $firstDueDate,
             $now,
         ): int {
@@ -150,7 +157,7 @@ final class FinanceDebtPlanService
                 'full_payment_entry_id' => null,
                 'title' => $title,
                 'creditor_name' => $creditorName !== '' ? $creditorName : null,
-                'notes' => $notes !== '' ? $notes : null,
+                'notes' => null,
                 'total_amount_brl' => (float) $preview['totalAmountBrl'],
                 'negotiated_amount_brl' => $preview['negotiatedAmountBrl'] !== null ? (float) $preview['negotiatedAmountBrl'] : null,
                 'proposed_amount_brl' => $preview['proposedAmountBrl'] !== null ? (float) $preview['proposedAmountBrl'] : null,
@@ -165,8 +172,8 @@ final class FinanceDebtPlanService
                 'selected_installments_count' => $selectedInstallmentsCount,
                 'selected_monthly_payment_brl' => $selectedMonthlyPaymentBrl,
                 'status' => 'ACTIVE',
-                'negotiation_note' => $negotiationNote !== '' ? $negotiationNote : null,
-                'proposal_note' => $proposalNote !== '' ? $proposalNote : null,
+                'negotiation_note' => null,
+                'proposal_note' => null,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
@@ -178,7 +185,7 @@ final class FinanceDebtPlanService
                     'direction' => FinanceConstants::DIRECTION_PAYABLE,
                     'entryType' => 'DEBT',
                     'title' => sprintf('%s - Quitação à vista', $title),
-                    'description' => $notes !== '' ? $notes : 'Lançamento gerado pelo planejador de dívida.',
+                    'description' => 'Lançamento gerado pelo planejador de dívida.',
                     'dueDate' => $firstDueDate,
                     'expectedAmountBrl' => (float) $preview['plannedTotalAmountBrl'],
                     'categoryId' => $categoryId,
@@ -311,14 +318,11 @@ final class FinanceDebtPlanService
             throw new \InvalidArgumentException('O valor planejado deve ser maior que zero.');
         }
 
-        $providedMonthlyIncomeBrl = FinanceInput::normalizeOptionalMoney($payload['monthlyIncomeBrl'] ?? null, null);
         $monthlyBudgetContext = $this->estimateMonthlyBudgetContext($ownerId);
         $estimatedMonthlyIncomeBrl = (float) $monthlyBudgetContext['monthlyReceivablesBrl'];
         $estimatedMonthlyPayablesBrl = (float) $monthlyBudgetContext['monthlyPayablesBrl'];
         $estimatedExistingDebtCommitmentBrl = (float) $monthlyBudgetContext['monthlyDebtCommitmentBrl'];
-        $effectiveMonthlyIncomeBrl = $providedMonthlyIncomeBrl !== null && $providedMonthlyIncomeBrl > 0
-            ? $providedMonthlyIncomeBrl
-            : $estimatedMonthlyIncomeBrl;
+        $effectiveMonthlyIncomeBrl = $estimatedMonthlyIncomeBrl;
 
         $maxCommitmentPercent = $this->normalizeMaxCommitmentPercent($payload['maxCommitmentPercent'] ?? null);
         $incomeCommitmentLimitBrl = $effectiveMonthlyIncomeBrl > 0
@@ -348,7 +352,7 @@ final class FinanceDebtPlanService
             'downPaymentBrl' => $this->roundMoney($downPaymentBrl),
             'plannedTotalAmountBrl' => $plannedTotalAmountBrl,
             'monthlyIncomeBrl' => $this->roundMoney($effectiveMonthlyIncomeBrl),
-            'monthlyIncomeSource' => $providedMonthlyIncomeBrl !== null && $providedMonthlyIncomeBrl > 0 ? 'INPUT' : 'ESTIMATED',
+            'monthlyIncomeSource' => 'SYSTEM_RECEIVABLES',
             'estimatedMonthlyReceivablesBrl' => $this->roundMoney($estimatedMonthlyIncomeBrl),
             'estimatedMonthlyPayablesBrl' => $this->roundMoney($estimatedMonthlyPayablesBrl),
             'existingDebtCommitmentBrl' => $this->roundMoney($estimatedExistingDebtCommitmentBrl),
@@ -486,6 +490,68 @@ final class FinanceDebtPlanService
         }
 
         return 12;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $preview
+     *
+     * @return array<string, mixed>|null
+     */
+    private function resolveSelectedSuggestion(array $payload, array $preview): ?array
+    {
+        $previewSuggestions = is_array($preview['suggestions'] ?? null)
+            ? $preview['suggestions']
+            : [];
+
+        if ($previewSuggestions === []) {
+            return null;
+        }
+
+        $selectedSuggestionKey = trim((string) ($payload['selectedSuggestionKey'] ?? ''));
+        if ($selectedSuggestionKey !== '') {
+            foreach ($previewSuggestions as $suggestionOption) {
+                if (!is_array($suggestionOption)) {
+                    continue;
+                }
+
+                if ((string) ($suggestionOption['key'] ?? '') === $selectedSuggestionKey) {
+                    return $suggestionOption;
+                }
+            }
+
+            throw new \InvalidArgumentException('A opção selecionada não corresponde ao resultado da simulação. Refaça a simulação.');
+        }
+
+        $selectedSettlementMode = $this->normalizeSettlementMode($payload['settlementMode'] ?? null);
+        $selectedInstallmentsCount = (int) ($payload['selectedInstallmentsCount'] ?? $payload['desiredInstallmentsCount'] ?? 0);
+        if ($selectedSettlementMode === 'FULL') {
+            $selectedInstallmentsCount = 1;
+        }
+
+        if ($selectedInstallmentsCount <= 0) {
+            return null;
+        }
+
+        foreach ($previewSuggestions as $suggestionOption) {
+            if (!is_array($suggestionOption)) {
+                continue;
+            }
+
+            $suggestionSettlementMode = $this->normalizeSettlementMode($suggestionOption['settlementMode'] ?? null);
+            $suggestionInstallmentsCount = (int) ($suggestionOption['installmentsCount'] ?? 0);
+            if ($suggestionSettlementMode !== $selectedSettlementMode) {
+                continue;
+            }
+
+            if ($suggestionInstallmentsCount !== $selectedInstallmentsCount) {
+                continue;
+            }
+
+            return $suggestionOption;
+        }
+
+        return null;
     }
 
     private function normalizeSettlementMode(mixed $settlementMode): string

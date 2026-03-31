@@ -319,6 +319,14 @@ export function fetchFinanceExportById(request, exportJobId) {
   })
 }
 
+export function deleteFinanceExport(request, exportJobId) {
+  return request({
+    url: `/finance/exports/${encodeURIComponent(exportJobId)}`,
+    method: 'DELETE',
+    csrfActionId: 'finance.exports.delete',
+  })
+}
+
 export function fetchFinanceOpenFinanceProviders(request) {
   return request({
     url: '/finance/open-finance/providers',
@@ -348,5 +356,13 @@ export function syncFinanceOpenFinanceConnection(request, connectionId, payload 
     method: 'POST',
     csrfActionId: 'finance.open-finance.connections.sync',
     data: payload,
+  })
+}
+
+export function deleteFinanceOpenFinanceConnection(request, connectionId) {
+  return request({
+    url: `/finance/open-finance/connections/${encodeURIComponent(connectionId)}`,
+    method: 'DELETE',
+    csrfActionId: 'finance.open-finance.connections.delete',
   })
 }

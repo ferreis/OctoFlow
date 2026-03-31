@@ -37,6 +37,8 @@ import {
   syncFinanceOpenFinanceConnection,
   deleteFinanceDebtPlan,
   deleteFinanceEntry,
+  deleteFinanceExport,
+  deleteFinanceOpenFinanceConnection,
   updateFinanceCategory,
   updateFinanceBankAccount,
   updateFinanceBankAccountStatus,
@@ -145,6 +147,8 @@ const installmentPlans = ref([])
 const investmentPlans = ref([])
 const debtPlans = ref([])
 const debtPreview = ref(null)
+const debtPreviewRequestPayload = ref(null)
+const debtPlanCreationSuggestionKey = ref('')
 const currenciesCatalog = ref([])
 const currencyRates = ref([])
 const exportJobs = ref([])
@@ -278,6 +282,10 @@ const convertPlanForm = reactive({
   defaultBankAccountId: '',
 })
 
+function getCurrentDateInputValue() {
+  return new Date().toISOString().slice(0, 10)
+}
+
 const exportForm = reactive({
   exportType: 'MONTHLY_SUMMARY',
 })
@@ -289,18 +297,11 @@ const debtForm = reactive({
   negotiatedAmountBrl: '',
   proposedAmountBrl: '',
   downPaymentBrl: '0',
-  monthlyIncomeBrl: '',
-  maxCommitmentPercent: '40',
+  maxCommitmentPercent: '30',
   desiredInstallmentsCount: 12,
-  settlementMode: 'INSTALLMENT',
-  selectedInstallmentsCount: 12,
-  firstDueDate: '',
+  firstDueDate: getCurrentDateInputValue(),
   categoryId: '',
   defaultBankAccountId: '',
-  negotiationNote: '',
-  proposalNote: '',
-  notes: '',
-  allowExceedLimit: false,
 })
 
 const currencyForm = reactive({
@@ -1004,6 +1005,8 @@ function resetLocalState() {
   investmentPlans.value = []
   debtPlans.value = []
   debtPreview.value = null
+  debtPreviewRequestPayload.value = null
+  debtPlanCreationSuggestionKey.value = ''
   currenciesCatalog.value = []
   currencyRates.value = []
   exportJobs.value = []
@@ -1154,37 +1157,29 @@ async function loadDebtPlans() {
   }
 }
 
+function buildDebtSimulationPayload() {
+  return {
+    title: debtForm.title,
+    creditorName: debtForm.creditorName || null,
+    totalAmountBrl: Number(debtForm.totalAmountBrl),
+    negotiatedAmountBrl: debtForm.negotiatedAmountBrl === '' ? null : Number(debtForm.negotiatedAmountBrl),
+    proposedAmountBrl: debtForm.proposedAmountBrl === '' ? null : Number(debtForm.proposedAmountBrl),
+    downPaymentBrl: Number(debtForm.downPaymentBrl || 0),
+    maxCommitmentPercent: Number(debtForm.maxCommitmentPercent || 30),
+    desiredInstallmentsCount: Number(debtForm.desiredInstallmentsCount || 0),
+    firstDueDate: debtForm.firstDueDate || null,
+    categoryId: normalizeOptionalNumber(debtForm.categoryId),
+    defaultBankAccountId: normalizeOptionalNumber(debtForm.defaultBankAccountId),
+  }
+}
+
 async function previewDebtPlan() {
   try {
-    const response = await previewFinanceDebtPlan(props.request, {
-      title: debtForm.title,
-      creditorName: debtForm.creditorName || null,
-      totalAmountBrl: Number(debtForm.totalAmountBrl),
-      negotiatedAmountBrl: debtForm.negotiatedAmountBrl === '' ? null : Number(debtForm.negotiatedAmountBrl),
-      proposedAmountBrl: debtForm.proposedAmountBrl === '' ? null : Number(debtForm.proposedAmountBrl),
-      downPaymentBrl: Number(debtForm.downPaymentBrl || 0),
-      monthlyIncomeBrl: debtForm.monthlyIncomeBrl === '' ? null : Number(debtForm.monthlyIncomeBrl),
-      maxCommitmentPercent: Number(debtForm.maxCommitmentPercent || 40),
-      desiredInstallmentsCount: Number(debtForm.desiredInstallmentsCount || 0),
-      firstDueDate: debtForm.firstDueDate || null,
-      categoryId: normalizeOptionalNumber(debtForm.categoryId),
-      defaultBankAccountId: normalizeOptionalNumber(debtForm.defaultBankAccountId),
-      settlementMode: debtForm.settlementMode,
-      negotiationNote: debtForm.negotiationNote || null,
-      proposalNote: debtForm.proposalNote || null,
-      notes: debtForm.notes || null,
-    })
+    const debtSimulationPayload = buildDebtSimulationPayload()
+    const response = await previewFinanceDebtPlan(props.request, debtSimulationPayload)
 
     debtPreview.value = response.data?.item || null
-
-    const suggestedInstallmentsCount = Number(debtPreview.value?.recommendedOption?.installmentsCount || 0)
-    if (suggestedInstallmentsCount > 1) {
-      debtForm.selectedInstallmentsCount = suggestedInstallmentsCount
-      debtForm.settlementMode = 'INSTALLMENT'
-    } else if (suggestedInstallmentsCount === 1) {
-      debtForm.selectedInstallmentsCount = 1
-      debtForm.settlementMode = 'FULL'
-    }
+    debtPreviewRequestPayload.value = debtSimulationPayload
 
     notifyUser('Simulação de dívida atualizada.', 'success')
   } catch (requestError) {
@@ -1192,41 +1187,49 @@ async function previewDebtPlan() {
   }
 }
 
-async function submitDebtPlan() {
-  if (!debtPreview.value) {
+function isCreatingDebtPlanFromSuggestion(suggestionOption) {
+  return debtPlanCreationSuggestionKey.value !== '' && debtPlanCreationSuggestionKey.value === String(suggestionOption?.key || '')
+}
+
+async function createDebtPlanFromSuggestion(suggestionOption) {
+  if (!debtPreview.value || !debtPreviewRequestPayload.value) {
     notifyUser('Execute a simulação antes de criar o plano de dívida.', 'warning')
     return
   }
 
+  if (!suggestionOption || suggestionOption.withinLimit !== true) {
+    notifyUser('Selecione uma opção válida dentro do limite para criar o plano.', 'warning')
+    return
+  }
+
+  const selectedInstallmentsCount = Number(suggestionOption.installmentsCount || 0)
+  if (selectedInstallmentsCount <= 0) {
+    notifyUser('Não foi possível identificar a quantidade de parcelas da opção selecionada.', 'warning')
+    return
+  }
+
+  const selectedSuggestionKey = String(suggestionOption.key || '')
+  if (selectedSuggestionKey === '') {
+    notifyUser('Não foi possível identificar a opção selecionada. Refaça a simulação.', 'warning')
+    return
+  }
+
+  debtPlanCreationSuggestionKey.value = selectedSuggestionKey
+
   try {
-    const response = await createFinanceDebtPlan(props.request, {
-      title: debtForm.title,
-      creditorName: debtForm.creditorName || null,
-      totalAmountBrl: Number(debtForm.totalAmountBrl),
-      negotiatedAmountBrl: debtForm.negotiatedAmountBrl === '' ? null : Number(debtForm.negotiatedAmountBrl),
-      proposedAmountBrl: debtForm.proposedAmountBrl === '' ? null : Number(debtForm.proposedAmountBrl),
-      downPaymentBrl: Number(debtForm.downPaymentBrl || 0),
-      monthlyIncomeBrl: debtForm.monthlyIncomeBrl === '' ? null : Number(debtForm.monthlyIncomeBrl),
-      maxCommitmentPercent: Number(debtForm.maxCommitmentPercent || 40),
-      desiredInstallmentsCount: Number(debtForm.desiredInstallmentsCount || 0),
-      selectedInstallmentsCount: Number(debtForm.selectedInstallmentsCount || 0),
-      firstDueDate: debtForm.firstDueDate || null,
-      categoryId: normalizeOptionalNumber(debtForm.categoryId),
-      defaultBankAccountId: normalizeOptionalNumber(debtForm.defaultBankAccountId),
-      settlementMode: debtForm.settlementMode,
-      negotiationNote: debtForm.negotiationNote || null,
-      proposalNote: debtForm.proposalNote || null,
-      notes: debtForm.notes || null,
-      allowExceedLimit: Boolean(debtForm.allowExceedLimit),
+    await createFinanceDebtPlan(props.request, {
+      ...debtPreviewRequestPayload.value,
+      selectedSuggestionKey,
+      settlementMode: suggestionOption.settlementMode,
+      selectedInstallmentsCount,
     })
 
-    if (response.data?.item) {
-      debtPlans.value = [response.data.item, ...debtPlans.value]
-    }
-
-    notifyUser('Plano de dívida criado com sucesso.', 'success')
+    notifyUser(`Plano criado com ${selectedInstallmentsCount} parcela(s).`, 'success')
+    await Promise.all([loadDebtPlans(), loadEntries(), loadInstallments(), loadDashboard()])
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o plano de dívida.'), 'error')
+  } finally {
+    debtPlanCreationSuggestionKey.value = ''
   }
 }
 
@@ -2035,16 +2038,56 @@ function startEditingExportJob() {
   notifyUnavailableListAction('exportações', 'Editar')
 }
 
-function requestDeleteExportJob() {
-  notifyUnavailableListAction('exportações', 'Excluir')
+function requestDeleteExportJob(exportJob) {
+  if (!exportJob?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Excluir exportação',
+    message: 'A exportação será removida da lista. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteExportJob(exportJob),
+  })
+}
+
+async function executeDeleteExportJob(exportJob) {
+  try {
+    await deleteFinanceExport(props.request, exportJob.id)
+    notifyUser('Exportação excluída com sucesso.', 'success')
+    await loadExports(Number(exportMeta.value.page || 1))
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir a exportação.'), 'error')
+  }
 }
 
 function startEditingOpenFinanceConnection() {
   notifyUnavailableListAction('conexões Open Finance', 'Editar')
 }
 
-function requestDeleteOpenFinanceConnection() {
-  notifyUnavailableListAction('conexões Open Finance', 'Excluir')
+function requestDeleteOpenFinanceConnection(connection) {
+  if (!connection?.id) {
+    return
+  }
+
+  openConfirmDialog({
+    title: 'Excluir conexão Open Finance',
+    message: 'A conexão e os dados importados vinculados serão removidos. Deseja continuar?',
+    confirmLabel: 'Excluir',
+    confirmTone: 'danger',
+    onConfirm: () => executeDeleteOpenFinanceConnection(connection),
+  })
+}
+
+async function executeDeleteOpenFinanceConnection(connection) {
+  try {
+    await deleteFinanceOpenFinanceConnection(props.request, connection.id)
+    notifyUser('Conexão Open Finance excluída com sucesso.', 'success')
+    await loadOpenFinance()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível excluir a conexão Open Finance.'), 'error')
+  }
 }
 
 async function submitSimulation() {
@@ -3665,17 +3708,12 @@ function applyAccountsDirectionContext() {
           </label>
 
           <label>
-            <span>Renda mensal (opcional)</span>
-            <input v-model="debtForm.monthlyIncomeBrl" type="number" step="0.01" min="0" placeholder="Se vazio, o sistema estima">
-          </label>
-
-          <label>
             <span>Limite da renda (%)</span>
             <input v-model="debtForm.maxCommitmentPercent" type="number" step="0.01" min="5" max="90">
           </label>
 
           <label>
-            <span>Quantidade desejada de parcelas</span>
+            <span>Qt. de Parcelas Simuladas</span>
             <input v-model="debtForm.desiredInstallmentsCount" type="number" min="1" max="120">
           </label>
 
@@ -3700,41 +3738,7 @@ function applyAccountsDirectionContext() {
             </select>
           </label>
 
-          <label>
-            <span>Modo de quitação</span>
-            <select v-model="debtForm.settlementMode">
-              <option value="INSTALLMENT">Parcelado</option>
-              <option value="FULL">À vista</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Parcelas escolhidas</span>
-            <input v-model="debtForm.selectedInstallmentsCount" type="number" min="1" max="120">
-          </label>
-
-          <label>
-            <span>Observação da negociação</span>
-            <input v-model="debtForm.negotiationNote" type="text" placeholder="Descreva o acordo">
-          </label>
-
-          <label>
-            <span>Observação da proposta</span>
-            <input v-model="debtForm.proposalNote" type="text" placeholder="Descreva a proposta">
-          </label>
-
-          <label>
-            <span>Observações gerais</span>
-            <input v-model="debtForm.notes" type="text" placeholder="Notas adicionais">
-          </label>
-
-          <label class="finance-toggle-label">
-            <input v-model="debtForm.allowExceedLimit" type="checkbox">
-            <span>Permitir criar plano acima do limite de renda</span>
-          </label>
-
-          <button class="finance-action-button" type="submit">Simular plano</button>
-          <button class="finance-action-button" type="button" @click="submitDebtPlan">Criar plano</button>
+          <button class="finance-action-button" type="submit">Simular</button>
         </form>
       </article>
 
@@ -3748,8 +3752,8 @@ function applyAccountsDirectionContext() {
           <table class="finance-inline-table">
             <tbody>
               <tr>
-                <th>Base escolhida</th>
-                <td>{{ getDebtReferenceTypeLabel(debtPreview.selectedReferenceType) }}</td>
+                <th>Base escolhida e valor original</th>
+                <td>{{ getDebtReferenceTypeLabel(debtPreview.selectedReferenceType) }} - {{ formatCurrency(debtPreview.totalAmountBrl) }}</td>
               </tr>
               <tr>
                 <th>Valor planejado</th>
@@ -3757,7 +3761,7 @@ function applyAccountsDirectionContext() {
               </tr>
               <tr>
                 <th>Renda mensal usada</th>
-                <td>{{ formatCurrency(debtPreview.monthlyIncomeBrl) }} ({{ debtPreview.monthlyIncomeSource === 'INPUT' ? 'informada' : 'estimada' }})</td>
+                <td>{{ formatCurrency(debtPreview.monthlyIncomeBrl) }} (automática)</td>
               </tr>
               <tr>
                 <th>Média mensal de recebimentos</th>
@@ -3798,6 +3802,7 @@ function applyAccountsDirectionContext() {
                 <th>Parcela mensal</th>
                 <th>Comprometimento</th>
                 <th>Dentro do limite</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -3812,6 +3817,18 @@ function applyAccountsDirectionContext() {
                     :status="suggestion.withinLimit ? 'PAID' : 'OVERDUE'"
                     :label="suggestion.withinLimit ? 'Sim' : 'Não'"
                   />
+                </td>
+                <td class="finance-actions-cell">
+                  <button
+                    v-if="suggestion.withinLimit"
+                    type="button"
+                    class="finance-inline-action"
+                    :disabled="debtPlanCreationSuggestionKey !== ''"
+                    @click="createDebtPlanFromSuggestion(suggestion)"
+                  >
+                    {{ isCreatingDebtPlanFromSuggestion(suggestion) ? 'Criando...' : 'Criar plano' }}
+                  </button>
+                  <span v-else>-</span>
                 </td>
               </tr>
             </tbody>

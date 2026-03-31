@@ -119,6 +119,39 @@ final class FinanceExportService
     }
 
     /**
+     * @return array{id: int, status: string}
+     */
+    public function deleteJob(User $user, int $jobId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $job = $this->getJobById($ownerId, $jobId);
+
+        $deletedRows = $this->connection->executeStatement(<<<'SQL'
+            DELETE FROM finance_export_job
+            WHERE owner_id = :ownerId
+              AND id = :jobId
+              AND status <> 'PROCESSING'
+        SQL, [
+            'ownerId' => $ownerId,
+            'jobId' => $jobId,
+        ]);
+
+        if ($deletedRows <= 0) {
+            throw new \InvalidArgumentException('Export job cannot be deleted while processing.');
+        }
+
+        $filePath = trim((string) ($job['filePath'] ?? ''));
+        if ($filePath !== '' && is_file($filePath)) {
+            @unlink($filePath);
+        }
+
+        return [
+            'id' => $jobId,
+            'status' => 'DELETED',
+        ];
+    }
+
+    /**
      * @return array{processed: int, failed: int}
      */
     public function processQueuedJobs(int $limit = 10): array

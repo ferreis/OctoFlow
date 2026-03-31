@@ -150,6 +150,29 @@ final class FinanceOpenFinanceService
     }
 
     /**
+     * @return array{id: int, status: string}
+     */
+    public function deleteConnection(User $user, int $connectionId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $this->getConnectionById($ownerId, $connectionId);
+
+        $deletedRows = $this->connection->delete('finance_external_connection', [
+            'id' => $connectionId,
+            'owner_id' => $ownerId,
+        ]);
+
+        if ($deletedRows <= 0) {
+            throw new \InvalidArgumentException('Open Finance connection not found.');
+        }
+
+        return [
+            'id' => $connectionId,
+            'status' => 'DELETED',
+        ];
+    }
+
+    /**
      * @return array{0: int, 1: int}
      */
     private function createMockData(int $connectionId): array

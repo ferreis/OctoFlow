@@ -78,4 +78,18 @@ final class FinanceOpenFinanceController
             return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
         }
     }
+
+    #[Route('/connections/{connectionId<\d+>}', name: 'finance_open_finance_connections_delete', methods: ['DELETE'])]
+    public function deleteConnection(int $connectionId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        try {
+            return new JsonResponse($this->financeOpenFinanceService->deleteConnection($user, $connectionId));
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
 }
