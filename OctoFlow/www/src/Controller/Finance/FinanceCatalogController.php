@@ -128,6 +128,22 @@ final class FinanceCatalogController
         }
     }
 
+    #[Route('/recurring-types/{recurringTypeId<\d+>}', name: 'finance_recurring_types_delete', methods: ['DELETE'])]
+    public function deleteRecurringType(int $recurringTypeId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->financeCatalogService->deleteRecurringType($user, $recurringTypeId),
+            ]);
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
+
     #[Route('/bank-accounts', name: 'finance_bank_accounts_list', methods: ['GET'])]
     public function listBankAccounts(#[CurrentUser] ?User $user): JsonResponse
     {

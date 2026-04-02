@@ -101,6 +101,7 @@ const currentEntriesPage = computed(() => (
 ))
 
 const isUnifiedEntriesPanel = computed(() => props.showDirectionFilter)
+const shouldShowEntryActions = computed(() => !isUnifiedEntriesPanel.value)
 
 function formatCurrency(rawValue) {
   const numericValue = Number(rawValue || 0)
@@ -139,10 +140,18 @@ function goToNextPage() {
 }
 
 function editEntry(entryItem) {
+  if (!shouldShowEntryActions.value) {
+    return
+  }
+
   emit('edit-entry', entryItem)
 }
 
 function deleteEntry(entryItem) {
+  if (!shouldShowEntryActions.value) {
+    return
+  }
+
   emit('delete-entry', entryItem)
 }
 </script>
@@ -152,12 +161,8 @@ function deleteEntry(entryItem) {
     <header>
       <div class="finance-panel-heading">
         <h3>{{ panelTitle }}</h3>
-        <span v-if="isUnifiedEntriesPanel" class="finance-unified-badge">Unificado</span>
       </div>
       <small>{{ totalsLabel }}</small>
-      <small v-if="isUnifiedEntriesPanel" class="finance-unified-hint">
-        Exibindo contas a pagar e a receber na mesma listagem.
-      </small>
       <small v-if="loading">Atualizando...</small>
     </header>
 
@@ -217,7 +222,7 @@ function deleteEntry(entryItem) {
             <th>Vencimento</th>
             <th>Esperado</th>
             <th>Restante</th>
-            <th>Ação</th>
+            <th v-if="shouldShowEntryActions" class="finance-actions-header">Ação</th>
           </tr>
         </thead>
         <tbody>
@@ -236,7 +241,7 @@ function deleteEntry(entryItem) {
             <td>{{ formatDate(entryItem.dueDate, '-') }}</td>
             <td>{{ formatCurrency(entryItem.expectedAmountBrl) }}</td>
             <td>{{ formatCurrency(entryItem.remainingAmountBrl) }}</td>
-            <td class="finance-actions-cell">
+            <td v-if="shouldShowEntryActions" class="finance-actions-cell">
               <button
                 type="button"
                 class="finance-inline-action"
@@ -328,27 +333,6 @@ function deleteEntry(entryItem) {
 
 .finance-panel small {
   color: var(--muted, #475569);
-}
-
-.finance-unified-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent, #1d4ed8) 36%, transparent);
-  background: color-mix(in srgb, var(--accent, #1d4ed8) 12%, #ffffff);
-  color: var(--accent, #1d4ed8);
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0 8px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.finance-unified-hint {
-  flex-basis: 100%;
-  font-size: 0.75rem;
 }
 
 .finance-filter-grid {
@@ -461,7 +445,7 @@ function deleteEntry(entryItem) {
   margin-left: 8px;
 }
 
-.finance-inline-table th:last-child,
+.finance-inline-table th.finance-actions-header,
 .finance-inline-table td.finance-actions-cell {
   width: 1%;
   min-width: 170px;

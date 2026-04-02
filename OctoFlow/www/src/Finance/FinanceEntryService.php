@@ -170,7 +170,7 @@ final class FinanceEntryService
         }
 
         $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? null);
-        $bankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['bankAccountId'] ?? null, false);
+        $bankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['bankAccountId'] ?? null, true);
 
         $status = FinanceInput::normalizeStatus($direction, $payload['status'] ?? null, true);
         if ($status === null) {
@@ -284,8 +284,8 @@ final class FinanceEntryService
             ? $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'])
             : $this->normalizeOwnedCategoryId($ownerId, $existingEntry['categoryId'] ?? null);
         $bankAccountId = array_key_exists('bankAccountId', $payload)
-            ? $this->normalizeOwnedBankAccountId($ownerId, $payload['bankAccountId'], false)
-            : $this->normalizeOwnedBankAccountId($ownerId, $existingEntry['bankAccountId'] ?? null, false);
+            ? $this->normalizeOwnedBankAccountId($ownerId, $payload['bankAccountId'], true)
+            : $this->normalizeOwnedBankAccountId($ownerId, $existingEntry['bankAccountId'] ?? null, true);
 
         $manualStatus = FinanceInput::normalizeStatus($direction, $payload['status'] ?? null, true);
         $recalculatedStatus = $this->resolveStatus(
@@ -409,7 +409,7 @@ final class FinanceEntryService
     /**
      * @param array<string, mixed> $payload
      *
-     * @return array{entry: array<string, mixed>, settlement: array<string, mixed>}
+     * @return array{entry: array<string, mixed>, settlement: array<string, mixed>, creditCardEntry?: array<string, mixed>}
      */
     public function settleEntry(User $user, int $entryId, array $payload): array
     {
@@ -437,24 +437,55 @@ final class FinanceEntryService
             }
 
             $settlementDate = FinanceInput::normalizeOptionalDate($payload['settledAt'] ?? null) ?? new \DateTimeImmutable();
+            $useCreditCard = FinanceInput::normalizeBoolean($payload['useCreditCard'] ?? false, false);
+
             $settlementType = strtoupper(trim((string) ($payload['settlementType'] ?? '')));
             if ($settlementType === '') {
-                $settlementType = ((string) $entry['direction']) === FinanceConstants::DIRECTION_PAYABLE
-                    ? 'PAYMENT'
-                    : 'RECEIPT';
+                if ($useCreditCard) {
+                    $settlementType = 'CREDIT_CARD';
+                } else {
+                    $settlementType = ((string) $entry['direction']) === FinanceConstants::DIRECTION_PAYABLE
+                        ? 'PAYMENT'
+                        : 'RECEIPT';
+                }
             }
 
-            if (!in_array($settlementType, ['PAYMENT', 'RECEIPT', 'TRANSFER', 'ADJUSTMENT'], true)) {
+            if (!in_array($settlementType, ['PAYMENT', 'RECEIPT', 'TRANSFER', 'ADJUSTMENT', 'CREDIT_CARD'], true)) {
                 throw new \InvalidArgumentException('The settlement type is invalid.');
             }
 
-            $bankAccountId = $this->normalizeOwnedBankAccountId(
-                $ownerId,
-                $payload['bankAccountId'] ?? $entry['bankAccountId'] ?? null,
-                true,
-            );
+            $bankAccountId = null;
+            $creditCardId = null;
+
+            if ($useCreditCard) {
+                if ((string) $entry['direction'] !== FinanceConstants::DIRECTION_PAYABLE) {
+                    throw new \InvalidArgumentException('Credit card settlement is only allowed for payable entries.');
+                }
+
+                $creditCardId = $this->normalizeOwnedBankAccountId($ownerId, $payload['creditCardId'] ?? null, false);
+                if ($creditCardId === null) {
+                    throw new \InvalidArgumentException('A credit card account must be selected for credit settlement.');
+                }
+
+                $creditCard = $this->financeCatalogService->getBankAccountById($ownerId, $creditCardId);
+                $creditCardAccountType = strtoupper(trim((string) ($creditCard['accountType'] ?? '')));
+                if ($creditCardAccountType !== 'CREDIT') {
+                    throw new \InvalidArgumentException('The selected account is not a credit card.');
+                }
+            } else {
+                $bankAccountId = $this->normalizeOwnedBankAccountId(
+                    $ownerId,
+                    $payload['bankAccountId'] ?? $entry['bankAccountId'] ?? null,
+                    false,
+                );
+            }
 
             $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $settlementNote = trim((string) ($payload['note'] ?? ''));
+            if ($settlementNote === '' && $useCreditCard && $creditCardId !== null) {
+                $settlementNote = sprintf('Settlement in credit card account #%d.', $creditCardId);
+            }
+
             $this->connection->insert('finance_entry_settlement', [
                 'owner_id' => $ownerId,
                 'entry_id' => $entryId,
@@ -462,13 +493,13 @@ final class FinanceEntryService
                 'settlement_type' => $settlementType,
                 'amount_brl' => $settlementAmountBrl,
                 'settled_at' => $settlementDate->format('Y-m-d H:i:s'),
-                'note' => trim((string) ($payload['note'] ?? '')) ?: null,
+                'note' => $settlementNote !== '' ? $settlementNote : null,
                 'created_at' => $now,
             ]);
 
             $settlementId = (int) $this->connection->lastInsertId();
 
-            if ($bankAccountId !== null) {
+            if ($bankAccountId !== null && !$useCreditCard) {
                 $this->applyBankAccountBalanceChange(
                     $ownerId,
                     $bankAccountId,
@@ -482,6 +513,18 @@ final class FinanceEntryService
             }
 
             $updatedEntry = $this->recalculateEntrySettlement($ownerId, $entryId, 'SETTLED');
+            $generatedCreditCardEntry = null;
+
+            if ($useCreditCard && $creditCardId !== null) {
+                $generatedCreditCardEntry = $this->createCreditCardSettlementEntry(
+                    $ownerId,
+                    $entry,
+                    $settlementAmountBrl,
+                    $settlementDate,
+                    $creditCardId,
+                    $payload,
+                );
+            }
 
             /** @var array<string, mixed>|false $createdSettlement */
             $createdSettlement = $this->connection->fetchAssociative(<<<'SQL'
@@ -503,10 +546,16 @@ final class FinanceEntryService
                 throw new \RuntimeException('Failed to read created settlement.');
             }
 
-            return [
+            $response = [
                 'entry' => $updatedEntry,
                 'settlement' => $createdSettlement,
             ];
+
+            if ($generatedCreditCardEntry !== null) {
+                $response['creditCardEntry'] = $generatedCreditCardEntry;
+            }
+
+            return $response;
         });
     }
 
@@ -699,6 +748,94 @@ final class FinanceEntryService
         return 'FORECAST';
     }
 
+    /**
+     * @param array<string, mixed> $sourceEntry
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private function createCreditCardSettlementEntry(
+        int $ownerId,
+        array $sourceEntry,
+        float $settlementAmountBrl,
+        \DateTimeImmutable $settlementDate,
+        int $creditCardId,
+        array $payload,
+    ): array {
+        $interestRatePercent = FinanceInput::normalizeOptionalMoney($payload['creditCardInterestRatePercent'] ?? null, 2.99) ?? 2.99;
+        $interestRatePercent = max(0.0, min(100.0, $interestRatePercent));
+
+        $iofRatePercent = FinanceInput::normalizeOptionalMoney($payload['creditCardIofRatePercent'] ?? null, 0.38) ?? 0.38;
+        $iofRatePercent = max(0.0, $iofRatePercent);
+
+        $interestAmountBrl = round($settlementAmountBrl * ($interestRatePercent / 100), 2);
+        $interestAmountBrl = min($interestAmountBrl, $settlementAmountBrl);
+        $iofAmountBrl = round($settlementAmountBrl * ($iofRatePercent / 100), 2);
+        $creditCardEntryAmountBrl = round($settlementAmountBrl + $interestAmountBrl + $iofAmountBrl, 2);
+
+        $creditCardDueDate = FinanceInput::normalizeOptionalDate($payload['creditCardDueDate'] ?? null);
+        if (!$creditCardDueDate instanceof \DateTimeImmutable) {
+            $creditCardDueDate = new \DateTimeImmutable($settlementDate->format('Y-m-d'));
+            $creditCardDueDate = $creditCardDueDate->modify('+30 days');
+        }
+
+        $competenceMonth = new \DateTimeImmutable($creditCardDueDate->format('Y-m-01'));
+        $status = FinanceInput::defaultStatusByDirection(FinanceConstants::DIRECTION_PAYABLE, $creditCardDueDate);
+        $sourceEntryTitle = trim((string) ($sourceEntry['title'] ?? 'Despesa'));
+        $sourceEntryId = (int) ($sourceEntry['id'] ?? 0);
+
+        $categoryId = isset($sourceEntry['categoryId']) ? (int) $sourceEntry['categoryId'] : null;
+        if ($categoryId !== null && $categoryId <= 0) {
+            $categoryId = null;
+        }
+
+        $description = sprintf(
+            'Gerado automaticamente por baixa em crédito do lançamento #%d. Juros %.2f%% e IOF %.2f%%.',
+            $sourceEntryId,
+            $interestRatePercent,
+            $iofRatePercent,
+        );
+
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $this->connection->insert('finance_entry', [
+            'owner_id' => $ownerId,
+            'category_id' => $categoryId,
+            'bank_account_id' => $creditCardId,
+            'direction' => FinanceConstants::DIRECTION_PAYABLE,
+            'entry_type' => FinanceConstants::ENTRY_TYPE_ONE_OFF,
+            'status' => $status,
+            'title' => sprintf('Fatura cartão - %s', $sourceEntryTitle),
+            'description' => $description,
+            'due_date' => $creditCardDueDate->format('Y-m-d'),
+            'competence_month' => $competenceMonth->format('Y-m-d'),
+            'expected_amount_brl' => $creditCardEntryAmountBrl,
+            'settled_amount_brl' => 0,
+            'remaining_amount_brl' => $creditCardEntryAmountBrl,
+            'input_currency_code' => 'BRL',
+            'input_amount' => $creditCardEntryAmountBrl,
+            'fx_rate_to_brl' => 1,
+            'fx_rate_date' => $creditCardDueDate->format('Y-m-d'),
+            'source_origin' => FinanceConstants::SOURCE_ORIGIN_SYSTEM,
+            'source_system' => 'CREDIT_CARD_SETTLEMENT',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $creditCardEntryId = (int) $this->connection->lastInsertId();
+
+        $this->appendEntryStatusHistory(
+            $ownerId,
+            $creditCardEntryId,
+            null,
+            $status,
+            'CREDIT_CARD_GENERATED',
+            'Generated from credit card settlement.',
+        );
+
+        return $this->getEntryById($ownerId, $creditCardEntryId);
+    }
+
     private function appendEntryStatusHistory(
         int $ownerId,
         int $entryId,
@@ -790,7 +927,7 @@ final class FinanceEntryService
                 return null;
             }
 
-            return null;
+            throw new \InvalidArgumentException('Bank account is required.');
         }
 
         /** @var array<string, mixed>|false $bankAccount */

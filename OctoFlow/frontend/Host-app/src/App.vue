@@ -1,6 +1,8 @@
 <script setup>
 import axios from 'axios'
+import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppFooter from './components/layout/AppFooter.vue'
 import AppNotification from './components/layout/AppNotification.vue'
 import MenuSidebar from './components/layout/MenuSidebar.vue'
@@ -11,6 +13,8 @@ import TestScreen from './components/screens/TestScreen.vue'
 import TasksScreen from './components/screens/TasksScreen.vue'
 import GoogleLogin from './components/GoogleLogin.vue'
 import { navigationItems } from './constants/navigation'
+import { useAppNavigationStore } from './stores/appNavigationStore'
+import { useAppShellStore } from './stores/appShellStore'
 import { formatDateTime } from './utils/date'
 import { extractHttpMessage } from './utils/httpErrors'
 import {
@@ -40,15 +44,6 @@ const PUBLIC_CSRF_ACTIONS = {
   'auth.refresh': { method: 'POST', path: '/auth/refresh' },
   'auth.logout': { method: 'POST', path: '/auth/logout' },
 }
-const FINANCE_VIEW_TO_SECTION = {
-  'finance.accounts': 'accounts',
-  'finance.banks': 'banks',
-  'finance.investments': 'investments',
-  'finance.debts': 'debts',
-  'finance.settings': 'settings',
-  'finance.currencies': 'settings',
-  'finance.reports': 'reports',
-}
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -70,10 +65,14 @@ const googlePasswordSetupForm = reactive({
   confirmPassword: '',
 })
 
-const activeView = ref('dashboard')
+const appShellStore = useAppShellStore()
+const appNavigationStore = useAppNavigationStore()
+const { isCompactViewport, effectiveSidebarExpanded } = storeToRefs(appShellStore)
+const { activeViewKey: activeView, isFinanceView, financeSectionByView } = storeToRefs(appNavigationStore)
+const appRouter = useRouter()
+const appRoute = useRoute()
+
 const authMode = ref('login')
-const sidebarExpanded = ref(false)
-const isCompactViewport = ref(false)
 const accessToken = ref('')
 const currentUser = ref(null)
 const loginLoading = ref(false)
@@ -89,9 +88,6 @@ const authBootstrapLoading = ref(true)
 
 const isAuthenticated = computed(() => Boolean(accessToken.value && currentUser.value))
 const requiresGooglePasswordSetup = computed(() => currentUser.value?.passwordSetupRequired === true)
-const effectiveSidebarExpanded = computed(() => !isCompactViewport.value && sidebarExpanded.value)
-const isFinanceView = computed(() => activeView.value.startsWith('finance.'))
-const financeSectionByView = computed(() => FINANCE_VIEW_TO_SECTION[activeView.value] || 'accounts')
 const googlePasswordSetupCodeExpiresAtLabel = computed(() => {
   const rawExpirationDateTime = typeof currentUser.value?.passwordSetupCodeExpiresAt === 'string'
     ? currentUser.value.passwordSetupCodeExpiresAt.trim()
@@ -120,9 +116,9 @@ onMounted(async () => {
   void warmClientLocationHint()
 
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
-  isCompactViewport.value = viewportMediaQuery.matches
+  appShellStore.setCompactViewport(viewportMediaQuery.matches)
   const handleViewportChange = (event) => {
-    isCompactViewport.value = event.matches
+    appShellStore.setCompactViewport(event.matches)
   }
 
   if (typeof viewportMediaQuery.addEventListener === 'function') {
@@ -155,15 +151,19 @@ onBeforeUnmount(() => {
 
 watch(isAuthenticated, (authenticated) => {
   if (!authenticated) {
-    activeView.value = 'dashboard'
+    void setActiveView('dashboard', { replaceHistory: true })
   }
 })
 
-watch(isCompactViewport, (compact) => {
-  if (!compact) {
-    sidebarExpanded.value = false
-  }
-})
+watch(
+  () => `${String(appRoute.name || '')}|${String(appRoute.params?.section || '')}`,
+  () => {
+    appNavigationStore.syncFromRoute(appRoute)
+  },
+  {
+    immediate: true,
+  },
+)
 
 watch(
   () => [
@@ -213,7 +213,7 @@ async function handleLogin() {
     }
 
     loginForm.password = ''
-    activeView.value = 'dashboard'
+    await setActiveView('dashboard', { replaceHistory: true })
     await verifyAuthForScreenEntry('dashboard')
     showNotification('Login realizado com sucesso.', 'success')
   } catch (error) {
@@ -250,7 +250,7 @@ async function handleRegister() {
     loginForm.email = currentUser.value?.defaultEmail || currentUser.value?.email || ''
     loginForm.password = ''
     authMode.value = 'login'
-    activeView.value = 'dashboard'
+    await setActiveView('dashboard', { replaceHistory: true })
     await verifyAuthForScreenEntry('dashboard')
     showNotification('Conta criada com sucesso.', 'success')
   } catch (error) {
@@ -278,7 +278,7 @@ async function handleGoogleCredential(credential) {
       await loadCurrentUser(false)
     }
 
-    activeView.value = 'dashboard'
+    await setActiveView('dashboard', { replaceHistory: true })
     loginForm.password = ''
     resetGooglePasswordSetupForm()
 
@@ -407,7 +407,7 @@ async function createGooglePasswordSetupPassword() {
 
     resetGooglePasswordSetupForm()
     googlePasswordSetupStep.value = 'verify'
-    activeView.value = 'dashboard'
+    await setActiveView('dashboard', { replaceHistory: true })
     await verifyAuthForScreenEntry('dashboard')
     showNotification(data?.message || 'Senha criada com sucesso.', 'success')
   } catch (error) {
@@ -575,35 +575,31 @@ async function logout() {
   }
 }
 
+async function setActiveView(viewKey, options = {}) {
+  await appNavigationStore.navigateToView(appRouter, viewKey, options)
+}
+
 async function navigateTo(viewKey) {
   if (!isAuthenticated.value) {
     return
   }
 
-  const normalizedViewKey = viewKey === 'finance' ? 'finance.accounts' : viewKey
+  const normalizedViewKey = appNavigationStore.normalizeViewKey(viewKey)
 
   const screenAuthIsValid = await verifyAuthForScreenEntry(normalizedViewKey)
   if (!screenAuthIsValid) {
     return
   }
 
-  activeView.value = normalizedViewKey
+  await setActiveView(normalizedViewKey)
 }
 
 function expandSidebar() {
-  if (isCompactViewport.value) {
-    return
-  }
-
-  sidebarExpanded.value = true
+  appShellStore.expandSidebar()
 }
 
 function collapseSidebar() {
-  if (isCompactViewport.value) {
-    return
-  }
-
-  sidebarExpanded.value = false
+  appShellStore.collapseSidebar()
 }
 
 function handleSessionUpdated(session) {

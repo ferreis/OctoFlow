@@ -209,6 +209,75 @@ final class FinanceRecurringService
         return $this->getRuleById($ownerId, $ruleId);
     }
 
+    /**
+     * @return array{deleted: bool, id: int, canceledGeneratedEntries: int}
+     */
+    public function deleteRule(User $user, int $ruleId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $this->getRuleById($ownerId, $ruleId);
+
+        return $this->connection->transactional(function () use ($ownerId, $ruleId): array {
+            /** @var list<array{id: int|string, status: string}> $generatedEntries */
+            $generatedEntries = $this->connection->fetchAllAssociative(<<<'SQL'
+                SELECT id, status
+                FROM finance_entry
+                WHERE owner_id = :ownerId
+                  AND recurring_rule_id = :ruleId
+                  AND deleted_at IS NULL
+                  AND source_system = 'RECURRING_ENGINE'
+                  AND remaining_amount_brl > 0
+            SQL, [
+                'ownerId' => $ownerId,
+                'ruleId' => $ruleId,
+            ]);
+
+            $deletedAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+            foreach ($generatedEntries as $generatedEntry) {
+                $generatedEntryId = (int) ($generatedEntry['id'] ?? 0);
+                if ($generatedEntryId <= 0) {
+                    continue;
+                }
+
+                $previousStatus = (string) ($generatedEntry['status'] ?? '');
+
+                $this->connection->update('finance_entry', [
+                    'status' => 'CANCELED',
+                    'settled_amount_brl' => 0,
+                    'remaining_amount_brl' => 0,
+                    'fully_settled_at' => null,
+                    'updated_at' => $deletedAt,
+                    'deleted_at' => $deletedAt,
+                ], [
+                    'id' => $generatedEntryId,
+                    'owner_id' => $ownerId,
+                ]);
+
+                $this->connection->insert('finance_entry_status_history', [
+                    'owner_id' => $ownerId,
+                    'entry_id' => $generatedEntryId,
+                    'from_status' => $previousStatus !== '' ? $previousStatus : null,
+                    'to_status' => 'CANCELED',
+                    'reason_code' => 'RECURRING_RULE_DELETED',
+                    'reason_text' => 'Recurring rule deleted by user.',
+                    'changed_at' => $deletedAt,
+                ]);
+            }
+
+            $this->connection->delete('finance_recurring_rule', [
+                'id' => $ruleId,
+                'owner_id' => $ownerId,
+            ]);
+
+            return [
+                'deleted' => true,
+                'id' => $ruleId,
+                'canceledGeneratedEntries' => count($generatedEntries),
+            ];
+        });
+    }
+
     public function generateMissingEntriesForRange(User $user, \DateTimeImmutable $startDate, \DateTimeImmutable $endDate, string $runSource = 'lazy'): int
     {
         $ownerId = $this->requireOwnerId($user);

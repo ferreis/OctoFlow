@@ -75,4 +75,20 @@ final class FinanceRecurringController
         }
     }
 
+    #[Route('/recurring-rules/{ruleId<\d+>}', name: 'finance_recurring_rules_delete', methods: ['DELETE'])]
+    public function deleteRule(int $ruleId, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->financeRecurringService->deleteRule($user, $ruleId),
+            ]);
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
+
 }

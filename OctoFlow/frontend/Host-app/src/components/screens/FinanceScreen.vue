@@ -16,7 +16,10 @@ import {
   createFinanceOpenFinanceConnection,
   createFinanceRecurringRule,
   createFinanceRecurringType,
+  createFinanceCurrencyRateManual,
   createFinanceSettlement,
+  deleteFinanceRecurringRule,
+  deleteFinanceRecurringType,
   fetchFinanceBankAccounts,
   fetchFinanceCategories,
   fetchFinanceDashboardCashflow,
@@ -140,6 +143,7 @@ const loadingState = reactive({
 
 const dashboardSummary = ref(null)
 const accountsOverviewSummary = ref(null)
+const accountsOverviewMonth = ref(getNextMonthInputValue())
 const dashboardCashflow = ref([])
 const dashboardCategories = ref([])
 
@@ -191,7 +195,7 @@ const entryForm = reactive({
   entryType: 'ONE_OFF',
   title: '',
   expectedAmountBrl: '',
-  dueDate: '',
+  dueDate: getCurrentDateInputValue(),
   categoryId: '',
   bankAccountId: '',
 })
@@ -232,6 +236,11 @@ const settlementForm = reactive({
   amountBrl: '',
   settledAt: '',
   bankAccountId: '',
+  useCreditCard: false,
+  creditCardId: '',
+  creditCardInterestRatePercent: '2.99',
+  creditCardIofRatePercent: '0.38',
+  creditCardDueDate: '',
 })
 
 const recurringForm = reactive({
@@ -239,7 +248,7 @@ const recurringForm = reactive({
   title: '',
   amountBrl: '',
   dayOfMonth: 5,
-  startsAt: '',
+  startsAt: getCurrentDateInputValue(),
   recurringTypeId: '',
   categoryId: '',
   defaultBankAccountId: '',
@@ -292,6 +301,35 @@ function getCurrentDateInputValue() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function getCurrentYearMonthInputValue(referenceDate = new Date()) {
+  const normalizedYear = referenceDate.getFullYear()
+  const normalizedMonth = String(referenceDate.getMonth() + 1).padStart(2, '0')
+  return `${normalizedYear}-${normalizedMonth}`
+}
+
+function getNextMonthInputValue() {
+  const nextMonthReferenceDate = new Date()
+  nextMonthReferenceDate.setMonth(nextMonthReferenceDate.getMonth() + 1)
+  return getCurrentYearMonthInputValue(nextMonthReferenceDate)
+}
+
+function buildReferenceDateFromYearMonth(yearMonthValue) {
+  const [yearChunk, monthChunk] = String(yearMonthValue || '').split('-')
+  const parsedYear = Number(yearChunk)
+  const parsedMonth = Number(monthChunk)
+
+  if (!Number.isInteger(parsedYear) || !Number.isInteger(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
+    return new Date()
+  }
+
+  return new Date(parsedYear, parsedMonth - 1, 1)
+}
+
+function formatYearMonthLabel(yearMonthValue) {
+  const referenceDate = buildReferenceDateFromYearMonth(yearMonthValue)
+  return referenceDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+}
+
 const exportForm = reactive({
   exportType: 'MONTHLY_SUMMARY',
 })
@@ -323,6 +361,15 @@ const selectedAccountActionType = ref('ENTRY')
 const currencyForm = reactive({
   date: getCurrentDateInputValue(),
   codes: ['USD', 'EUR', 'GBP', 'ARS'],
+})
+const currencyCodePickerForm = reactive({
+  selectedCode: 'USD',
+})
+const manualCurrencyRateForm = reactive({
+  quoteDate: getCurrentDateInputValue(),
+  currencyCode: 'USD',
+  currencyName: '',
+  rateBrl: '',
 })
 
 const openFinanceForm = reactive({
@@ -668,7 +715,12 @@ const totalsLabel = computed(() => {
 })
 const paginatedBankAccounts = computed(() => getPaginatedLocalItems(bankAccounts.value, 'bankAccounts'))
 const paginatedCategories = computed(() => getPaginatedLocalItems(categories.value, 'categories'))
-const paginatedRecurringTypes = computed(() => getPaginatedLocalItems(recurringTypes.value, 'recurringTypes'))
+const paginatedRecurringTypes = computed(() => getPaginatedLocalItems(
+  recurringTypes.value.filter((recurringTypeItem) => (
+    normalizeTextForComparison(recurringTypeItem?.name) !== 'mensal'
+  )),
+  'recurringTypes',
+))
 const paginatedInvestmentPlans = computed(() => getPaginatedLocalItems(investmentPlans.value, 'investmentPlans'))
 const paginatedDebtPlans = computed(() => getPaginatedLocalItems(debtPlans.value, 'debtPlans'))
 const paginatedCurrencyRates = computed(() => getPaginatedLocalItems(currencyRates.value, 'currencyRates'))
@@ -780,22 +832,10 @@ const recurringDirectionByTab = computed(() => {
   return ''
 })
 
-const recurringDirectionLabel = computed(() => (
-  recurringDirectionByTab.value
-    ? translateFinanceTerm(recurringDirectionByTab.value, '-')
-    : '-'
-))
-
 const installmentDirectionByTab = computed(() => (
   shouldShowInstallmentSection.value
     ? 'PAYABLE'
     : ''
-))
-
-const installmentDirectionLabel = computed(() => (
-  installmentDirectionByTab.value
-    ? translateFinanceTerm(installmentDirectionByTab.value, '-')
-    : '-'
 ))
 
 const filteredRecurringRules = computed(() => {
@@ -902,6 +942,8 @@ const accountsOverviewComparisonRows = computed(() => {
   ]
 })
 
+const accountsOverviewSelectedMonthLabel = computed(() => formatYearMonthLabel(accountsOverviewMonth.value))
+
 const selectedCurrenciesLabel = computed(() => {
   const selectedCount = Array.isArray(currencyForm.codes) ? currencyForm.codes.length : 0
   if (selectedCount <= 0) {
@@ -919,6 +961,41 @@ const debtPreviewSuggestions = computed(() => {
   const suggestions = debtPreview.value?.suggestions
   return Array.isArray(suggestions) ? suggestions : []
 })
+
+const availableCreditCardAccounts = computed(() => (
+  bankAccounts.value.filter((bankAccountItem) => {
+    const accountTypeCode = String(bankAccountItem?.accountType || '').toUpperCase()
+    return accountTypeCode === 'CREDIT' && Boolean(bankAccountItem?.isActive)
+  })
+))
+
+const availableRecurringTypes = computed(() => (
+  recurringTypes.value.filter((recurringTypeItem) => {
+    const normalizedRecurringTypeName = normalizeTextForComparison(recurringTypeItem?.name)
+    return normalizedRecurringTypeName !== 'mensal'
+  })
+))
+
+const availableSettlementEntries = computed(() => (
+  entriesState.value.filter((entryItem) => {
+    const remainingAmountBrl = Number(entryItem?.remainingAmountBrl || 0)
+    const entryStatusCode = String(entryItem?.status || '').toUpperCase()
+    return remainingAmountBrl > 0 && !['PAID', 'RECEIVED', 'CANCELED'].includes(entryStatusCode)
+  })
+))
+
+const selectedSettlementEntry = computed(() => {
+  const selectedEntryId = normalizeOptionalNumber(settlementForm.entryId)
+  if (!selectedEntryId) {
+    return null
+  }
+
+  return availableSettlementEntries.value.find((entryItem) => (
+    Number(entryItem?.id) === selectedEntryId
+  )) || null
+})
+
+const selectedSettlementRemainingAmountBrl = computed(() => Number(selectedSettlementEntry.value?.remainingAmountBrl || 0))
 
 onMounted(async () => {
   await loadInitialData()
@@ -1040,6 +1117,50 @@ watch(
   },
 )
 
+watch(
+  () => settlementForm.useCreditCard,
+  (useCreditCardSettlement) => {
+    if (useCreditCardSettlement) {
+      settlementForm.bankAccountId = ''
+      if (!normalizeOptionalNumber(settlementForm.creditCardId) && availableCreditCardAccounts.value.length > 0) {
+        settlementForm.creditCardId = String(availableCreditCardAccounts.value[0].id)
+      }
+
+      return
+    }
+
+    settlementForm.creditCardId = ''
+    settlementForm.creditCardDueDate = ''
+  },
+)
+
+watch(
+  availableCreditCardAccounts,
+  (nextCreditCards) => {
+    if (!Array.isArray(nextCreditCards) || nextCreditCards.length <= 0) {
+      settlementForm.creditCardId = ''
+      return
+    }
+
+    if (normalizeOptionalNumber(settlementForm.creditCardId)) {
+      return
+    }
+
+    settlementForm.creditCardId = String(nextCreditCards[0].id)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => manualCurrencyRateForm.currencyCode,
+  (nextCurrencyCode) => {
+    const resolvedCurrencyName = resolveCurrencyNameByCode(nextCurrencyCode)
+    if (resolvedCurrencyName !== '') {
+      manualCurrencyRateForm.currencyName = resolvedCurrencyName
+    }
+  },
+)
+
 async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.value) {
   if (activeTab.value !== 'accounts') {
     return
@@ -1135,7 +1256,12 @@ async function loadCatalogs() {
     ])
 
     categories.value = Array.isArray(categoriesResponse.data?.items) ? categoriesResponse.data.items : []
-    recurringTypes.value = Array.isArray(recurringTypesResponse.data?.items) ? recurringTypesResponse.data.items : []
+
+    const loadedRecurringTypes = Array.isArray(recurringTypesResponse.data?.items) ? recurringTypesResponse.data.items : []
+    recurringTypes.value = loadedRecurringTypes.filter((recurringTypeItem) => (
+      normalizeTextForComparison(recurringTypeItem?.name) !== 'mensal'
+    ))
+
     bankAccounts.value = Array.isArray(bankAccountsResponse.data?.items) ? bankAccountsResponse.data.items : []
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar catálogo financeiro.'), 'error')
@@ -1149,19 +1275,18 @@ async function loadDashboard() {
 
   try {
     const currentMonthDateRange = buildCurrentMonthDateRange()
-    const currentDate = new Date()
-    const firstDayNextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
-    const nextMonthDateRange = buildCurrentMonthDateRange(firstDayNextMonth)
+    const selectedMonthReferenceDate = buildReferenceDateFromYearMonth(accountsOverviewMonth.value)
+    const selectedMonthDateRange = buildCurrentMonthDateRange(selectedMonthReferenceDate)
 
-    const [summaryResponse, nextMonthSummaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
+    const [summaryResponse, selectedMonthSummaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
       fetchFinanceDashboardSummary(props.request, currentMonthDateRange),
-      fetchFinanceDashboardSummary(props.request, nextMonthDateRange),
+      fetchFinanceDashboardSummary(props.request, selectedMonthDateRange),
       fetchFinanceDashboardCashflow(props.request),
       fetchFinanceDashboardCategories(props.request, { limit: LIST_ITEMS_PER_PAGE }),
     ])
 
     dashboardSummary.value = summaryResponse.data?.item || null
-    accountsOverviewSummary.value = nextMonthSummaryResponse.data?.item || null
+    accountsOverviewSummary.value = selectedMonthSummaryResponse.data?.item || null
     dashboardCashflow.value = Array.isArray(cashflowResponse.data?.items) ? cashflowResponse.data.items : []
     dashboardCategories.value = Array.isArray(categoriesResponse.data?.items) ? categoriesResponse.data.items : []
   } catch (requestError) {
@@ -1169,6 +1294,21 @@ async function loadDashboard() {
   } finally {
     loadingState.dashboard = false
   }
+}
+
+async function handleAccountsOverviewMonthChange() {
+  if (!/^\d{4}-\d{2}$/.test(String(accountsOverviewMonth.value || ''))) {
+    accountsOverviewMonth.value = getCurrentYearMonthInputValue()
+  }
+
+  await loadDashboard()
+}
+
+async function refreshAccountsOverviewValues() {
+  await Promise.all([
+    loadDashboard(),
+    loadEntries(),
+  ])
 }
 
 async function loadEntries() {
@@ -1354,25 +1494,46 @@ async function loadCurrenciesCatalog() {
     if (currencyForm.codes.length === 0 && currenciesCatalog.value.length > 0) {
       currencyForm.codes = currenciesCatalog.value.slice(0, 4).map((currencyItem) => String(currencyItem.code))
     }
+
+    const availableCurrencyCodes = currenciesCatalog.value.map((currencyItem) => String(currencyItem.code))
+    currencyForm.codes = currencyForm.codes.filter((currencyCode) => availableCurrencyCodes.includes(String(currencyCode)))
+
+    if ((!currencyCodePickerForm.selectedCode || !availableCurrencyCodes.includes(currencyCodePickerForm.selectedCode)) && currenciesCatalog.value.length > 0) {
+      currencyCodePickerForm.selectedCode = String(currenciesCatalog.value[0].code)
+    }
+
+    if ((!manualCurrencyRateForm.currencyCode || !availableCurrencyCodes.includes(manualCurrencyRateForm.currencyCode)) && currenciesCatalog.value.length > 0) {
+      manualCurrencyRateForm.currencyCode = String(currenciesCatalog.value[0].code)
+    }
+
+    if (manualCurrencyRateForm.currencyName.trim() === '') {
+      manualCurrencyRateForm.currencyName = resolveCurrencyNameByCode(manualCurrencyRateForm.currencyCode)
+    }
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar catálogo de moedas.'), 'error')
   }
 }
 
-async function loadCurrencyRates() {
+async function loadCurrencyRates(options = {}) {
   loadingState.currencies = true
 
   try {
     const selectedCurrencyCodes = Array.isArray(currencyForm.codes) ? currencyForm.codes : []
+    const forceRefreshFromApi = Boolean(options.forceRefresh)
 
     const response = await fetchFinanceCurrencyRates(props.request, {
       date: currencyForm.date || undefined,
       codes: selectedCurrencyCodes.join(',') || undefined,
+      forceRefresh: forceRefreshFromApi ? '1' : undefined,
     })
 
     currencyRates.value = Array.isArray(response.data?.items) ? response.data.items : []
     if (typeof response.data?.requestedDate === 'string' && response.data.requestedDate !== '') {
       currencyForm.date = response.data.requestedDate
+    }
+
+    if (forceRefreshFromApi) {
+      notifyUser('Cotações atualizadas com nova consulta da API.', 'success')
     }
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar cotações de moedas.'), 'error')
@@ -1384,6 +1545,79 @@ async function loadCurrencyRates() {
 async function refreshCurrencyData() {
   await loadCurrenciesCatalog()
   await loadCurrencyRates()
+}
+
+function resolveCurrencyNameByCode(currencyCode) {
+  const normalizedCurrencyCode = String(currencyCode || '').toUpperCase()
+  const matchedCurrency = currenciesCatalog.value.find((currencyItem) => (
+    String(currencyItem?.code || '').toUpperCase() === normalizedCurrencyCode
+  ))
+
+  return String(matchedCurrency?.name || normalizedCurrencyCode)
+}
+
+function addCurrencyCodeToSelection() {
+  const selectedCurrencyCode = String(currencyCodePickerForm.selectedCode || '').toUpperCase()
+  if (!selectedCurrencyCode) {
+    notifyUser('Selecione uma moeda para adicionar.', 'warning')
+    return
+  }
+
+  const currentCodes = Array.isArray(currencyForm.codes) ? [...currencyForm.codes] : []
+  if (currentCodes.includes(selectedCurrencyCode)) {
+    notifyUser('Essa moeda já está selecionada.', 'warning')
+    return
+  }
+
+  currencyForm.codes = [...currentCodes, selectedCurrencyCode]
+  notifyUser(`Moeda ${selectedCurrencyCode} adicionada na seleção.`, 'success')
+}
+
+function requestForceCurrencyRefresh() {
+  openConfirmDialog({
+    title: 'Forçar atualização da API',
+    message: 'Isso fará nova consulta na API externa agora. Deseja continuar?',
+    confirmLabel: 'Atualizar da API',
+    confirmTone: 'danger',
+    onConfirm: async () => {
+      await loadCurrencyRates({ forceRefresh: true })
+    },
+  })
+}
+
+async function submitManualCurrencyRate() {
+  const manualCurrencyCode = String(manualCurrencyRateForm.currencyCode || '').toUpperCase()
+  const manualRateBrl = Number(manualCurrencyRateForm.rateBrl)
+
+  if (!manualCurrencyCode || manualCurrencyCode.length !== 3) {
+    notifyUser('Informe uma sigla válida de moeda (3 letras).', 'warning')
+    return
+  }
+
+  if (!Number.isFinite(manualRateBrl) || manualRateBrl <= 0) {
+    notifyUser('Informe uma taxa válida maior que zero.', 'warning')
+    return
+  }
+
+  try {
+    await createFinanceCurrencyRateManual(props.request, {
+      quoteDate: manualCurrencyRateForm.quoteDate || getCurrentDateInputValue(),
+      currencyCode: manualCurrencyCode,
+      currencyName: manualCurrencyRateForm.currencyName || resolveCurrencyNameByCode(manualCurrencyCode),
+      rateBrl: manualRateBrl,
+    })
+
+    notifyUser('Cotação manual salva com sucesso.', 'success')
+    manualCurrencyRateForm.rateBrl = ''
+
+    if (!Array.isArray(currencyForm.codes) || !currencyForm.codes.includes(manualCurrencyCode)) {
+      currencyForm.codes = [...(Array.isArray(currencyForm.codes) ? currencyForm.codes : []), manualCurrencyCode]
+    }
+
+    await loadCurrencyRates()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível salvar a cotação manual.'), 'error')
+  }
 }
 
 async function loadExports(page = Number(exportMeta.value.page || 1)) {
@@ -1432,6 +1666,8 @@ async function loadOpenFinance() {
 
 async function submitEntry() {
   try {
+    const entryDueDate = entryForm.dueDate || getCurrentDateInputValue()
+
     if (!entryEditingId.value && shouldCreateSalaryRecurringRuleFromEntry()) {
       const recurringTypeId = resolveSalaryRecurringTypeId()
       if (!recurringTypeId) {
@@ -1439,15 +1675,14 @@ async function submitEntry() {
         return
       }
 
-      const dueDate = entryForm.dueDate || getCurrentDateInputValue()
-      const dueDay = Number(dueDate.split('-')[2] || 5)
+      const dueDay = Number(entryDueDate.split('-')[2] || 5)
 
       await createFinanceRecurringRule(props.request, {
         direction: 'RECEIVABLE',
         title: entryForm.title,
         amountBrl: Number(entryForm.expectedAmountBrl),
         dayOfMonth: Number.isFinite(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : 5,
-        startsAt: dueDate,
+        startsAt: entryDueDate,
         recurringTypeId,
         categoryId: resolveSalaryCategoryId(),
         defaultBankAccountId: normalizeOptionalNumber(entryForm.bankAccountId),
@@ -1467,7 +1702,7 @@ async function submitEntry() {
       entryType: entryForm.entryType,
       title: entryForm.title,
       expectedAmountBrl: Number(entryForm.expectedAmountBrl),
-      dueDate: entryForm.dueDate || null,
+      dueDate: entryDueDate,
       categoryId: normalizeOptionalNumber(entryForm.categoryId),
       bankAccountId: normalizeOptionalNumber(entryForm.bankAccountId),
     }
@@ -1517,7 +1752,7 @@ function startEditingEntry(entryItem) {
   entryForm.entryType = String(entryItem.entryType || 'ONE_OFF')
   entryForm.title = String(entryItem.title || '')
   entryForm.expectedAmountBrl = String(entryItem.expectedAmountBrl ?? '')
-  entryForm.dueDate = toDateInputValue(entryItem.dueDate)
+  entryForm.dueDate = toDateInputValue(entryItem.dueDate) || getCurrentDateInputValue()
   entryForm.categoryId = entryItem.categoryId ? String(entryItem.categoryId) : ''
   entryForm.bankAccountId = entryItem.bankAccountId ? String(entryItem.bankAccountId) : ''
   openAccountActionModal('ENTRY')
@@ -1527,7 +1762,7 @@ function resetEntryForm() {
   entryEditingId.value = null
   entryForm.title = ''
   entryForm.expectedAmountBrl = ''
-  entryForm.dueDate = ''
+  entryForm.dueDate = getCurrentDateInputValue()
   entryForm.entryType = 'ONE_OFF'
   entryForm.categoryId = ''
   entryForm.bankAccountId = ''
@@ -1539,6 +1774,11 @@ function resetSettlementForm() {
   settlementForm.amountBrl = ''
   settlementForm.settledAt = ''
   settlementForm.bankAccountId = ''
+  settlementForm.useCreditCard = false
+  settlementForm.creditCardId = ''
+  settlementForm.creditCardInterestRatePercent = '2.99'
+  settlementForm.creditCardIofRatePercent = '0.38'
+  settlementForm.creditCardDueDate = ''
 }
 
 function resetInstallmentForm() {
@@ -1834,7 +2074,7 @@ async function deleteRecurringType(recurringTypeItem) {
 
   openConfirmDialog({
     title: 'Excluir tipo recorrente',
-    message: 'O tipo de recorrência será inativado. Deseja continuar?',
+    message: 'O tipo de recorrência será excluído do catálogo. Deseja continuar?',
     confirmLabel: 'Excluir',
     confirmTone: 'danger',
     onConfirm: () => executeDeleteRecurringType(recurringTypeItem),
@@ -1843,9 +2083,7 @@ async function deleteRecurringType(recurringTypeItem) {
 
 async function executeDeleteRecurringType(recurringTypeItem) {
   try {
-    await updateFinanceRecurringType(props.request, recurringTypeItem.id, {
-      isActive: false,
-    })
+    await deleteFinanceRecurringType(props.request, recurringTypeItem.id)
 
     if (recurringTypeEditingId.value === recurringTypeItem.id) {
       resetRecurringTypeForm()
@@ -1960,21 +2198,72 @@ async function submitSettlement() {
     return
   }
 
+  const settlementAmountBrl = Number(settlementForm.amountBrl)
+  if (!Number.isFinite(settlementAmountBrl) || settlementAmountBrl <= 0) {
+    notifyUser('Informe um valor de baixa maior que zero.', 'warning')
+    return
+  }
+
+  const selectedEntryRemainingAmountBrl = Number(selectedSettlementEntry.value?.remainingAmountBrl || 0)
+  if (selectedEntryRemainingAmountBrl > 0 && settlementAmountBrl - selectedEntryRemainingAmountBrl > 0.009) {
+    notifyUser(
+      `O valor da baixa não pode ser maior que o saldo restante (${formatCurrency(selectedEntryRemainingAmountBrl)}).`,
+      'warning',
+    )
+    return
+  }
+
+  const useCreditCardSettlement = Boolean(settlementForm.useCreditCard)
+  const settlementPayload = {
+    amountBrl: settlementAmountBrl,
+    settledAt: settlementForm.settledAt || null,
+    bankAccountId: null,
+  }
+
+  if (useCreditCardSettlement) {
+    const selectedCreditCardId = normalizeOptionalNumber(settlementForm.creditCardId)
+    if (!selectedCreditCardId) {
+      notifyUser('Selecione o cartão de crédito para registrar a baixa em crédito.', 'warning')
+      return
+    }
+
+    settlementPayload.useCreditCard = true
+    settlementPayload.creditCardId = selectedCreditCardId
+    settlementPayload.creditCardInterestRatePercent = Number(settlementForm.creditCardInterestRatePercent || 0)
+    settlementPayload.creditCardIofRatePercent = Number(settlementForm.creditCardIofRatePercent || 0)
+    settlementPayload.creditCardDueDate = settlementForm.creditCardDueDate || null
+  } else {
+    const selectedBankAccountId = normalizeOptionalNumber(settlementForm.bankAccountId)
+    if (!selectedBankAccountId) {
+      notifyUser('Conta bancária é obrigatória para registrar baixa bancária.', 'warning')
+      return
+    }
+
+    settlementPayload.bankAccountId = selectedBankAccountId
+  }
+
   try {
-    await createFinanceSettlement(props.request, entryId, {
-      amountBrl: Number(settlementForm.amountBrl),
-      settledAt: settlementForm.settledAt || null,
-      bankAccountId: normalizeOptionalNumber(settlementForm.bankAccountId),
-    })
+    await createFinanceSettlement(props.request, entryId, settlementPayload)
 
     resetSettlementForm()
     closeAccountActionModal()
 
-    notifyUser('Baixa registrada com sucesso.', 'success')
+    notifyUser(
+      useCreditCardSettlement
+        ? 'Baixa em crédito registrada e novo lançamento no cartão criado.'
+        : 'Baixa registrada com sucesso.',
+      'success',
+    )
     await Promise.all([loadEntries(), loadInstallments()])
     await loadDashboard()
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível registrar a baixa.'), 'error')
+    const settlementErrorMessage = extractHttpMessage(requestError, 'Não foi possível registrar a baixa.')
+    if (settlementErrorMessage.includes('The settlement amount cannot exceed the remaining amount.')) {
+      notifyUser('O valor da baixa não pode ser maior que o saldo restante do lançamento.', 'error')
+      return
+    }
+
+    notifyUser(settlementErrorMessage, 'error')
   }
 }
 
@@ -2027,7 +2316,7 @@ function startEditingRecurringRule(recurringRuleItem) {
   recurringForm.title = String(recurringRuleItem.title || '')
   recurringForm.amountBrl = String(recurringRuleItem.amountBrl ?? '')
   recurringForm.dayOfMonth = Number(recurringRuleItem.dayOfMonth || 1)
-  recurringForm.startsAt = String(recurringRuleItem.startsAt || '').slice(0, 10)
+  recurringForm.startsAt = String(recurringRuleItem.startsAt || '').slice(0, 10) || getCurrentDateInputValue()
   recurringForm.recurringTypeId = recurringRuleItem.recurringTypeId ? String(recurringRuleItem.recurringTypeId) : ''
   recurringForm.categoryId = recurringRuleItem.categoryId ? String(recurringRuleItem.categoryId) : ''
   recurringForm.defaultBankAccountId = recurringRuleItem.bankAccountId ? String(recurringRuleItem.bankAccountId) : ''
@@ -2040,7 +2329,7 @@ function resetRecurringRuleForm() {
   recurringForm.title = ''
   recurringForm.amountBrl = ''
   recurringForm.dayOfMonth = 5
-  recurringForm.startsAt = ''
+  recurringForm.startsAt = getCurrentDateInputValue()
   recurringForm.recurringTypeId = ''
   recurringForm.categoryId = ''
   recurringForm.defaultBankAccountId = ''
@@ -2053,7 +2342,7 @@ function requestDeleteRecurringRule(recurringRuleItem) {
 
   openConfirmDialog({
     title: 'Excluir recorrência',
-    message: 'A recorrência será inativada e deixará de gerar novos lançamentos. Deseja continuar?',
+    message: 'A recorrência será excluída e deixará de gerar novos lançamentos. Deseja continuar?',
     confirmLabel: 'Excluir',
     confirmTone: 'danger',
     onConfirm: () => executeDeleteRecurringRule(recurringRuleItem),
@@ -2062,9 +2351,7 @@ function requestDeleteRecurringRule(recurringRuleItem) {
 
 async function executeDeleteRecurringRule(recurringRuleItem) {
   try {
-    await updateFinanceRecurringRule(props.request, recurringRuleItem.id, {
-      isActive: false,
-    })
+    await deleteFinanceRecurringRule(props.request, recurringRuleItem.id)
 
     if (recurringRuleEditingId.value === Number(recurringRuleItem.id)) {
       resetRecurringRuleForm()
@@ -2585,6 +2872,30 @@ function formatExchangeRate(rawValue) {
   return numericValue.toFixed(6)
 }
 
+function resolveLastFourDigits(rawValue) {
+  const normalizedDigits = String(rawValue || '').replace(/\D/g, '')
+  if (normalizedDigits.length <= 0) {
+    return '----'
+  }
+
+  return normalizedDigits.slice(-4).padStart(4, '0')
+}
+
+function formatCreditCardOptionLabel(creditCardAccount) {
+  const creditCardAlias = String(creditCardAccount?.name || 'Cartão sem apelido')
+  const creditCardInstitution = String(creditCardAccount?.bankName || 'Instituição não informada')
+  const creditCardLastDigits = resolveLastFourDigits(creditCardAccount?.accountNumber)
+
+  return `${creditCardAlias} - ${creditCardInstitution} - ${creditCardLastDigits}`
+}
+
+function formatSettlementEntryOptionLabel(entryItem) {
+  const entryTitle = String(entryItem?.title || 'Lançamento')
+  const entryDueDateLabel = formatDate(entryItem?.dueDate, '-')
+  const entryRemainingAmountLabel = formatCurrency(entryItem?.remainingAmountBrl)
+  return `${entryTitle} - ${entryDueDateLabel} - Em aberto ${entryRemainingAmountLabel}`
+}
+
 function normalizeOptionalNumber(value) {
   const normalizedValue = Number(value)
 
@@ -2670,11 +2981,6 @@ function resolveSalaryRecurringTypeId() {
   const salaryRecurringTypeId = normalizeOptionalNumber(findRecurringTypeByNormalizedName('Salario')?.id)
   if (salaryRecurringTypeId) {
     return salaryRecurringTypeId
-  }
-
-  const monthlyRecurringTypeId = normalizeOptionalNumber(findRecurringTypeByNormalizedName('Mensal')?.id)
-  if (monthlyRecurringTypeId) {
-    return monthlyRecurringTypeId
   }
 
   const firstActiveRecurringType = recurringTypes.value.find((recurringTypeItem) => Boolean(recurringTypeItem?.isActive))
@@ -2948,9 +3254,32 @@ function applyAccountsDirectionContext() {
       </nav>
 
       <article v-if="activeAccountsTab === 'overview'" class="finance-panel">
-        <header>
-          <h3>Resumo rápido: pagar x receber</h3>
-          <small>Mostrando o previsto do próximo mês. Detalhes completos em Relatórios.</small>
+        <header class="finance-overview-header">
+          <div class="finance-overview-header-main">
+            <h3>Resumo rápido: pagar x receber</h3>
+            <small>Mostrando o previsto de {{ accountsOverviewSelectedMonthLabel }}. Detalhes completos em Relatórios.</small>
+          </div>
+
+          <div class="finance-overview-header-actions">
+            <label class="finance-overview-month-field">
+              <span>Mês</span>
+              <input
+                v-model="accountsOverviewMonth"
+                type="month"
+                class="finance-overview-month-input"
+                @change="handleAccountsOverviewMonthChange"
+              >
+            </label>
+
+            <button
+              type="button"
+              class="finance-inline-action"
+              :disabled="loadingState.dashboard || loadingState.entries"
+              @click="refreshAccountsOverviewValues"
+            >
+              {{ loadingState.dashboard || loadingState.entries ? 'Atualizando...' : 'Atualizar valores' }}
+            </button>
+          </div>
         </header>
 
         <div v-if="accountsOverviewComparisonRows.length" class="finance-inline-table-wrap">
@@ -3348,7 +3677,7 @@ function applyAccountsDirectionContext() {
           <h3>Tipos de recorrência</h3>
         </header>
 
-        <div v-if="recurringTypes.length" class="finance-inline-table-wrap">
+        <div v-if="availableRecurringTypes.length" class="finance-inline-table-wrap">
           <table class="finance-inline-table">
             <thead>
               <tr>
@@ -3381,7 +3710,6 @@ function applyAccountsDirectionContext() {
                   <button
                     type="button"
                     class="finance-inline-action finance-inline-action-danger"
-                    :disabled="!recurringType.isActive"
                     @click="deleteRecurringType(recurringType)"
                   >
                     Excluir
@@ -3398,25 +3726,25 @@ function applyAccountsDirectionContext() {
             </tbody>
           </table>
         </div>
-        <div v-if="recurringTypes.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(recurringTypes, 'recurringTypes', 'tipos recorrentes') }}</span>
-          <div v-if="getLocalListPageCount(recurringTypes) > 1" class="finance-pagination-actions">
+        <div v-if="availableRecurringTypes.length" class="finance-pagination">
+          <span class="finance-pagination-summary">{{ getLocalListSummary(availableRecurringTypes, 'recurringTypes', 'tipos recorrentes') }}</span>
+          <div v-if="getLocalListPageCount(availableRecurringTypes) > 1" class="finance-pagination-actions">
             <button
               type="button"
               class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('recurringTypes', recurringTypes) <= 1"
-              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', recurringTypes) - 1, recurringTypes)"
+              :disabled="getLocalListPage('recurringTypes', availableRecurringTypes) <= 1"
+              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', availableRecurringTypes) - 1, availableRecurringTypes)"
             >
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('recurringTypes', recurringTypes) }} de {{ getLocalListPageCount(recurringTypes) }}
+              Página {{ getLocalListPage('recurringTypes', availableRecurringTypes) }} de {{ getLocalListPageCount(availableRecurringTypes) }}
             </span>
             <button
               type="button"
               class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('recurringTypes', recurringTypes) >= getLocalListPageCount(recurringTypes)"
-              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', recurringTypes) + 1, recurringTypes)"
+              :disabled="getLocalListPage('recurringTypes', availableRecurringTypes) >= getLocalListPageCount(availableRecurringTypes)"
+              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', availableRecurringTypes) + 1, availableRecurringTypes)"
             >
               Próxima
             </button>
@@ -3471,7 +3799,6 @@ function applyAccountsDirectionContext() {
                   <button
                     type="button"
                     class="finance-inline-action finance-inline-action-danger"
-                    :disabled="!rule.isActive"
                     @click="requestDeleteRecurringRule(rule)"
                   >
                     Excluir
@@ -4048,7 +4375,58 @@ function applyAccountsDirectionContext() {
             <small class="finance-field-hint">Use Ctrl/Cmd para selecionar várias moedas.</small>
           </label>
 
-          <button class="finance-action-button" type="submit">Atualizar cotações</button>
+          <label>
+            <span>Adicionar moeda por sigla</span>
+            <select v-model="currencyCodePickerForm.selectedCode">
+              <option v-for="currencyItem in currenciesCatalog" :key="currencyItem.code" :value="currencyItem.code">
+                {{ currencyItem.code }} - {{ currencyItem.name }}
+              </option>
+            </select>
+          </label>
+
+          <button class="finance-action-button" type="button" @click="addCurrencyCodeToSelection">
+            Adicionar moeda
+          </button>
+
+          <button class="finance-action-button" type="submit">Atualizar cotações (cache diário)</button>
+          <button class="finance-inline-action finance-inline-action-danger" type="button" @click="requestForceCurrencyRefresh">
+            Forçar consulta da API
+          </button>
+        </form>
+      </article>
+
+      <article class="finance-panel">
+        <header>
+          <h3>Cotação manual</h3>
+          <small>Use quando precisar cadastrar ou corrigir uma taxa manualmente.</small>
+        </header>
+
+        <form class="finance-form-grid" @submit.prevent="submitManualCurrencyRate">
+          <label>
+            <span>Data da cotação</span>
+            <input v-model="manualCurrencyRateForm.quoteDate" type="date" required>
+          </label>
+
+          <label>
+            <span>Sigla da moeda</span>
+            <select v-model="manualCurrencyRateForm.currencyCode" required>
+              <option v-for="currencyItem in currenciesCatalog" :key="currencyItem.code" :value="currencyItem.code">
+                {{ currencyItem.code }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span>Moeda</span>
+            <input v-model="manualCurrencyRateForm.currencyName" type="text" required>
+          </label>
+
+          <label>
+            <span>Taxa (BRL)</span>
+            <input v-model="manualCurrencyRateForm.rateBrl" type="number" step="0.000001" min="0.000001" required>
+          </label>
+
+          <button class="finance-action-button" type="submit">Salvar cotação manual</button>
         </form>
       </article>
 
@@ -4422,7 +4800,7 @@ function applyAccountsDirectionContext() {
 
           <label>
             <span>Vencimento</span>
-            <input v-model="entryForm.dueDate" type="date">
+            <input v-model="entryForm.dueDate" type="date" required>
           </label>
 
           <label>
@@ -4458,24 +4836,74 @@ function applyAccountsDirectionContext() {
             <span>Lançamento</span>
             <select v-model="settlementForm.entryId">
               <option value="">Selecione</option>
-              <option v-for="entry in entriesState" :key="entry.id" :value="entry.id">{{ entry.title }} ({{ formatCurrency(entry.remainingAmountBrl) }})</option>
+              <option v-for="entry in availableSettlementEntries" :key="entry.id" :value="entry.id">
+                {{ formatSettlementEntryOptionLabel(entry) }}
+              </option>
             </select>
+            <small v-if="selectedSettlementEntry" class="finance-field-hint">
+              Saldo restante do lançamento selecionado: {{ formatCurrency(selectedSettlementRemainingAmountBrl) }}
+            </small>
           </label>
 
           <label>
             <span>Valor da baixa</span>
-            <input v-model="settlementForm.amountBrl" type="number" step="0.01" min="0.01" required>
+            <input
+              v-model="settlementForm.amountBrl"
+              type="number"
+              step="0.01"
+              min="0.01"
+              :max="selectedSettlementRemainingAmountBrl > 0 ? selectedSettlementRemainingAmountBrl : undefined"
+              required
+            >
           </label>
 
           <label>
-            <span>Data real</span>
+            <span>Data/hora da baixa</span>
             <input v-model="settlementForm.settledAt" type="datetime-local">
+            <small class="finance-field-hint">Se não informar, o sistema usa a data/hora atual.</small>
           </label>
 
-          <label>
+          <label class="finance-toggle-label">
+            <input v-model="settlementForm.useCreditCard" type="checkbox">
+            <span>Baixa de valor em Crédito</span>
+          </label>
+
+          <label v-if="settlementForm.useCreditCard">
+            <span>Cartão de crédito</span>
+            <select v-model="settlementForm.creditCardId" required>
+              <option value="">Selecione</option>
+              <option
+                v-for="creditCardAccount in availableCreditCardAccounts"
+                :key="creditCardAccount.id"
+                :value="creditCardAccount.id"
+              >
+                {{ formatCreditCardOptionLabel(creditCardAccount) }}
+              </option>
+            </select>
+            <small v-if="availableCreditCardAccounts.length <= 0" class="finance-field-hint">
+              Cadastre uma conta do tipo Cartão para habilitar baixa em crédito.
+            </small>
+          </label>
+
+          <label v-if="settlementForm.useCreditCard">
+            <span>Juros mensais (%)</span>
+            <input v-model="settlementForm.creditCardInterestRatePercent" type="number" step="0.01" min="0" max="100">
+          </label>
+
+          <label v-if="settlementForm.useCreditCard">
+            <span>IOF (%)</span>
+            <input v-model="settlementForm.creditCardIofRatePercent" type="number" step="0.01" min="0" max="100">
+          </label>
+
+          <label v-if="settlementForm.useCreditCard">
+            <span>Vencimento da fatura (opcional)</span>
+            <input v-model="settlementForm.creditCardDueDate" type="date">
+          </label>
+
+          <label v-if="!settlementForm.useCreditCard">
             <span>Conta bancária</span>
-            <select v-model="settlementForm.bankAccountId">
-              <option value="">Sem conta</option>
+            <select v-model="settlementForm.bankAccountId" :required="!settlementForm.useCreditCard">
+              <option value="">Selecione</option>
               <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
             </select>
           </label>
@@ -4508,14 +4936,14 @@ function applyAccountsDirectionContext() {
 
           <label>
             <span>Início</span>
-            <input v-model="recurringForm.startsAt" type="date">
+            <input v-model="recurringForm.startsAt" type="date" required>
           </label>
 
           <label>
             <span>Tipo recorrente</span>
             <select v-model="recurringForm.recurringTypeId" required>
               <option value="">Selecione</option>
-              <option v-for="recurringType in recurringTypes" :key="recurringType.id" :value="recurringType.id">{{ recurringType.name }}</option>
+              <option v-for="recurringType in availableRecurringTypes" :key="recurringType.id" :value="recurringType.id">{{ recurringType.name }}</option>
             </select>
           </label>
 
@@ -4799,6 +5227,48 @@ function applyAccountsDirectionContext() {
 
 .finance-panel small {
   color: var(--muted, #475569);
+}
+
+.finance-overview-header {
+  align-items: flex-end;
+}
+
+.finance-overview-header-main {
+  display: grid;
+  gap: 4px;
+}
+
+.finance-overview-header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.finance-overview-month-field {
+  display: grid;
+  gap: 6px;
+  min-width: 190px;
+}
+
+.finance-overview-month-field span {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted, #475569);
+}
+
+.finance-overview-month-input {
+  border-radius: 10px;
+  border: 1px solid var(--line, #cbd5e1);
+  min-height: 42px;
+  padding: 0 12px;
+  min-width: 0;
+  color: var(--ink, #0f172a);
+  background: var(--app-field-bg, color-mix(in srgb, var(--surface-strong, #ffffff) 88%, transparent));
+}
+
+.finance-overview-header-actions .finance-inline-action {
+  margin-left: 0;
 }
 
 .finance-kpi-grid {

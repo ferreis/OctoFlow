@@ -2,6 +2,9 @@
 
 namespace App\Finance;
 
+use App\Entity\User;
+use Doctrine\DBAL\Connection;
+
 final class FinanceCurrencyService
 {
     private const BACEN_BASE_URL = 'https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata';
@@ -23,6 +26,11 @@ final class FinanceCurrencyService
         ['code' => 'CHF', 'name' => 'Franco suico'],
         ['code' => 'CNY', 'name' => 'Yuan chines'],
     ];
+
+    public function __construct(
+        private readonly Connection $connection,
+    ) {
+    }
 
     /**
      * @return array{items: list<array{code: string, name: string}>, source: string}
@@ -55,10 +63,13 @@ final class FinanceCurrencyService
      *
      * @return array{baseCurrency: string, requestedDate: string, source: string, items: list<array<string, mixed>>}
      */
-    public function rates(array $filters = []): array
+    public function rates(User $user, array $filters = []): array
     {
+        $ownerId = $this->requireOwnerId($user);
         $requestedDate = FinanceInput::normalizeOptionalDate($filters['date'] ?? null) ?? new \DateTimeImmutable('now');
         $requestedDate = new \DateTimeImmutable($requestedDate->format('Y-m-d'));
+        $requestedDateLabel = $requestedDate->format('Y-m-d');
+        $forceRefresh = FinanceInput::normalizeBoolean($filters['forceRefresh'] ?? false, false);
 
         $requestedCurrencyCodes = $this->normalizeCurrencyCodes($filters['codes'] ?? null);
         if ($requestedCurrencyCodes === []) {
@@ -76,25 +87,237 @@ final class FinanceCurrencyService
 
         $ratesItems = [];
         foreach ($requestedCurrencyCodes as $currencyCode) {
-            $resolvedQuote = $this->resolveLatestQuote($currencyCode, $requestedDate);
+            $cachedRate = $this->findPersistedRate($ownerId, $currencyCode, $requestedDateLabel);
+            $persistedRate = $forceRefresh ? null : $cachedRate;
+
+            if ($persistedRate === null) {
+                $resolvedQuote = $this->resolveLatestQuote($currencyCode, $requestedDate);
+                if ($resolvedQuote !== null) {
+                    $currencyName = $currencyNameByCode[$currencyCode] ?? $currencyCode;
+                    $this->upsertPersistedRate(
+                        $ownerId,
+                        $currencyCode,
+                        $currencyName,
+                        $requestedDateLabel,
+                        (string) $resolvedQuote['quoteDate'],
+                        (string) $resolvedQuote['quoteDateTime'],
+                        (float) $resolvedQuote['buyRateBrl'],
+                        (float) $resolvedQuote['sellRateBrl'],
+                        'API',
+                    );
+
+                    $persistedRate = $this->findPersistedRate($ownerId, $currencyCode, $requestedDateLabel);
+                }
+            }
+
+            if ($persistedRate === null && $cachedRate !== null) {
+                $persistedRate = $cachedRate;
+            }
+
+            if ($persistedRate !== null) {
+                $ratesItems[] = $this->mapPersistedRateToResponseItem($persistedRate, $requestedDateLabel);
+                continue;
+            }
 
             $ratesItems[] = [
                 'code' => $currencyCode,
                 'name' => $currencyNameByCode[$currencyCode] ?? $currencyCode,
-                'buyRateBrl' => $resolvedQuote['buyRateBrl'] ?? null,
-                'sellRateBrl' => $resolvedQuote['sellRateBrl'] ?? null,
-                'requestedDate' => $requestedDate->format('Y-m-d'),
-                'quoteDate' => $resolvedQuote['quoteDate'] ?? null,
-                'quoteDateTime' => $resolvedQuote['quoteDateTime'] ?? null,
-                'found' => $resolvedQuote !== null,
+                'buyRateBrl' => null,
+                'sellRateBrl' => null,
+                'rateBrl' => null,
+                'requestedDate' => $requestedDateLabel,
+                'quoteDate' => null,
+                'quoteDateTime' => null,
+                'source' => 'NONE',
+                'found' => false,
             ];
         }
 
         return [
             'baseCurrency' => 'BRL',
-            'requestedDate' => $requestedDate->format('Y-m-d'),
-            'source' => 'BACEN',
+            'requestedDate' => $requestedDateLabel,
+            'source' => $forceRefresh ? 'BACEN_REFRESH' : 'CACHE_DAILY',
             'items' => $ratesItems,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function createManualRate(User $user, array $payload): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $quoteDate = FinanceInput::normalizeDate($payload['quoteDate'] ?? 'today', 'quoteDate');
+        $quoteDateLabel = $quoteDate->format('Y-m-d');
+
+        $currencyCode = strtoupper(trim((string) ($payload['currencyCode'] ?? '')));
+        if (!preg_match('/^[A-Z]{3}$/', $currencyCode)) {
+            throw new \InvalidArgumentException('The currency code must be informed with 3 letters.');
+        }
+
+        $currencyName = trim((string) ($payload['currencyName'] ?? ''));
+        if ($currencyName === '') {
+            $currencyName = $currencyCode;
+        }
+
+        $rateBrl = FinanceInput::normalizeMoney($payload['rateBrl'] ?? null, 'rateBrl');
+        if ($rateBrl <= 0) {
+            throw new \InvalidArgumentException('The manual rate must be greater than zero.');
+        }
+
+        $quoteDateTime = FinanceInput::normalizeOptionalDate($payload['quoteDateTime'] ?? null);
+        if (!$quoteDateTime instanceof \DateTimeImmutable) {
+            $quoteDateTime = new \DateTimeImmutable($quoteDateLabel . ' 12:00:00');
+        }
+
+        $this->upsertPersistedRate(
+            $ownerId,
+            $currencyCode,
+            $currencyName,
+            $quoteDateLabel,
+            $quoteDateLabel,
+            $quoteDateTime->format('Y-m-d H:i:s'),
+            $rateBrl,
+            $rateBrl,
+            'MANUAL',
+        );
+
+        $persistedRate = $this->findPersistedRate($ownerId, $currencyCode, $quoteDateLabel);
+        if ($persistedRate === null) {
+            throw new \RuntimeException('Failed to save manual currency rate.');
+        }
+
+        return $this->mapPersistedRateToResponseItem($persistedRate, $quoteDateLabel);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findPersistedRate(int $ownerId, string $currencyCode, string $quoteDate): ?array
+    {
+        /** @var array<string, mixed>|false $persistedRate */
+        $persistedRate = $this->connection->fetchAssociative(<<<'SQL'
+            SELECT
+                currency_code AS "currencyCode",
+                currency_name AS "currencyName",
+                quote_date AS "quoteDate",
+                quote_source_date AS "quoteSourceDate",
+                quote_datetime AS "quoteDateTime",
+                rate_brl AS "rateBrl",
+                buy_rate_brl AS "buyRateBrl",
+                sell_rate_brl AS "sellRateBrl",
+                source
+            FROM finance_currency_rate
+            WHERE owner_id = :ownerId
+              AND currency_code = :currencyCode
+              AND quote_date = :quoteDate
+            LIMIT 1
+        SQL, [
+            'ownerId' => $ownerId,
+            'currencyCode' => $currencyCode,
+            'quoteDate' => $quoteDate,
+        ]);
+
+        return is_array($persistedRate) ? $persistedRate : null;
+    }
+
+    private function upsertPersistedRate(
+        int $ownerId,
+        string $currencyCode,
+        string $currencyName,
+        string $quoteDate,
+        string $quoteSourceDate,
+        string $quoteDateTime,
+        float $buyRateBrl,
+        float $sellRateBrl,
+        string $source,
+    ): void {
+        $normalizedBuyRateBrl = round($buyRateBrl, 6);
+        $normalizedSellRateBrl = round($sellRateBrl, 6);
+        $normalizedRateBrl = round(($normalizedBuyRateBrl + $normalizedSellRateBrl) / 2, 6);
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $this->connection->executeStatement(<<<'SQL'
+            INSERT INTO finance_currency_rate (
+                owner_id,
+                currency_code,
+                currency_name,
+                quote_date,
+                quote_source_date,
+                quote_datetime,
+                rate_brl,
+                buy_rate_brl,
+                sell_rate_brl,
+                source,
+                created_at,
+                updated_at
+            ) VALUES (
+                :ownerId,
+                :currencyCode,
+                :currencyName,
+                :quoteDate,
+                :quoteSourceDate,
+                :quoteDateTime,
+                :rateBrl,
+                :buyRateBrl,
+                :sellRateBrl,
+                :source,
+                :createdAt,
+                :updatedAt
+            )
+            ON CONFLICT (owner_id, currency_code, quote_date) DO UPDATE
+            SET
+                currency_name = EXCLUDED.currency_name,
+                quote_source_date = EXCLUDED.quote_source_date,
+                quote_datetime = EXCLUDED.quote_datetime,
+                rate_brl = EXCLUDED.rate_brl,
+                buy_rate_brl = EXCLUDED.buy_rate_brl,
+                sell_rate_brl = EXCLUDED.sell_rate_brl,
+                source = EXCLUDED.source,
+                updated_at = EXCLUDED.updated_at
+        SQL, [
+            'ownerId' => $ownerId,
+            'currencyCode' => $currencyCode,
+            'currencyName' => $currencyName,
+            'quoteDate' => $quoteDate,
+            'quoteSourceDate' => $quoteSourceDate,
+            'quoteDateTime' => $quoteDateTime,
+            'rateBrl' => $normalizedRateBrl,
+            'buyRateBrl' => $normalizedBuyRateBrl,
+            'sellRateBrl' => $normalizedSellRateBrl,
+            'source' => strtoupper($source),
+            'createdAt' => $now,
+            'updatedAt' => $now,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $persistedRate
+     *
+     * @return array<string, mixed>
+     */
+    private function mapPersistedRateToResponseItem(array $persistedRate, string $requestedDate): array
+    {
+        $buyRateBrl = isset($persistedRate['buyRateBrl']) ? (float) $persistedRate['buyRateBrl'] : null;
+        $sellRateBrl = isset($persistedRate['sellRateBrl']) ? (float) $persistedRate['sellRateBrl'] : null;
+        $rateBrl = isset($persistedRate['rateBrl']) ? (float) $persistedRate['rateBrl'] : null;
+        $quoteSourceDate = trim((string) ($persistedRate['quoteSourceDate'] ?? ''));
+        $quoteDate = trim((string) ($persistedRate['quoteDate'] ?? ''));
+        $quoteDateTime = trim((string) ($persistedRate['quoteDateTime'] ?? ''));
+
+        return [
+            'code' => (string) ($persistedRate['currencyCode'] ?? ''),
+            'name' => (string) ($persistedRate['currencyName'] ?? ''),
+            'buyRateBrl' => $buyRateBrl,
+            'sellRateBrl' => $sellRateBrl,
+            'rateBrl' => $rateBrl,
+            'requestedDate' => $requestedDate,
+            'quoteDate' => $quoteSourceDate !== '' ? $quoteSourceDate : ($quoteDate !== '' ? $quoteDate : null),
+            'quoteDateTime' => $quoteDateTime !== '' ? $quoteDateTime : null,
+            'source' => strtoupper((string) ($persistedRate['source'] ?? 'API')),
+            'found' => true,
         ];
     }
 
@@ -322,5 +545,15 @@ final class FinanceCurrencyService
         }
 
         return '';
+    }
+
+    private function requireOwnerId(User $user): int
+    {
+        $ownerId = (int) $user->getId();
+        if ($ownerId <= 0) {
+            throw new \InvalidArgumentException('Invalid user context.');
+        }
+
+        return $ownerId;
     }
 }

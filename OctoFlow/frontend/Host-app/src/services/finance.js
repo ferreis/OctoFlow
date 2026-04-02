@@ -66,6 +66,14 @@ export function updateFinanceRecurringType(request, recurringTypeId, payload) {
   })
 }
 
+export function deleteFinanceRecurringType(request, recurringTypeId) {
+  return request({
+    url: `/finance/recurring-types/${encodeURIComponent(recurringTypeId)}`,
+    method: 'DELETE',
+    csrfActionId: 'finance.recurring-types.delete',
+  })
+}
+
 export function fetchFinanceBankAccounts(request) {
   return request({
     url: '/finance/bank-accounts',
@@ -168,6 +176,14 @@ export function updateFinanceRecurringRule(request, ruleId, payload) {
     method: 'PATCH',
     csrfActionId: 'finance.recurring-rules.update',
     data: payload,
+  })
+}
+
+export function deleteFinanceRecurringRule(request, ruleId) {
+  return request({
+    url: `/finance/recurring-rules/${encodeURIComponent(ruleId)}`,
+    method: 'DELETE',
+    csrfActionId: 'finance.recurring-rules.delete',
   })
 }
 
@@ -275,6 +291,15 @@ export function fetchFinanceCurrencyRates(request, params = {}) {
     url: '/finance/currencies/rates',
     method: 'GET',
     params,
+  })
+}
+
+export function createFinanceCurrencyRateManual(request, payload) {
+  return request({
+    url: '/finance/currencies/rates/manual',
+    method: 'POST',
+    csrfActionId: 'finance.currencies.rates.manual.create',
+    data: payload,
   })
 }
 

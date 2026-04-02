@@ -27,7 +27,6 @@ final class FinanceCatalogService
      */
     private const DEFAULT_RECURRING_TYPES = [
         ['name' => 'Salario', 'description' => 'Recebimento recorrente mensal de salario.'],
-        ['name' => 'Mensal', 'description' => 'Compromissos recorrentes todos os meses.'],
         ['name' => 'Assinatura', 'description' => 'Servicos e assinaturas recorrentes.'],
         ['name' => 'Conta fixa', 'description' => 'Despesas fixas mensais como aluguel e condominio.'],
     ];
@@ -182,8 +181,12 @@ final class FinanceCatalogService
                 updated_at AS "updatedAt"
             FROM finance_recurring_type
             WHERE owner_id = :ownerId
+              AND normalized_name != :deprecatedRecurringTypeName
             ORDER BY is_system DESC, name ASC
-        SQL, ['ownerId' => $ownerId]);
+        SQL, [
+            'ownerId' => $ownerId,
+            'deprecatedRecurringTypeName' => 'mensal',
+        ]);
 
         return ['items' => $items];
     }
@@ -205,6 +208,9 @@ final class FinanceCatalogService
         }
 
         $normalizedName = FinanceInput::normalizeNameKey($name);
+        if ($normalizedName === 'mensal') {
+            throw new \InvalidArgumentException('The recurring type "Mensal" is deprecated and cannot be created.');
+        }
         $this->assertRecurringTypeUnique($ownerId, $normalizedName);
 
         $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -249,6 +255,9 @@ final class FinanceCatalogService
         }
 
         $normalizedName = FinanceInput::normalizeNameKey($name);
+        if ($normalizedName === 'mensal') {
+            throw new \InvalidArgumentException('The recurring type "Mensal" is deprecated and cannot be used.');
+        }
         $this->assertRecurringTypeUnique($ownerId, $normalizedName, $recurringTypeId);
 
         $this->connection->update('finance_recurring_type', [
@@ -263,6 +272,39 @@ final class FinanceCatalogService
         ]);
 
         return $this->getRecurringTypeById($ownerId, $recurringTypeId);
+    }
+
+    /**
+     * @return array{deleted: bool, id: int}
+     */
+    public function deleteRecurringType(User $user, int $recurringTypeId): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $this->getRecurringTypeById($ownerId, $recurringTypeId);
+
+        $linkedRulesCount = (int) $this->connection->fetchOne(<<<'SQL'
+            SELECT COUNT(*)
+            FROM finance_recurring_rule
+            WHERE owner_id = :ownerId
+              AND recurring_type_id = :recurringTypeId
+        SQL, [
+            'ownerId' => $ownerId,
+            'recurringTypeId' => $recurringTypeId,
+        ]);
+
+        if ($linkedRulesCount > 0) {
+            throw new \InvalidArgumentException('Cannot delete recurring type linked to existing recurring rules.');
+        }
+
+        $this->connection->delete('finance_recurring_type', [
+            'id' => $recurringTypeId,
+            'owner_id' => $ownerId,
+        ]);
+
+        return [
+            'deleted' => true,
+            'id' => $recurringTypeId,
+        ];
     }
 
     /**

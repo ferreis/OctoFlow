@@ -45,7 +45,28 @@ final class FinanceCurrencyController
         }
 
         try {
-            return new JsonResponse($this->financeCurrencyService->rates($this->queryArray($request)));
+            return new JsonResponse($this->financeCurrencyService->rates($user, $this->queryArray($request)));
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
+
+    #[Route('/rates/manual', name: 'finance_currencies_rates_manual_create', methods: ['POST'])]
+    public function createManualRate(Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return $this->buildInvalidJsonResponse();
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->financeCurrencyService->createManualRate($user, $payload),
+            ], JsonResponse::HTTP_CREATED);
         } catch (\Throwable $throwable) {
             return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
         }
