@@ -2260,7 +2260,7 @@ async function submitSettlement() {
         : 'Baixa registrada com sucesso.',
       'success',
     )
-    await Promise.all([loadEntries(), loadInstallments()])
+    await Promise.all([loadEntries(), loadInstallments(), loadCatalogs()])
     await loadDashboard()
   } catch (requestError) {
     const settlementErrorMessage = extractHttpMessage(requestError, 'Não foi possível registrar a baixa.')

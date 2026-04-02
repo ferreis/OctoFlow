@@ -454,7 +454,7 @@ final class FinanceEntryService
                 throw new \InvalidArgumentException('The settlement type is invalid.');
             }
 
-            $bankAccountId = null;
+            $settlementBankAccountId = null;
             $creditCardId = null;
 
             if ($useCreditCard) {
@@ -472,8 +472,10 @@ final class FinanceEntryService
                 if ($creditCardAccountType !== 'CREDIT') {
                     throw new \InvalidArgumentException('The selected account is not a credit card.');
                 }
+
+                $settlementBankAccountId = $creditCardId;
             } else {
-                $bankAccountId = $this->normalizeOwnedBankAccountId(
+                $settlementBankAccountId = $this->normalizeOwnedBankAccountId(
                     $ownerId,
                     $payload['bankAccountId'] ?? $entry['bankAccountId'] ?? null,
                     false,
@@ -489,7 +491,7 @@ final class FinanceEntryService
             $this->connection->insert('finance_entry_settlement', [
                 'owner_id' => $ownerId,
                 'entry_id' => $entryId,
-                'bank_account_id' => $bankAccountId,
+                'bank_account_id' => $settlementBankAccountId,
                 'settlement_type' => $settlementType,
                 'amount_brl' => $settlementAmountBrl,
                 'settled_at' => $settlementDate->format('Y-m-d H:i:s'),
@@ -499,10 +501,10 @@ final class FinanceEntryService
 
             $settlementId = (int) $this->connection->lastInsertId();
 
-            if ($bankAccountId !== null && !$useCreditCard) {
+            if ($settlementBankAccountId !== null) {
                 $this->applyBankAccountBalanceChange(
                     $ownerId,
-                    $bankAccountId,
+                    $settlementBankAccountId,
                     $entryId,
                     $settlementId,
                     (string) $entry['direction'],
