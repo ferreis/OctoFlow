@@ -21,6 +21,7 @@ final class CsrfTokenManager
         private readonly int $tokenTtl,
         #[Autowire('%env(string:AUTH_REFRESH_TOKEN_COOKIE_NAME)%')]
         private readonly string $refreshCookieName,
+        private readonly ?AccessTokenManagerInterface $accessTokenManager = null,
     ) {
     }
 
@@ -176,7 +177,16 @@ final class CsrfTokenManager
             return null;
         }
 
-        $parts = explode('.', trim($matches[1]));
+        $accessToken = trim((string) ($matches[1] ?? ''));
+        if ($accessToken === '') {
+            return null;
+        }
+
+        if ($this->accessTokenManager !== null && !$this->accessTokenManager->validateToken($accessToken)) {
+            return null;
+        }
+
+        $parts = explode('.', $accessToken);
         if (count($parts) !== 3) {
             return null;
         }

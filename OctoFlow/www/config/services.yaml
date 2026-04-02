@@ -20,6 +20,7 @@ services:
     App\Github\GithubGraphQLClientInterface: '@App\Github\GithubGraphQLClient'
     App\Github\GithubIssuePublisherInterface: '@App\Github\GithubIssueService'
     App\Task\LocalTaskSyncInterface: '@App\Task\LocalTaskService'
+    App\Security\AccessTokenManagerInterface: '@App\Security\AccessTokenManager'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

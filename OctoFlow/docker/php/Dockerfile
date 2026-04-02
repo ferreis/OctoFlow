@@ -22,6 +22,10 @@ RUN docker-php-ext-install opcache
 RUN apt-get install -y libpq-dev libicu-dev libbz2-dev
 RUN docker-php-ext-install bcmath bz2 intl curl xml exif pgsql pdo_pgsql zip
 
+# Cliente Redis nativo para Symfony Cache (cache.adapter.redis)
+RUN pecl install redis \
+    && docker-php-ext-enable redis
+
 # INSTALAÇÃO DO COMPOSER
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 #cli commom mcrypt zip

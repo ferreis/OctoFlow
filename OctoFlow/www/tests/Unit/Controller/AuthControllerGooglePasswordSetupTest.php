@@ -9,12 +9,12 @@ use App\Account\UserPayloadBuilder;
 use App\Controller\AuthController;
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Security\AccessTokenManagerInterface;
 use App\Security\CsrfTokenManager;
 use App\Security\Google\GoogleIdentityVerifier;
 use App\Security\Google\GoogleTokenInfoClientInterface;
 use App\Security\RefreshTokenManager;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -151,7 +151,7 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
         $fixture = $this->createControllerFixture();
         $controller = $fixture['controller'];
         $passwordHasher = $fixture['passwordHasher'];
-        $jwtTokenManager = $fixture['jwtTokenManager'];
+        $accessTokenManager = $fixture['accessTokenManager'];
         $googlePasswordSetupManager = $fixture['googlePasswordSetupManager'];
 
         $googleOnlyUser = (new User())
@@ -169,10 +169,10 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
             ->with($googleOnlyUser, 'new-password-123')
             ->willReturn('hashed-password-123');
 
-        $jwtTokenManager
+        $accessTokenManager
             ->expects($this->once())
-            ->method('create')
-            ->with($googleOnlyUser)
+            ->method('issueForUserFromRequest')
+            ->with($googleOnlyUser, $this->isInstanceOf(Request::class))
             ->willReturn('jwt-access-token-123');
 
         $request = Request::create(
@@ -202,7 +202,7 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
      *     controller: AuthController,
      *     userRepository: UserRepository&MockObject,
      *     passwordHasher: UserPasswordHasherInterface&MockObject,
-     *     jwtTokenManager: JWTTokenManagerInterface&MockObject,
+     *     accessTokenManager: AccessTokenManagerInterface&MockObject,
      *     googlePasswordSetupManager: GooglePasswordSetupManager
      * }
      */
@@ -211,7 +211,7 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $userRepository = $this->createMock(UserRepository::class);
         $passwordHasher = $this->createMock(UserPasswordHasherInterface::class);
-        $jwtTokenManager = $this->createMock(JWTTokenManagerInterface::class);
+        $accessTokenManager = $this->createMock(AccessTokenManagerInterface::class);
         $refreshTokenManager = $this->createMock(RefreshTokenManager::class);
 
         $csrfTokenManager = new CsrfTokenManager(
@@ -249,7 +249,7 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
             $userRepository,
             $entityManager,
             $passwordHasher,
-            $jwtTokenManager,
+            $accessTokenManager,
             $refreshTokenManager,
             $csrfTokenManager,
             $googleIdentityVerifier,
@@ -267,7 +267,7 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
             'controller' => $controller,
             'userRepository' => $userRepository,
             'passwordHasher' => $passwordHasher,
-            'jwtTokenManager' => $jwtTokenManager,
+            'accessTokenManager' => $accessTokenManager,
             'googlePasswordSetupManager' => $googlePasswordSetupManager,
         ];
     }

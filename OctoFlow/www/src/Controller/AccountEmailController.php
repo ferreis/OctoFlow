@@ -10,13 +10,13 @@ use App\Account\UserAvatarManager;
 use App\Account\UserPayloadBuilder;
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Security\AccessTokenManagerInterface;
 use App\Security\Google\Exception\GoogleAccountLinkException;
 use App\Security\Google\Exception\GoogleOAuthConfigurationException;
 use App\Security\Google\Exception\GoogleTokenVerificationException;
 use App\Security\Google\GoogleIdentity;
 use App\Security\Google\GoogleIdentityVerifier;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -42,21 +42,21 @@ final class AccountEmailController
         private readonly AccountPasswordChangeMailer $accountPasswordChangeMailer,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
-        private readonly JWTTokenManagerInterface $jwtTokenManager,
+        private readonly AccessTokenManagerInterface $accessTokenManager,
         #[Autowire('%env(int:JWT_TOKEN_TTL)%')]
         private readonly int $accessTokenTtl,
     ) {
     }
 
     #[Route('/emails', name: 'auth_emails_list', methods: ['GET'])]
-    public function list(#[CurrentUser] ?User $user): JsonResponse
+    public function list(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
         return new JsonResponse([
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -88,7 +88,7 @@ final class AccountEmailController
         }
 
         return new JsonResponse([
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -155,7 +155,7 @@ final class AccountEmailController
 
         return new JsonResponse([
             'message' => 'Imagem de perfil atualizada com sucesso.',
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -163,7 +163,7 @@ final class AccountEmailController
     }
 
     #[Route('/profile/avatar', name: 'auth_profile_avatar_delete', methods: ['DELETE'])]
-    public function deleteAvatar(#[CurrentUser] ?User $user): JsonResponse
+    public function deleteAvatar(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
@@ -178,7 +178,7 @@ final class AccountEmailController
 
         return new JsonResponse([
             'message' => 'Imagem de perfil removida com sucesso.',
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -186,7 +186,7 @@ final class AccountEmailController
     }
 
     #[Route('/password-change/send-code', name: 'auth_password_change_send_code', methods: ['POST'])]
-    public function sendPasswordChangeCode(#[CurrentUser] ?User $user): JsonResponse
+    public function sendPasswordChangeCode(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
             return new JsonResponse(['message' => 'Unauthorized.'], JsonResponse::HTTP_UNAUTHORIZED);
@@ -203,7 +203,7 @@ final class AccountEmailController
         return new JsonResponse([
             'message' => 'Código enviado para seu e-mail principal.',
             'codeExpiresAt' => $user->getPasswordChangeCodeExpiresAt()?->format(\DateTimeInterface::ATOM),
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -233,7 +233,7 @@ final class AccountEmailController
 
         return new JsonResponse([
             'message' => 'Código validado. Agora defina sua nova senha.',
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -277,7 +277,7 @@ final class AccountEmailController
 
         return new JsonResponse([
             'message' => 'Senha atualizada com sucesso.',
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),

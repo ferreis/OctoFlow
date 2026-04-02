@@ -9,6 +9,7 @@ use App\Account\UserEmailManager;
 use App\Account\UserPayloadBuilder;
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Security\AccessTokenManagerInterface;
 use App\Security\CsrfTokenManager;
 use App\Security\RefreshTokenManager;
 use App\Security\Google\Exception\GoogleAccountLinkException;
@@ -17,7 +18,6 @@ use App\Security\Google\Exception\GoogleTokenVerificationException;
 use App\Security\Google\GoogleIdentity;
 use App\Security\Google\GoogleIdentityVerifier;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -46,7 +46,7 @@ class AuthController
         private readonly UserRepository $userRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly UserPasswordHasherInterface $passwordHasher,
-        private readonly JWTTokenManagerInterface $jwtTokenManager,
+        private readonly AccessTokenManagerInterface $accessTokenManager,
         private readonly RefreshTokenManager $refreshTokenManager,
         private readonly CsrfTokenManager $csrfTokenManager,
         private readonly GoogleIdentityVerifier $googleIdentityVerifier,
@@ -215,7 +215,7 @@ class AuthController
 
     private function createAuthenticatedResponse(User $user, Request $request): JsonResponse
     {
-        $accessToken = $this->jwtTokenManager->create($user);
+        $accessToken = $this->accessTokenManager->issueForUserFromRequest($user, $request);
         $issuedRefreshToken = $this->refreshTokenManager->issue($user, $request);
 
         $response = new JsonResponse([
@@ -362,7 +362,7 @@ class AuthController
 
         return new JsonResponse([
             'message' => 'Senha criada com sucesso. Agora você também pode entrar com e-mail e senha.',
-            'token' => $this->jwtTokenManager->create($user),
+            'token' => $this->accessTokenManager->issueForUserFromRequest($user, $request),
             'token_type' => 'Bearer',
             'expires_in' => $this->accessTokenTtl,
             'user' => $this->userPayloadBuilder->build($user),
@@ -386,7 +386,7 @@ class AuthController
             return $response;
         }
 
-        $accessToken = $this->jwtTokenManager->create($issuedRefreshToken->user);
+        $accessToken = $this->accessTokenManager->issueForUserFromRequest($issuedRefreshToken->user, $request);
 
         $response = new JsonResponse([
             'token' => $accessToken,
@@ -411,8 +411,10 @@ class AuthController
     }
 
     #[Route('/logout', name: 'auth_logout', methods: ['POST'])]
-    public function logout(Request $request): JsonResponse
+    public function logout(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
+        $this->accessTokenManager->blacklistFromRequest($request, $user);
+
         $refreshToken = $request->cookies->get($this->refreshCookieName);
         $this->refreshTokenManager->revokeByPlainToken($refreshToken);
         $sessionCookieName = null;
