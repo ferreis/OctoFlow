@@ -7,6 +7,7 @@ use App\Entity\Github;
 use App\Account\UserPayloadBuilder;
 use App\Entity\User;
 use App\Github\Exception\GithubApiException;
+use App\Github\Exception\GithubActionForbiddenException;
 use App\Github\Exception\GithubConfigurationException;
 use App\Github\Exception\GithubGraphQLException;
 use App\Github\GithubAssignedIssueService;
@@ -337,6 +338,11 @@ final class GithubController
 
         try {
             return new JsonResponse(['item' => $this->assignedIssueService->updateIssue($user, $issueId, $payload)]);
+        } catch (GithubActionForbiddenException $exception) {
+            return new JsonResponse([
+                'message' => $exception->getMessage(),
+                'code' => 'github.issue.update.forbidden',
+            ], JsonResponse::HTTP_FORBIDDEN);
         } catch (\InvalidArgumentException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
         } catch (GithubConfigurationException $exception) {
@@ -360,6 +366,11 @@ final class GithubController
 
         try {
             return new JsonResponse($this->assignedIssueService->createSubIssues($user, $issueId, $payload), JsonResponse::HTTP_CREATED);
+        } catch (GithubActionForbiddenException $exception) {
+            return new JsonResponse([
+                'message' => $exception->getMessage(),
+                'code' => 'github.issue.sub-issues.forbidden',
+            ], JsonResponse::HTTP_FORBIDDEN);
         } catch (\InvalidArgumentException $exception) {
             return new JsonResponse(['message' => $exception->getMessage()], JsonResponse::HTTP_BAD_REQUEST);
         } catch (GithubConfigurationException $exception) {

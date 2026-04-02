@@ -119,7 +119,7 @@ sequenceDiagram
 
 No `CsrfProtectionListener` (priority 25):
 - ignora metodos seguros (`GET`, `HEAD`, `OPTIONS`)
-- protege paths `^/(auth|tasks|api|github)(?:/|$)`
+- protege paths `^/(auth|tasks|api|github|finance|ui)(?:/|$)`
 - exclui `^/(auth/csrf/challenge|csrf/challenge)(?:/|$)`
 - quando invalido retorna `403` com payload CSRF
 

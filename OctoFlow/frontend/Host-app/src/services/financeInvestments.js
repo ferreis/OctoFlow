@@ -1,5 +1,12 @@
-export function createFinanceSimulation(request, payload) {
-  return request({
+import { useSessionStore } from '../stores/sessionStore'
+
+function requestWithSession(config) {
+  const sessionStore = useSessionStore()
+  return sessionStore.authRequest(config)
+}
+
+export function createFinanceSimulation(payload) {
+  return requestWithSession({
     url: '/finance/investment/simulations',
     method: 'POST',
     csrfActionId: 'finance.investments.simulations.create',
@@ -7,15 +14,15 @@ export function createFinanceSimulation(request, payload) {
   })
 }
 
-export function fetchFinanceSimulation(request, simulationId) {
-  return request({
+export function fetchFinanceSimulation(simulationId) {
+  return requestWithSession({
     url: `/finance/investment/simulations/${encodeURIComponent(simulationId)}`,
     method: 'GET',
   })
 }
 
-export function convertFinanceSimulationToPlan(request, simulationId, payload) {
-  return request({
+export function convertFinanceSimulationToPlan(simulationId, payload) {
+  return requestWithSession({
     url: `/finance/investment/simulations/${encodeURIComponent(simulationId)}/convert-to-plan`,
     method: 'POST',
     csrfActionId: 'finance.investments.simulations.convert',
@@ -23,15 +30,15 @@ export function convertFinanceSimulationToPlan(request, simulationId, payload) {
   })
 }
 
-export function fetchFinanceInvestmentPlans(request) {
-  return request({
+export function fetchFinanceInvestmentPlans() {
+  return requestWithSession({
     url: '/finance/investment/plans',
     method: 'GET',
   })
 }
 
-export function createFinanceInvestmentPlan(request, payload) {
-  return request({
+export function createFinanceInvestmentPlan(payload) {
+  return requestWithSession({
     url: '/finance/investment/plans',
     method: 'POST',
     csrfActionId: 'finance.investments.plans.create',
@@ -39,8 +46,8 @@ export function createFinanceInvestmentPlan(request, payload) {
   })
 }
 
-export function updateFinanceInvestmentPlan(request, planId, payload) {
-  return request({
+export function updateFinanceInvestmentPlan(planId, payload) {
+  return requestWithSession({
     url: `/finance/investment/plans/${encodeURIComponent(planId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.investments.plans.update',

@@ -1,18 +1,21 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useNotification } from '../../composables/useNotification'
+import { useSessionStore } from '../../stores/sessionStore'
 import { extractHttpMessage } from '../../utils/httpErrors'
 
 const props = defineProps({
   request: {
     type: Function,
-    required: true,
+    default: null,
   },
   notify: {
     type: Function,
     default: null,
   },
 })
+const sessionStore = useSessionStore()
+const requestClient = props.request || sessionStore.authRequest
 
 const { notifyUser } = useNotification(props.notify)
 
@@ -45,16 +48,6 @@ const browserFingerprint = computed(() => {
   if (typeof window === 'undefined') {
     return ''
   }
-
-  console.log(window.navigator?.language);
-  console.log(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  console.log(window.navigator?.platform);
-  console.log(window.navigator?.userAgent);
-  console.log(window.screen?.width);
-  console.log(window.screen?.height);
-  console.log(window.devicePixelRatio);
-  console.log(window.browserFingerprint);
-    
 
   const language = String(window.navigator?.language || '')
   const timezone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '')
@@ -132,7 +125,7 @@ async function sendTestPost() {
   posting.value = true
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/tasks/test/post-capture',
       method: 'POST',
       csrfActionId: 'tasks.test.post-capture',

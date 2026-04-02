@@ -4,6 +4,7 @@ namespace App\Tests\Unit\Github;
 
 use App\Entity\User;
 use App\Github\GithubAssignedIssueService;
+use App\Github\Exception\GithubActionForbiddenException;
 use App\Github\GithubIssueBodyRenderer;
 use App\Github\GithubGraphQLClientInterface;
 use App\Github\GithubIssueCacheService;
@@ -465,6 +466,9 @@ final class GithubAssignedIssueServiceTest extends TestCase
                     'body' => 'Corpo atual',
                     'state' => 'OPEN',
                     'url' => 'https://github.com/acme/alpha/issues/11',
+                    'viewerCanUpdate' => true,
+                    'viewerCanClose' => true,
+                    'viewerCanReopen' => true,
                     'parent' => null,
                     'subIssues' => [
                         'nodes' => [
@@ -541,6 +545,9 @@ final class GithubAssignedIssueServiceTest extends TestCase
                             '__typename' => 'Issue',
                             'id' => 'issue-node-9',
                             'body' => "## Contexto atual\nCorpo anterior",
+                            'viewerCanUpdate' => true,
+                            'viewerCanClose' => true,
+                            'viewerCanReopen' => true,
                             'assignees' => [
                                 'nodes' => [
                                     [
@@ -745,6 +752,73 @@ final class GithubAssignedIssueServiceTest extends TestCase
         ]);
 
         $this->assertCount(2, $result['assignees']);
+    }
+
+    public function testUpdateIssueThrowsForbiddenWhenViewerCannotUpdateIssue(): void
+    {
+        $this->graphqlClient
+            ->expects($this->once())
+            ->method('query')
+            ->with(
+                'ghp_test_token',
+                $this->stringContains('GithubIssueUpdateContext'),
+                ['issueId' => 'issue-node-77']
+            )
+            ->willReturn([
+                'node' => [
+                    '__typename' => 'Issue',
+                    'id' => 'issue-node-77',
+                    'number' => 77,
+                    'title' => '[feat] Ajustar regra de acesso',
+                    'body' => 'Corpo inicial',
+                    'state' => 'OPEN',
+                    'url' => 'https://github.com/acme/alpha/issues/77',
+                    'viewerCanUpdate' => false,
+                    'viewerCanClose' => false,
+                    'viewerCanReopen' => false,
+                    'parent' => null,
+                    'subIssues' => [
+                        'nodes' => [],
+                    ],
+                    'assignees' => [
+                        'nodes' => [],
+                    ],
+                    'repository' => [
+                        'id' => 'repo-1',
+                        'nameWithOwner' => 'acme/alpha',
+                        'url' => 'https://github.com/acme/alpha',
+                        'labels' => [
+                            'nodes' => [],
+                        ],
+                        'assignableUsers' => [
+                            'nodes' => [],
+                        ],
+                    ],
+                    'projectItems' => [
+                        'nodes' => [],
+                    ],
+                ],
+            ]);
+
+        $service = new GithubAssignedIssueService(
+            $this->profileService,
+            $this->graphqlClient,
+            $this->cacheService,
+            $this->registryService,
+            $this->templateCatalog,
+            $this->updateTemplateCatalog,
+            $this->templateAccessService,
+            $this->bodyRenderer,
+            $this->updateRenderer,
+        );
+
+        $this->expectException(GithubActionForbiddenException::class);
+        $this->expectExceptionMessage('You do not have permission to update this GitHub issue.');
+
+        $service->updateIssue($this->buildTokenOnlyUser(), 'issue-node-77', [
+            'title' => '[feat] Ajustar regra de acesso',
+            'state' => 'OPEN',
+        ]);
     }
 
     private function buildTokenOnlyUser(): User

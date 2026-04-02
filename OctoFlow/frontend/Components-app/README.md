@@ -20,6 +20,8 @@ Aplicação remota (Vue 3 + Vite) que expõe componentes compartilhados para o h
 - Renderizar UI compartilhada.
 - Receber dados/callbacks prontos do host.
 - Não assumir autenticação/sessão/orquestração principal.
+- Pode usar Pinia apenas para estado interno local de componentes/preview.
+- Pode usar Vue Router apenas no shell interno de preview (sem fluxo de negócio federado).
 
 ## Exposições principais
 

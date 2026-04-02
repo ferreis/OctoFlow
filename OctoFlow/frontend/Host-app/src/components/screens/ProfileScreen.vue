@@ -1,4 +1,5 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
 import {
@@ -41,27 +42,24 @@ import {
   normalizeLayoutDensityScale,
   normalizeUiSettingsPayload,
 } from '../../theme'
+import { useSessionStore } from '../../stores/sessionStore'
 
 const props = defineProps({
   request: {
     type: Function,
-    required: true,
+    default: null,
   },
   activeThemeKey: {
     type: String,
-    default: 'original',
+    default: null,
   },
   availableThemes: {
     type: Array,
-    default: () => [],
+    default: null,
   },
   notify: {
     type: Function,
     default: null,
-  },
-  apiClient: {
-    type: Object,
-    required: true,
   },
   currentUser: {
     type: Object,
@@ -69,7 +67,7 @@ const props = defineProps({
   },
   uiSettings: {
     type: Object,
-    default: () => ({}),
+    default: null,
   },
   setTheme: {
     type: Function,
@@ -80,6 +78,24 @@ const props = defineProps({
     default: null,
   },
 })
+const sessionStore = useSessionStore()
+const {
+  currentUser: sessionCurrentUser,
+  activeThemeKey: sessionActiveThemeKey,
+  availableThemes: sessionAvailableThemes,
+  uiSettings: sessionUiSettings,
+} = storeToRefs(sessionStore)
+const requestClient = props.request || sessionStore.authRequest
+const currentUser = computed(() => props.currentUser || sessionCurrentUser.value)
+const effectiveActiveThemeKey = computed(() => props.activeThemeKey || sessionActiveThemeKey.value)
+const effectiveAvailableThemes = computed(() => (
+  Array.isArray(props.availableThemes) && props.availableThemes.length > 0
+    ? props.availableThemes
+    : sessionAvailableThemes.value
+))
+const effectiveUiSettings = computed(() => props.uiSettings || sessionUiSettings.value)
+const setThemeHandler = props.setTheme || sessionStore.setAppTheme
+const updateUiSettingsHandler = props.updateUiSettings || sessionStore.updateUiSettings
 
 const emit = defineEmits(['session-updated'])
 
@@ -149,19 +165,19 @@ const customThemeForm = reactive({
 })
 const { notifyUser } = useNotification(props.notify)
 
-const displayEmail = computed(() => props.currentUser?.defaultEmail || props.currentUser?.email || 'Nao definido')
-const linkedEmailCount = computed(() => Array.isArray(props.currentUser?.linkedEmails) ? props.currentUser.linkedEmails.length : 0)
+const displayEmail = computed(() => currentUser.value?.defaultEmail || currentUser.value?.email || 'Nao definido')
+const linkedEmailCount = computed(() => Array.isArray(currentUser.value?.linkedEmails) ? currentUser.value.linkedEmails.length : 0)
 const userAvatarUrl = computed(() => {
   if (avatarPreviewError.value) {
     return ''
   }
 
-  return resolveAvatarUrl(props.currentUser?.avatarUrl)
+  return resolveAvatarUrl(currentUser.value?.avatarUrl)
 })
 const avatarActionLoading = computed(() => avatarUploading.value || avatarRemoving.value)
 const tokenConfigured = computed(() => Boolean(profile.value?.tokenConfigured))
 const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
-const themeOptions = computed(() => Array.isArray(props.availableThemes) ? props.availableThemes : [])
+const themeOptions = computed(() => Array.isArray(effectiveAvailableThemes.value) ? effectiveAvailableThemes.value : [])
 const accounts = computed(() => Array.isArray(profile.value?.accounts) ? profile.value.accounts : [])
 const repositories = computed(() => Array.isArray(profile.value?.repositories) ? profile.value.repositories : [])
 const accountCount = computed(() => accounts.value.length)
@@ -174,7 +190,7 @@ const defaultRepositoryLabel = computed(() => {
 const colorVisionModeOptions = COLOR_VISION_MODE_OPTIONS
 const fontScaleOptions = FONT_SCALE_OPTIONS
 const layoutDensityModeOptions = LAYOUT_DENSITY_MODE_OPTIONS
-const normalizedUiSettings = computed(() => normalizeUiSettingsPayload(props.uiSettings || {}))
+const normalizedUiSettings = computed(() => normalizeUiSettingsPayload(effectiveUiSettings.value || {}))
 const savedCustomThemePalette = computed(() => normalizeCustomThemePalette(normalizedUiSettings.value.customThemePalette))
 const savedColorVisionMode = computed(() => normalizeColorVisionMode(normalizedUiSettings.value.colorVisionMode))
 const savedColorVisionIntensity = computed(() => normalizeColorVisionIntensity(normalizedUiSettings.value.colorVisionIntensity))
@@ -189,7 +205,7 @@ const customThemeColorPickers = [
   { key: 'bg', label: 'Fundo' },
   { key: 'text', label: 'Texto' },
 ]
-const isCustomThemeActive = computed(() => normalizeUiSettingsPayload({ themeKey: props.activeThemeKey }).themeKey === CUSTOM_THEME_KEY)
+const isCustomThemeActive = computed(() => normalizeUiSettingsPayload({ themeKey: effectiveActiveThemeKey.value }).themeKey === CUSTOM_THEME_KEY)
 const hasCustomThemeChanges = computed(() => CUSTOM_THEME_COLOR_KEYS.some((colorKey) => (
   customThemeForm[colorKey] !== savedCustomThemePalette.value[colorKey]
 )))
@@ -231,7 +247,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.currentUser?.id,
+  () => currentUser.value?.id,
   async (userId) => {
     if (!userId) {
       profile.value = null
@@ -244,7 +260,7 @@ watch(
 )
 
 watch(
-  () => props.currentUser?.avatarUrl,
+  () => currentUser.value?.avatarUrl,
   () => {
     avatarPreviewError.value = false
   },
@@ -269,7 +285,7 @@ watch(profileSuccess, (message) => {
 })
 
 watch(
-  () => props.uiSettings,
+  () => effectiveUiSettings.value,
   () => {
     syncAccessibilityForm()
     syncCustomThemeForm()
@@ -285,7 +301,7 @@ async function loadProfile() {
   profileError.value = ''
 
   try {
-    const { data } = await fetchGithubProfile(props.request)
+    const { data } = await fetchGithubProfile()
     profile.value = data?.profile || null
     syncGithubForms()
   } catch (error) {
@@ -468,7 +484,7 @@ async function createAccount() {
   profileSuccess.value = ''
 
   try {
-    const { data } = await createGithubAccount(props.request, {
+    const { data } = await createGithubAccount({
       accountLogin: newAccountForm.accountLogin,
       token: newAccountForm.token,
     })
@@ -494,7 +510,7 @@ async function saveAccount(account) {
   profileSuccess.value = ''
 
   try {
-    const { data } = await updateGithubAccount(props.request, accountId, {
+    const { data } = await updateGithubAccount(accountId, {
       accountLogin: accountForms[accountId].accountLogin,
       token: accountForms[accountId].token,
       clearToken: accountForms[accountId].clearToken,
@@ -580,7 +596,7 @@ async function executeRemoveAccount(account) {
   profileSuccess.value = ''
 
   try {
-    await deleteGithubAccount(props.request, accountId)
+    await deleteGithubAccount(accountId)
     await loadProfile()
     profileSuccess.value = 'Conta GitHub removida com sucesso.'
   } catch (error) {
@@ -604,7 +620,7 @@ async function createRepository(account) {
   try {
     const parsedRepository = parseGithubRepositoryUrl(repositoryForm.url)
 
-    await createGithubRepository(props.request, {
+    await createGithubRepository({
       accountId,
       ownerLogin: parsedRepository?.ownerLogin || repositoryForm.ownerLogin,
       name: parsedRepository?.name || repositoryForm.name,
@@ -633,7 +649,7 @@ async function toggleRepositoryIgnored(repository) {
   profileSuccess.value = ''
 
   try {
-    await updateGithubRepository(props.request, repositoryId, {
+    await updateGithubRepository(repositoryId, {
       isIgnored: !repository?.isIgnored,
     })
 
@@ -673,7 +689,7 @@ async function executeRemoveRepository(repository) {
   profileSuccess.value = ''
 
   try {
-    await deleteGithubRepository(props.request, repositoryId)
+    await deleteGithubRepository(repositoryId)
     await loadProfile()
     profileSuccess.value = 'Repositorio removido do sistema.'
   } catch (error) {
@@ -741,7 +757,7 @@ async function handleAvatarFileChange(event) {
   profileSuccess.value = ''
 
   try {
-    const { data } = await uploadProfileAvatar(props.request, selectedAvatarFile)
+    const { data } = await uploadProfileAvatar(selectedAvatarFile)
     forwardSessionUpdate({
       user: data?.user || null,
       token: data?.token || '',
@@ -764,7 +780,7 @@ async function removeAvatar() {
   profileSuccess.value = ''
 
   try {
-    const { data } = await removeProfileAvatar(props.request)
+    const { data } = await removeProfileAvatar()
     forwardSessionUpdate({
       user: data?.user || null,
       token: data?.token || '',
@@ -805,7 +821,7 @@ async function requestPasswordChangeCode() {
   passwordChangeModalState.confirmPassword = ''
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/auth/password-change/send-code',
       method: 'POST',
       csrfActionId: 'auth.password-change.send-code',
@@ -862,7 +878,7 @@ async function verifyPasswordChangeCode() {
   passwordChangeModalState.processing = true
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/auth/password-change/verify-code',
       method: 'POST',
       csrfActionId: 'auth.password-change.verify-code',
@@ -908,7 +924,7 @@ async function updatePasswordFromProfile() {
   let shouldClosePasswordChangeModal = false
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/auth/password-change/set-password',
       method: 'POST',
       csrfActionId: 'auth.password-change.set-password',
@@ -938,21 +954,21 @@ async function updatePasswordFromProfile() {
 
 async function selectTheme(themeKey) {
   try {
-    if (themeKey === CUSTOM_THEME_KEY && typeof props.updateUiSettings === 'function') {
-      await props.updateUiSettings({
+    if (themeKey === CUSTOM_THEME_KEY && typeof updateUiSettingsHandler === 'function') {
+      await updateUiSettingsHandler({
         themeKey: CUSTOM_THEME_KEY,
         customThemePalette: normalizeCustomThemePalette(customThemeForm),
       })
       return
     }
 
-    if (typeof props.setTheme === 'function') {
-      await props.setTheme(themeKey)
+    if (typeof setThemeHandler === 'function') {
+      await setThemeHandler(themeKey)
       return
     }
 
-    if (typeof props.updateUiSettings === 'function') {
-      await props.updateUiSettings({ themeKey })
+    if (typeof updateUiSettingsHandler === 'function') {
+      await updateUiSettingsHandler({ themeKey })
     }
   } catch {
     // updateUiSettings ja exibe feedback de erro.
@@ -968,14 +984,14 @@ function restoreCustomThemeDefaults() {
 }
 
 async function saveCustomTheme() {
-  if (typeof props.updateUiSettings !== 'function') {
+  if (typeof updateUiSettingsHandler !== 'function') {
     return
   }
 
   savingCustomTheme.value = true
 
   try {
-    await props.updateUiSettings(
+    await updateUiSettingsHandler(
       {
         themeKey: CUSTOM_THEME_KEY,
         customThemePalette: normalizeCustomThemePalette(customThemeForm),
@@ -990,14 +1006,14 @@ async function saveCustomTheme() {
 }
 
 async function saveAccessibilitySettings() {
-  if (typeof props.updateUiSettings !== 'function') {
+  if (typeof updateUiSettingsHandler !== 'function') {
     return
   }
 
   savingAccessibility.value = true
 
   try {
-    await props.updateUiSettings(
+    await updateUiSettingsHandler(
       {
         colorVisionMode: accessibilityForm.colorVisionMode,
         colorVisionIntensity: accessibilityForm.colorVisionIntensity,
@@ -1016,14 +1032,14 @@ async function saveAccessibilitySettings() {
 }
 
 async function restoreAccessibilityDefaults() {
-  if (typeof props.updateUiSettings !== 'function') {
+  if (typeof updateUiSettingsHandler !== 'function') {
     return
   }
 
   savingAccessibility.value = true
 
   try {
-    await props.updateUiSettings(
+    await updateUiSettingsHandler(
       {
         colorVisionMode: DEFAULT_COLOR_VISION_MODE,
         colorVisionIntensity: DEFAULT_COLOR_VISION_INTENSITY,
@@ -1788,9 +1804,6 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
 
       <AccountEmailsPanel
         v-if="isSectionOpen('emails')"
-        :request="request"
-        :api-client="apiClient"
-        :current-user="currentUser"
         @session-updated="forwardSessionUpdate"
       />
     </article>

@@ -1,3 +1,10 @@
+import { useSessionStore } from '../stores/sessionStore'
+
+function requestWithSession(config) {
+  const sessionStore = useSessionStore()
+  return sessionStore.authRequest(config)
+}
+
 function buildPaginationParams(options = {}) {
   const params = {
     page: options.page ?? 1,
@@ -15,16 +22,16 @@ function buildPaginationParams(options = {}) {
   return params
 }
 
-export function fetchFinanceCategories(request, params = {}) {
-  return request({
+export function fetchFinanceCategories(params = {}) {
+  return requestWithSession({
     url: '/finance/categories',
     method: 'GET',
     params,
   })
 }
 
-export function createFinanceCategory(request, payload) {
-  return request({
+export function createFinanceCategory(payload) {
+  return requestWithSession({
     url: '/finance/categories',
     method: 'POST',
     csrfActionId: 'finance.categories.create',
@@ -32,8 +39,8 @@ export function createFinanceCategory(request, payload) {
   })
 }
 
-export function updateFinanceCategory(request, categoryId, payload) {
-  return request({
+export function updateFinanceCategory(categoryId, payload) {
+  return requestWithSession({
     url: `/finance/categories/${encodeURIComponent(categoryId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.categories.update',
@@ -41,15 +48,15 @@ export function updateFinanceCategory(request, categoryId, payload) {
   })
 }
 
-export function fetchFinanceRecurringTypes(request) {
-  return request({
+export function fetchFinanceRecurringTypes() {
+  return requestWithSession({
     url: '/finance/recurring-types',
     method: 'GET',
   })
 }
 
-export function createFinanceRecurringType(request, payload) {
-  return request({
+export function createFinanceRecurringType(payload) {
+  return requestWithSession({
     url: '/finance/recurring-types',
     method: 'POST',
     csrfActionId: 'finance.recurring-types.create',
@@ -57,8 +64,8 @@ export function createFinanceRecurringType(request, payload) {
   })
 }
 
-export function updateFinanceRecurringType(request, recurringTypeId, payload) {
-  return request({
+export function updateFinanceRecurringType(recurringTypeId, payload) {
+  return requestWithSession({
     url: `/finance/recurring-types/${encodeURIComponent(recurringTypeId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.recurring-types.update',
@@ -66,23 +73,23 @@ export function updateFinanceRecurringType(request, recurringTypeId, payload) {
   })
 }
 
-export function deleteFinanceRecurringType(request, recurringTypeId) {
-  return request({
+export function deleteFinanceRecurringType(recurringTypeId) {
+  return requestWithSession({
     url: `/finance/recurring-types/${encodeURIComponent(recurringTypeId)}`,
     method: 'DELETE',
     csrfActionId: 'finance.recurring-types.delete',
   })
 }
 
-export function fetchFinanceBankAccounts(request) {
-  return request({
+export function fetchFinanceBankAccounts() {
+  return requestWithSession({
     url: '/finance/bank-accounts',
     method: 'GET',
   })
 }
 
-export function createFinanceBankAccount(request, payload) {
-  return request({
+export function createFinanceBankAccount(payload) {
+  return requestWithSession({
     url: '/finance/bank-accounts',
     method: 'POST',
     csrfActionId: 'finance.bank-accounts.create',
@@ -90,8 +97,8 @@ export function createFinanceBankAccount(request, payload) {
   })
 }
 
-export function updateFinanceBankAccount(request, bankAccountId, payload) {
-  return request({
+export function updateFinanceBankAccount(bankAccountId, payload) {
+  return requestWithSession({
     url: `/finance/bank-accounts/${encodeURIComponent(bankAccountId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.bank-accounts.update',
@@ -99,8 +106,8 @@ export function updateFinanceBankAccount(request, bankAccountId, payload) {
   })
 }
 
-export function updateFinanceBankAccountStatus(request, bankAccountId, payload) {
-  return request({
+export function updateFinanceBankAccountStatus(bankAccountId, payload) {
+  return requestWithSession({
     url: `/finance/bank-accounts/${encodeURIComponent(bankAccountId)}/status`,
     method: 'PATCH',
     csrfActionId: 'finance.bank-accounts.status',
@@ -108,8 +115,8 @@ export function updateFinanceBankAccountStatus(request, bankAccountId, payload) 
   })
 }
 
-export function fetchFinanceEntries(request, filters = {}, pagination = {}) {
-  return request({
+export function fetchFinanceEntries(filters = {}, pagination = {}) {
+  return requestWithSession({
     url: '/finance/entries',
     method: 'GET',
     params: {
@@ -119,8 +126,8 @@ export function fetchFinanceEntries(request, filters = {}, pagination = {}) {
   })
 }
 
-export function createFinanceEntry(request, payload) {
-  return request({
+export function createFinanceEntry(payload) {
+  return requestWithSession({
     url: '/finance/entries',
     method: 'POST',
     csrfActionId: 'finance.entries.create',
@@ -128,8 +135,8 @@ export function createFinanceEntry(request, payload) {
   })
 }
 
-export function updateFinanceEntry(request, entryId, payload) {
-  return request({
+export function updateFinanceEntry(entryId, payload) {
+  return requestWithSession({
     url: `/finance/entries/${encodeURIComponent(entryId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.entries.update',
@@ -137,16 +144,16 @@ export function updateFinanceEntry(request, entryId, payload) {
   })
 }
 
-export function deleteFinanceEntry(request, entryId) {
-  return request({
+export function deleteFinanceEntry(entryId) {
+  return requestWithSession({
     url: `/finance/entries/${encodeURIComponent(entryId)}`,
     method: 'DELETE',
     csrfActionId: 'finance.entries.delete',
   })
 }
 
-export function createFinanceSettlement(request, entryId, payload) {
-  return request({
+export function createFinanceSettlement(entryId, payload) {
+  return requestWithSession({
     url: `/finance/entries/${encodeURIComponent(entryId)}/settlements`,
     method: 'POST',
     csrfActionId: 'finance.entries.settlements.create',
@@ -154,15 +161,15 @@ export function createFinanceSettlement(request, entryId, payload) {
   })
 }
 
-export function fetchFinanceRecurringRules(request) {
-  return request({
+export function fetchFinanceRecurringRules() {
+  return requestWithSession({
     url: '/finance/recurring-rules',
     method: 'GET',
   })
 }
 
-export function createFinanceRecurringRule(request, payload) {
-  return request({
+export function createFinanceRecurringRule(payload) {
+  return requestWithSession({
     url: '/finance/recurring-rules',
     method: 'POST',
     csrfActionId: 'finance.recurring-rules.create',
@@ -170,8 +177,8 @@ export function createFinanceRecurringRule(request, payload) {
   })
 }
 
-export function updateFinanceRecurringRule(request, ruleId, payload) {
-  return request({
+export function updateFinanceRecurringRule(ruleId, payload) {
+  return requestWithSession({
     url: `/finance/recurring-rules/${encodeURIComponent(ruleId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.recurring-rules.update',
@@ -179,23 +186,23 @@ export function updateFinanceRecurringRule(request, ruleId, payload) {
   })
 }
 
-export function deleteFinanceRecurringRule(request, ruleId) {
-  return request({
+export function deleteFinanceRecurringRule(ruleId) {
+  return requestWithSession({
     url: `/finance/recurring-rules/${encodeURIComponent(ruleId)}`,
     method: 'DELETE',
     csrfActionId: 'finance.recurring-rules.delete',
   })
 }
 
-export function fetchFinanceInstallmentPlans(request) {
-  return request({
+export function fetchFinanceInstallmentPlans() {
+  return requestWithSession({
     url: '/finance/installment-plans',
     method: 'GET',
   })
 }
 
-export function createFinanceInstallmentPlan(request, payload) {
-  return request({
+export function createFinanceInstallmentPlan(payload) {
+  return requestWithSession({
     url: '/finance/installment-plans',
     method: 'POST',
     csrfActionId: 'finance.installments.create',
@@ -203,8 +210,8 @@ export function createFinanceInstallmentPlan(request, payload) {
   })
 }
 
-export function updateFinanceInstallmentPlan(request, planId, payload) {
-  return request({
+export function updateFinanceInstallmentPlan(planId, payload) {
+  return requestWithSession({
     url: `/finance/installment-plans/${encodeURIComponent(planId)}`,
     method: 'PATCH',
     csrfActionId: 'finance.installments.update',
@@ -212,15 +219,15 @@ export function updateFinanceInstallmentPlan(request, planId, payload) {
   })
 }
 
-export function fetchFinanceDebtPlans(request) {
-  return request({
+export function fetchFinanceDebtPlans() {
+  return requestWithSession({
     url: '/finance/debt-plans',
     method: 'GET',
   })
 }
 
-export function previewFinanceDebtPlan(request, payload) {
-  return request({
+export function previewFinanceDebtPlan(payload) {
+  return requestWithSession({
     url: '/finance/debt-plans/preview',
     method: 'POST',
     csrfActionId: 'finance.debt-plans.preview',
@@ -228,8 +235,8 @@ export function previewFinanceDebtPlan(request, payload) {
   })
 }
 
-export function createFinanceDebtPlan(request, payload) {
-  return request({
+export function createFinanceDebtPlan(payload) {
+  return requestWithSession({
     url: '/finance/debt-plans',
     method: 'POST',
     csrfActionId: 'finance.debt-plans.create',
@@ -237,16 +244,16 @@ export function createFinanceDebtPlan(request, payload) {
   })
 }
 
-export function deleteFinanceDebtPlan(request, debtPlanId) {
-  return request({
+export function deleteFinanceDebtPlan(debtPlanId) {
+  return requestWithSession({
     url: `/finance/debt-plans/${encodeURIComponent(debtPlanId)}`,
     method: 'DELETE',
     csrfActionId: 'finance.debt-plans.delete',
   })
 }
 
-export function renegotiateFinanceInstallmentPlan(request, planId, payload) {
-  return request({
+export function renegotiateFinanceInstallmentPlan(planId, payload) {
+  return requestWithSession({
     url: `/finance/installment-plans/${encodeURIComponent(planId)}/renegotiate`,
     method: 'POST',
     csrfActionId: 'finance.installments.renegotiate',
@@ -254,48 +261,48 @@ export function renegotiateFinanceInstallmentPlan(request, planId, payload) {
   })
 }
 
-export function fetchFinanceDashboardSummary(request, params = {}) {
-  return request({
+export function fetchFinanceDashboardSummary(params = {}) {
+  return requestWithSession({
     url: '/finance/dashboard/summary',
     method: 'GET',
     params,
   })
 }
 
-export function fetchFinanceDashboardCashflow(request, params = {}) {
-  return request({
+export function fetchFinanceDashboardCashflow(params = {}) {
+  return requestWithSession({
     url: '/finance/dashboard/cashflow',
     method: 'GET',
     params,
   })
 }
 
-export function fetchFinanceDashboardCategories(request, params = {}) {
-  return request({
+export function fetchFinanceDashboardCategories(params = {}) {
+  return requestWithSession({
     url: '/finance/dashboard/categories',
     method: 'GET',
     params,
   })
 }
 
-export function fetchFinanceCurrencies(request, params = {}) {
-  return request({
+export function fetchFinanceCurrencies(params = {}) {
+  return requestWithSession({
     url: '/finance/currencies',
     method: 'GET',
     params,
   })
 }
 
-export function fetchFinanceCurrencyRates(request, params = {}) {
-  return request({
+export function fetchFinanceCurrencyRates(params = {}) {
+  return requestWithSession({
     url: '/finance/currencies/rates',
     method: 'GET',
     params,
   })
 }
 
-export function createFinanceCurrencyRateManual(request, payload) {
-  return request({
+export function createFinanceCurrencyRateManual(payload) {
+  return requestWithSession({
     url: '/finance/currencies/rates/manual',
     method: 'POST',
     csrfActionId: 'finance.currencies.rates.manual.create',
@@ -303,8 +310,8 @@ export function createFinanceCurrencyRateManual(request, payload) {
   })
 }
 
-export function createFinanceExport(request, payload) {
-  return request({
+export function createFinanceExport(payload) {
+  return requestWithSession({
     url: '/finance/exports',
     method: 'POST',
     csrfActionId: 'finance.exports.create',
@@ -312,31 +319,31 @@ export function createFinanceExport(request, payload) {
   })
 }
 
-export function fetchFinanceExports(request, params = {}) {
-  return request({
+export function fetchFinanceExports(params = {}) {
+  return requestWithSession({
     url: '/finance/exports',
     method: 'GET',
     params,
   })
 }
 
-export function deleteFinanceExport(request, exportJobId) {
-  return request({
+export function deleteFinanceExport(exportJobId) {
+  return requestWithSession({
     url: `/finance/exports/${encodeURIComponent(exportJobId)}`,
     method: 'DELETE',
     csrfActionId: 'finance.exports.delete',
   })
 }
 
-export function fetchFinanceMigrationSnapshot(request) {
-  return request({
+export function fetchFinanceMigrationSnapshot() {
+  return requestWithSession({
     url: '/finance/migration/export',
     method: 'GET',
   })
 }
 
-export function importFinanceMigrationSnapshot(request, payload) {
-  return request({
+export function importFinanceMigrationSnapshot(payload) {
+  return requestWithSession({
     url: '/finance/migration/import',
     method: 'POST',
     csrfActionId: 'finance.migration.import',
@@ -344,22 +351,22 @@ export function importFinanceMigrationSnapshot(request, payload) {
   })
 }
 
-export function fetchFinanceOpenFinanceProviders(request) {
-  return request({
+export function fetchFinanceOpenFinanceProviders() {
+  return requestWithSession({
     url: '/finance/open-finance/providers',
     method: 'GET',
   })
 }
 
-export function fetchFinanceOpenFinanceConnections(request) {
-  return request({
+export function fetchFinanceOpenFinanceConnections() {
+  return requestWithSession({
     url: '/finance/open-finance/connections',
     method: 'GET',
   })
 }
 
-export function createFinanceOpenFinanceConnection(request, payload) {
-  return request({
+export function createFinanceOpenFinanceConnection(payload) {
+  return requestWithSession({
     url: '/finance/open-finance/connections',
     method: 'POST',
     csrfActionId: 'finance.open-finance.connections.create',
@@ -367,8 +374,8 @@ export function createFinanceOpenFinanceConnection(request, payload) {
   })
 }
 
-export function syncFinanceOpenFinanceConnection(request, connectionId, payload = {}) {
-  return request({
+export function syncFinanceOpenFinanceConnection(connectionId, payload = {}) {
+  return requestWithSession({
     url: `/finance/open-finance/connections/${encodeURIComponent(connectionId)}/sync`,
     method: 'POST',
     csrfActionId: 'finance.open-finance.connections.sync',
@@ -376,8 +383,8 @@ export function syncFinanceOpenFinanceConnection(request, connectionId, payload 
   })
 }
 
-export function deleteFinanceOpenFinanceConnection(request, connectionId) {
-  return request({
+export function deleteFinanceOpenFinanceConnection(connectionId) {
+  return requestWithSession({
     url: `/finance/open-finance/connections/${encodeURIComponent(connectionId)}`,
     method: 'DELETE',
     csrfActionId: 'finance.open-finance.connections.delete',

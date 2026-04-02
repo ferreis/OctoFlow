@@ -1,22 +1,29 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
+import { useSessionStore } from '../stores/sessionStore'
 import { extractHttpMessage } from '../utils/httpErrors'
 import GoogleLogin from './GoogleLogin.vue'
 
 const props = defineProps({
   request: {
     type: Function,
-    required: true,
+    default: null,
   },
   apiClient: {
     type: Object,
-    required: true,
+    default: null,
   },
   currentUser: {
     type: Object,
     default: null,
   },
 })
+const sessionStore = useSessionStore()
+const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
+const requestClient = props.request || sessionStore.authRequest
+const apiClient = props.apiClient || sessionStore.apiClient
+const currentUser = computed(() => props.currentUser || sessionCurrentUser.value)
 
 const emit = defineEmits(['session-updated'])
 
@@ -28,19 +35,19 @@ const feedbackError = ref('')
 const feedbackSuccess = ref('')
 const initialLoadDone = ref(false)
 
-const linkedEmails = computed(() => Array.isArray(props.currentUser?.linkedEmails) ? props.currentUser.linkedEmails : [])
+const linkedEmails = computed(() => Array.isArray(currentUser.value?.linkedEmails) ? currentUser.value.linkedEmails : [])
 const googleLinkedEmail = computed(() => {
   const googleEntry = linkedEmails.value.find((linkedEmail) => Array.isArray(linkedEmail?.providers) && linkedEmail.providers.includes('google'))
 
   return typeof googleEntry?.email === 'string' ? googleEntry.email.trim() : ''
 })
-const defaultEmail = computed(() => typeof props.currentUser?.defaultEmail === 'string' && props.currentUser.defaultEmail.trim() !== ''
-  ? props.currentUser.defaultEmail.trim()
-  : typeof props.currentUser?.email === 'string'
-    ? props.currentUser.email.trim()
+const defaultEmail = computed(() => typeof currentUser.value?.defaultEmail === 'string' && currentUser.value.defaultEmail.trim() !== ''
+  ? currentUser.value.defaultEmail.trim()
+  : typeof currentUser.value?.email === 'string'
+    ? currentUser.value.email.trim()
     : '')
-const githubTokenConfigured = computed(() => Boolean(props.currentUser?.githubTokenConfigured))
-const githubLinked = computed(() => Boolean(props.currentUser?.githubLinked))
+const githubTokenConfigured = computed(() => Boolean(currentUser.value?.githubTokenConfigured))
+const githubLinked = computed(() => Boolean(currentUser.value?.githubLinked))
 const isBusy = computed(() => isLoading.value || googleLinking.value || githubLinking.value || switchingEmail.value !== '')
 
 onMounted(async () => {
@@ -53,7 +60,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.currentUser?.id,
+  () => currentUser.value?.id,
   async (userId) => {
     if (!userId || initialLoadDone.value || linkedEmails.value.length > 0) {
       return
@@ -68,7 +75,7 @@ async function loadLinkedEmails() {
   feedbackError.value = ''
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/auth/emails',
       method: 'GET',
     })
@@ -88,7 +95,7 @@ async function handleGoogleCredential(credential) {
   feedbackSuccess.value = ''
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/auth/google/link',
       method: 'POST',
       csrfActionId: 'auth.google.link',
@@ -109,7 +116,7 @@ async function syncGithubEmails() {
   feedbackSuccess.value = ''
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/github/emails/link',
       method: 'POST',
       csrfActionId: 'github.emails.link',
@@ -131,7 +138,7 @@ async function setDefaultEmail(email) {
   feedbackSuccess.value = ''
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/auth/emails/default',
       method: 'PATCH',
       csrfActionId: 'auth.emails.default',

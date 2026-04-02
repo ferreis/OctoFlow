@@ -1,4 +1,5 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   RemoteFinanceEmptyState,
@@ -21,12 +22,9 @@ import { fetchGithubProfile, fetchGithubWorkspace } from '../../services/githubW
 import { fetchGithubIssuesCache, syncGithubIssues } from '../../services/tasks'
 import { extractHttpMessage } from '../../utils/httpErrors'
 import { buildCurrentMonthDateRange, formatDate } from '../../utils/date'
+import { useSessionStore } from '../../stores/sessionStore'
 
 const props = defineProps({
-  request: {
-    type: Function,
-    required: true,
-  },
   notify: {
     type: Function,
     default: null,
@@ -36,6 +34,9 @@ const props = defineProps({
     default: null,
   },
 })
+const sessionStore = useSessionStore()
+const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
+const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
 
 const profile = ref(null)
 const workspace = ref(null)
@@ -752,7 +753,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.currentUser?.id,
+  () => effectiveCurrentUser.value?.id,
   async (userId, previousUserId) => {
     if (!userId) {
       profile.value = null
@@ -782,7 +783,7 @@ watch(
       return
     }
 
-    if (!props.currentUser?.id) {
+    if (!effectiveCurrentUser.value?.id) {
       return
     }
 
@@ -799,7 +800,7 @@ watch(
       return
     }
 
-    if (activeTab.value !== 'finance' || !props.currentUser?.id) {
+    if (activeTab.value !== 'finance' || !effectiveCurrentUser.value?.id) {
       return
     }
 
@@ -826,7 +827,7 @@ watch(status, (message) => {
 })
 
 async function loadDashboardContext(showStatus = false) {
-  if (!props.currentUser?.id) {
+  if (!effectiveCurrentUser.value?.id) {
     return
   }
 
@@ -838,7 +839,7 @@ async function loadDashboardContext(showStatus = false) {
   }
 
   try {
-    const profileResponse = await fetchGithubProfile(props.request)
+    const profileResponse = await fetchGithubProfile()
     profile.value = profileResponse.data?.profile || null
 
     if (!workspaceReady.value) {
@@ -864,12 +865,12 @@ async function loadDashboardContext(showStatus = false) {
 }
 
 async function loadWorkspaceContext() {
-  const { data } = await fetchGithubWorkspace(props.request)
+  const { data } = await fetchGithubWorkspace()
   workspace.value = data || null
 }
 
 async function loadIssueAnalytics(showStatus = false) {
-  const cacheResponse = await fetchGithubIssuesCache(props.request, { scope: 'all' })
+  const cacheResponse = await fetchGithubIssuesCache({ scope: 'all' })
 
   issueBoard.value = cacheResponse.data || null
 
@@ -895,7 +896,7 @@ async function syncIssueAnalytics(showStatus = false) {
   error.value = ''
 
   try {
-    const response = await syncGithubIssues(props.request, { scope: 'all' })
+    const response = await syncGithubIssues({ scope: 'all' })
 
     issueBoard.value = response.data || null
 
@@ -934,7 +935,7 @@ function resetFinanceState() {
 }
 
 async function loadFinanceDashboard(showStatus = false) {
-  if (!props.currentUser?.id) {
+  if (!effectiveCurrentUser.value?.id) {
     return
   }
 
@@ -959,18 +960,18 @@ async function loadFinanceDashboard(showStatus = false) {
       debtPlansResponse,
       investmentPlansResponse,
     ] = await Promise.all([
-      fetchFinanceDashboardSummary(props.request, currentMonthDateRange),
-      fetchFinanceDashboardSummary(props.request, { ...currentMonthDateRange, direction }),
-      fetchFinanceDashboardCashflow(props.request),
-      fetchFinanceDashboardCashflow(props.request, { direction }),
-      fetchFinanceDashboardCategories(props.request, { limit: 10 }),
-      fetchFinanceDashboardCategories(props.request, { direction, limit: 10 }),
-      fetchFinanceEntries(props.request, { direction }, { page: 1, itemsPerPage: 10, sort: 'dueDate:asc' }),
-      fetchFinanceBankAccounts(props.request),
-      fetchFinanceRecurringRules(props.request),
-      fetchFinanceInstallmentPlans(props.request),
-      fetchFinanceDebtPlans(props.request),
-      fetchFinanceInvestmentPlans(props.request),
+      fetchFinanceDashboardSummary(currentMonthDateRange),
+      fetchFinanceDashboardSummary({ ...currentMonthDateRange, direction }),
+      fetchFinanceDashboardCashflow(),
+      fetchFinanceDashboardCashflow({ direction }),
+      fetchFinanceDashboardCategories({ limit: 10 }),
+      fetchFinanceDashboardCategories({ direction, limit: 10 }),
+      fetchFinanceEntries({ direction }, { page: 1, itemsPerPage: 10, sort: 'dueDate:asc' }),
+      fetchFinanceBankAccounts(),
+      fetchFinanceRecurringRules(),
+      fetchFinanceInstallmentPlans(),
+      fetchFinanceDebtPlans(),
+      fetchFinanceInvestmentPlans(),
     ])
 
     financeSummaryGlobal.value = summaryGlobalResponse.data?.item || null

@@ -1,12 +1,19 @@
-export function fetchGithubProfile(request) {
-  return request({
+import { useSessionStore } from '../stores/sessionStore'
+
+function requestWithSession(config) {
+  const sessionStore = useSessionStore()
+  return sessionStore.authRequest(config)
+}
+
+export function fetchGithubProfile() {
+  return requestWithSession({
     url: '/github/profile',
     method: 'GET',
   })
 }
 
-export function createGithubAccount(request, payload) {
-  return request({
+export function createGithubAccount(payload) {
+  return requestWithSession({
     url: '/github/accounts',
     method: 'POST',
     csrfActionId: 'github.account.create',
@@ -14,8 +21,8 @@ export function createGithubAccount(request, payload) {
   })
 }
 
-export function updateGithubAccount(request, accountId, payload) {
-  return request({
+export function updateGithubAccount(accountId, payload) {
+  return requestWithSession({
     url: `/github/accounts/${accountId}`,
     method: 'PATCH',
     csrfActionId: 'github.account.update',
@@ -23,16 +30,16 @@ export function updateGithubAccount(request, accountId, payload) {
   })
 }
 
-export function deleteGithubAccount(request, accountId) {
-  return request({
+export function deleteGithubAccount(accountId) {
+  return requestWithSession({
     url: `/github/accounts/${accountId}`,
     method: 'DELETE',
     csrfActionId: 'github.account.delete',
   })
 }
 
-export function createGithubRepository(request, payload) {
-  return request({
+export function createGithubRepository(payload) {
+  return requestWithSession({
     url: '/github/repositories',
     method: 'POST',
     csrfActionId: 'github.repository.create',
@@ -40,8 +47,8 @@ export function createGithubRepository(request, payload) {
   })
 }
 
-export function updateGithubRepository(request, repositoryId, payload) {
-  return request({
+export function updateGithubRepository(repositoryId, payload) {
+  return requestWithSession({
     url: `/github/repositories/${repositoryId}`,
     method: 'PATCH',
     csrfActionId: 'github.repository.update',
@@ -49,16 +56,16 @@ export function updateGithubRepository(request, repositoryId, payload) {
   })
 }
 
-export function deleteGithubRepository(request, repositoryId) {
-  return request({
+export function deleteGithubRepository(repositoryId) {
+  return requestWithSession({
     url: `/github/repositories/${repositoryId}`,
     method: 'DELETE',
     csrfActionId: 'github.repository.delete',
   })
 }
 
-export function fetchGithubWorkspace(request, params = {}) {
-  return request({
+export function fetchGithubWorkspace(params = {}) {
+  return requestWithSession({
     url: '/github/workspace',
     method: 'GET',
     params,

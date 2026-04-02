@@ -3,6 +3,7 @@
 namespace App\Github;
 
 use App\Entity\User;
+use App\Github\Exception\GithubActionForbiddenException;
 use App\Github\Exception\GithubGraphQLException;
 
 final class GithubAssignedIssueService
@@ -773,6 +774,7 @@ GRAPHQL;
         }
 
         $issueUpdateContext = $this->fetchIssueUpdateContext($token, $normalizedIssueId);
+        $this->assertViewerCanUpdateIssue($issueUpdateContext);
         $this->assertIssueCanTransitionToState($issueUpdateContext, $state);
         $body = $legacyBody;
 
@@ -861,6 +863,7 @@ GRAPHQL;
 
         $token = $this->profileService->requireToken($user);
         $issueUpdateContext = $this->fetchIssueUpdateContext($token, $normalizedIssueId);
+        $this->assertViewerCanUpdateIssue($issueUpdateContext);
         $this->assertParentIssueCanReceiveSubIssues($issueUpdateContext);
 
         $repository = is_array($issueUpdateContext['repository'] ?? null) ? $issueUpdateContext['repository'] : [];
@@ -987,6 +990,9 @@ GRAPHQL;
             'body' => (string) ($node['body'] ?? ''),
             'state' => strtoupper(trim((string) ($node['state'] ?? 'OPEN'))) === 'CLOSED' ? 'CLOSED' : 'OPEN',
             'url' => trim((string) ($node['url'] ?? '')),
+            'viewerCanUpdate' => (bool) ($node['viewerCanUpdate'] ?? false),
+            'viewerCanClose' => (bool) ($node['viewerCanClose'] ?? false),
+            'viewerCanReopen' => (bool) ($node['viewerCanReopen'] ?? false),
             'parent' => $this->normalizeIssueReference($node['parent'] ?? null),
             'subIssues' => $this->normalizeIssueReferences($node['subIssues']['nodes'] ?? []),
             'hasOpenSubIssues' => $this->hasOpenSubIssues($node['subIssues']['nodes'] ?? []),
@@ -1846,6 +1852,18 @@ GRAPHQL;
             implode(', ', $labels),
             $suffix
         ));
+    }
+
+    /**
+     * @param array<string, mixed> $issueUpdateContext
+     */
+    private function assertViewerCanUpdateIssue(array $issueUpdateContext): void
+    {
+        if (($issueUpdateContext['viewerCanUpdate'] ?? false) === true) {
+            return;
+        }
+
+        throw new GithubActionForbiddenException('You do not have permission to update this GitHub issue.');
     }
 
     /**

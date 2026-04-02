@@ -1,5 +1,5 @@
 <script setup>
-const props = defineProps({
+defineProps({
   title: {
     type: String,
     default: 'Sem dados',
@@ -14,7 +14,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['action'])
+defineEmits(['action'])
 </script>
 
 <template>

@@ -1,6 +1,19 @@
+import { useSessionStore } from '../stores/sessionStore'
+
 export function useNotification(notify) {
+  const sessionStore = useSessionStore()
+
+  function resolveNotifier() {
+    if (typeof notify === 'function') {
+      return notify
+    }
+
+    return sessionStore.showNotification
+  }
+
   function notifyUser(payload, type = 'info') {
-    if (typeof notify !== 'function') {
+    const resolvedNotify = resolveNotifier()
+    if (typeof resolvedNotify !== 'function') {
       return
     }
 
@@ -10,7 +23,7 @@ export function useNotification(notify) {
         return
       }
 
-      notify({
+      resolvedNotify({
         message: normalizedMessage,
         type,
       })
@@ -22,7 +35,7 @@ export function useNotification(notify) {
       return
     }
 
-    notify({
+    resolvedNotify({
       ...payload,
       message: normalizedMessage,
       type: typeof payload?.type === 'string' && payload.type.trim() !== ''

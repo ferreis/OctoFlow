@@ -1,28 +1,35 @@
-export function fetchGithubIssuesCache(request, params = {}) {
-  return request({
+import { useSessionStore } from '../stores/sessionStore'
+
+function requestWithSession(config) {
+  const sessionStore = useSessionStore()
+  return sessionStore.authRequest(config)
+}
+
+export function fetchGithubIssuesCache(params = {}) {
+  return requestWithSession({
     url: '/github/issues/cache',
     method: 'GET',
     params,
   })
 }
 
-export function syncGithubIssues(request, params = {}) {
-  return request({
+export function syncGithubIssues(params = {}) {
+  return requestWithSession({
     url: '/github/issues/assigned',
     method: 'GET',
     params,
   })
 }
 
-export function fetchGithubIssueDetails(request, issueId) {
-  return request({
+export function fetchGithubIssueDetails(issueId) {
+  return requestWithSession({
     url: `/github/issues/${encodeURIComponent(issueId)}`,
     method: 'GET',
   })
 }
 
-export function createGithubIssue(request, payload) {
-  return request({
+export function createGithubIssue(payload) {
+  return requestWithSession({
     url: '/github/issues',
     method: 'POST',
     csrfActionId: 'github.issue.create',
@@ -30,8 +37,8 @@ export function createGithubIssue(request, payload) {
   })
 }
 
-export function updateGithubIssue(request, issueId, payload) {
-  return request({
+export function updateGithubIssue(issueId, payload) {
+  return requestWithSession({
     url: `/github/issues/${encodeURIComponent(issueId)}`,
     method: 'PATCH',
     csrfActionId: 'github.issue.update',
@@ -39,8 +46,8 @@ export function updateGithubIssue(request, issueId, payload) {
   })
 }
 
-export function createGithubSubIssues(request, issueId, payload) {
-  return request({
+export function createGithubSubIssues(issueId, payload) {
+  return requestWithSession({
     url: `/github/issues/${encodeURIComponent(issueId)}/sub-issues`,
     method: 'POST',
     csrfActionId: 'github.issue.update',
@@ -48,29 +55,29 @@ export function createGithubSubIssues(request, issueId, payload) {
   })
 }
 
-export function fetchTaskTemplates(request) {
-  return request({
+export function fetchTaskTemplates() {
+  return requestWithSession({
     url: '/tasks/templates',
     method: 'GET',
   })
 }
 
-export function fetchTaskUpdateTemplates(request) {
-  return request({
+export function fetchTaskUpdateTemplates() {
+  return requestWithSession({
     url: '/tasks/update-templates',
     method: 'GET',
   })
 }
 
-export function fetchLocalTasks(request) {
-  return request({
+export function fetchLocalTasks() {
+  return requestWithSession({
     url: '/tasks/local-issues',
     method: 'GET',
   })
 }
 
-export function createLocalTask(request, payload) {
-  return request({
+export function createLocalTask(payload) {
+  return requestWithSession({
     url: '/tasks/local-issues',
     method: 'POST',
     csrfActionId: 'task.local.create',
@@ -78,15 +85,15 @@ export function createLocalTask(request, payload) {
   })
 }
 
-export function fetchLocalTask(request, taskId) {
-  return request({
+export function fetchLocalTask(taskId) {
+  return requestWithSession({
     url: `/tasks/local-issues/${encodeURIComponent(taskId)}`,
     method: 'GET',
   })
 }
 
-export function updateLocalTask(request, taskId, payload) {
-  return request({
+export function updateLocalTask(taskId, payload) {
+  return requestWithSession({
     url: `/tasks/local-issues/${encodeURIComponent(taskId)}`,
     method: 'PATCH',
     csrfActionId: 'task.local.update',
@@ -94,8 +101,8 @@ export function updateLocalTask(request, taskId, payload) {
   })
 }
 
-export function syncLocalTaskToGithub(request, taskId, payload) {
-  return request({
+export function syncLocalTaskToGithub(taskId, payload) {
+  return requestWithSession({
     url: `/tasks/local-issues/${encodeURIComponent(taskId)}/sync`,
     method: 'POST',
     csrfActionId: 'task.local.sync',

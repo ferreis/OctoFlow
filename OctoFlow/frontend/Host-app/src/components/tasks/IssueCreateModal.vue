@@ -30,10 +30,6 @@ import {
 import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
-  request: {
-    type: Function,
-    required: true,
-  },
   currentUser: {
     type: Object,
     default: null,
@@ -247,7 +243,7 @@ async function loadTemplates() {
   templatesError.value = ''
 
   try {
-    const { data } = await fetchTaskTemplates(props.request)
+    const { data } = await fetchTaskTemplates()
     localTemplates.value = Array.isArray(data?.items) ? data.items : []
     initializeWorkspaceState()
   } catch (error) {
@@ -271,7 +267,7 @@ async function loadWorkspace() {
       params.repositoryName = selectedRepository.name
     }
 
-    const { data } = await fetchGithubWorkspace(props.request, params)
+    const { data } = await fetchGithubWorkspace(params)
 
     workspace.value = data || null
 
@@ -354,7 +350,7 @@ async function submitIssue() {
     let data
 
     if (isLocalMode.value) {
-      const response = await createLocalTask(props.request, {
+      const response = await createLocalTask({
         templateKey: selectedTemplate.value.key,
         title: previewTitle.value,
         body: previewBody.value,
@@ -368,7 +364,7 @@ async function submitIssue() {
         mode: 'local',
       }
     } else {
-      const response = await createGithubIssue(props.request, {
+      const response = await createGithubIssue({
         template: selectedTemplate.value.key,
         title: title.value,
         fields: buildSubmissionFields(selectedTemplate.value, fieldValues),

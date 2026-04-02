@@ -3,6 +3,21 @@
 ## O que é
 Aplicação host (Vue 3 + Vite) que orquestra autenticação, navegação e consumo de componentes remotos via Module Federation.
 
+## Rotas do host
+
+- Públicas:
+  - `/auth/login`
+  - `/auth/register`
+  - `/auth/google-password-setup`
+- Protegidas:
+  - `/app/dashboard`
+  - `/app/tasks`
+  - `/app/finance/:section?`
+  - `/app/profile`
+  - `/app/test`
+- Compatibilidade (redirecionamento):
+  - `/dashboard`, `/tasks`, `/finance`, `/profile`
+
 ## Requisitos
 
 - Node.js 20+
@@ -27,6 +42,12 @@ Aplicação host (Vue 3 + Vite) que orquestra autenticação, navegação e cons
 - Se backend responder `401`, front chama `/auth/refresh`.
 - Refresh retorna novo `access_token` e novo `refresh_token`.
 - Request original é reenviada uma vez.
+- Guardas de rota são apenas UX; autorização real sempre no backend (`401/403`).
+
+## Contrato de serviços frontend
+
+- Services em `src/services/*` não recebem mais `request` por parâmetro.
+- Toda chamada usa pipeline central da store de sessão (auth + CSRF + refresh).
 
 ## Headers de identidade enviados pelo host
 

@@ -1,10 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { useSessionStore } from '../stores/sessionStore'
 
 const props = defineProps({
   apiClient: {
-    type: Object,
-    required: true,
+    type: [Object, Function],
+    default: null,
   },
   isLoading: {
     type: Boolean,
@@ -47,11 +48,40 @@ const error = ref('')
 const localLoading = ref(false)
 const googleClientId = ref('')
 const useSystemVariant = computed(() => props.variant === 'system')
+const sessionStore = useSessionStore()
 let googleIdentityScriptPromise
+
+async function executeClientRequest(config) {
+  const requestClient = props.apiClient || sessionStore.apiClient
+
+  if (typeof requestClient === 'function') {
+    return requestClient(config)
+  }
+
+  if (requestClient && typeof requestClient.request === 'function') {
+    return requestClient.request(config)
+  }
+
+  if (
+    requestClient
+    && typeof requestClient.get === 'function'
+    && String(config?.method || 'GET').toUpperCase() === 'GET'
+  ) {
+    return requestClient.get(config.url, {
+      params: config.params,
+      headers: config.headers,
+    })
+  }
+
+  return sessionStore.requestWithCsrf(config)
+}
 
 async function loadAuthConfig() {
   try {
-    const { data } = await props.apiClient.get('/auth/config')
+    const { data } = await executeClientRequest({
+      url: '/auth/config',
+      method: 'GET',
+    })
     googleClientId.value = data.googleClientId || ''
 
     if (!googleClientId.value) {
@@ -61,8 +91,11 @@ async function loadAuthConfig() {
     }
 
     return true
-  } catch (err) {
-    error.value = `Erro ao carregar configurações: ${err.message}`
+  } catch (requestError) {
+    const errorMessage = typeof requestError?.message === 'string'
+      ? requestError.message
+      : 'falha ao consultar /auth/config'
+    error.value = `Erro ao carregar configurações: ${errorMessage}`
     console.warn(error.value)
     emit('error', error.value)
     return false

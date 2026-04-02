@@ -38,10 +38,6 @@ import {
 import TaskModalShell from './TaskModalShell.vue'
 
 const props = defineProps({
-  request: {
-    type: Function,
-    required: true,
-  },
   notify: {
     type: Function,
     default: null,
@@ -280,7 +276,7 @@ watch(
 async function loadLatestIssue(issueId) {
   detailLoading.value = true
   try {
-    const { data } = await fetchGithubIssueDetails(props.request, issueId)
+    const { data } = await fetchGithubIssueDetails(issueId)
 
     currentIssue.value = normalizeIssuePayload(data?.item || currentIssue.value)
     currentHistory.value = normalizeHistoryEntries(data?.history, currentIssue.value)
@@ -310,7 +306,7 @@ async function loadSubIssueTemplates() {
   }
 
   try {
-    const { data } = await fetchTaskTemplates(props.request)
+    const { data } = await fetchTaskTemplates()
     subIssueTemplates.value = Array.isArray(data?.items) ? data.items : []
   } catch (requestError) {
     notifyUser(
@@ -642,7 +638,7 @@ async function saveIssue() {
   try {
     templateRenderTimestamp.value = buildCurrentDateTimeLabel()
     const assigneeId = resolveSelectedAssigneeId()
-    const { data } = await updateGithubIssue(props.request, currentIssue.value.id, {
+    const { data } = await updateGithubIssue(currentIssue.value.id, {
       title: issueTitle,
       state: form.state,
       templateKey: selectedTemplate.value?.key || '',
@@ -706,7 +702,7 @@ async function saveSubIssues() {
   subIssueError.value = ''
 
   try {
-    const { data } = await createGithubSubIssues(props.request, currentIssue.value.id, {
+    const { data } = await createGithubSubIssues(currentIssue.value.id, {
       items: filledDrafts.map((draft) => ({
         title: draft.title,
         body: draft.body,
@@ -1270,7 +1266,7 @@ async function loadLocalTask(taskId) {
   localError.value = ''
 
   try {
-    const { data } = await fetchLocalTask(props.request, taskId)
+    const { data } = await fetchLocalTask(taskId)
     localCurrentTask.value = data?.item || localCurrentTask.value
     syncLocalForm(localCurrentTask.value)
   } catch (requestError) {
@@ -1404,7 +1400,7 @@ async function saveLocalTask() {
     localTemplateRenderTimestamp.value = buildCurrentDateTimeLabel()
     const repository = splitRepositoryKey(localForm.repositoryKey)
     const nextBody = buildLocalFinalBody(localTemplateRenderTimestamp.value)
-    const { data } = await updateLocalTask(props.request, localCurrentTask.value.id, {
+    const { data } = await updateLocalTask(localCurrentTask.value.id, {
       title: localForm.title,
       body: nextBody !== '' ? nextBody : String(localCurrentTask.value?.body || '').trim(),
       state: localForm.state,
@@ -1446,7 +1442,7 @@ async function syncLocalTask() {
   localError.value = ''
 
   try {
-    const { data } = await syncLocalTaskToGithub(props.request, localCurrentTask.value.id, {
+    const { data } = await syncLocalTaskToGithub(localCurrentTask.value.id, {
       repositoryOwner: selectedRepository.owner,
       repositoryName: selectedRepository.name,
     })

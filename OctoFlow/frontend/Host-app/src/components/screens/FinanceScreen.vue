@@ -1,4 +1,5 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   RemoteFinanceEmptyState,
@@ -74,13 +75,14 @@ import {
 import { useNotification } from '../../composables/useNotification'
 import { buildCurrentMonthDateRange, formatDate, formatDateTime } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { useSessionStore } from '../../stores/sessionStore'
 import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
 import FinanceEntriesListPanel from '../shared/FinanceEntriesListPanel.vue'
 
 const props = defineProps({
   request: {
     type: Function,
-    required: true,
+    default: null,
   },
   notify: {
     type: Function,
@@ -95,6 +97,10 @@ const props = defineProps({
     default: 'accounts',
   },
 })
+const sessionStore = useSessionStore()
+const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
+const requestClient = props.request || sessionStore.authRequest
+const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
 
 const { notifyUser } = useNotification(props.notify)
 
@@ -1002,7 +1008,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.currentUser?.id,
+  () => effectiveCurrentUser.value?.id,
   async (userId, previousUserId) => {
     if (!userId) {
       resetLocalState()
@@ -1193,7 +1199,7 @@ async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.val
 }
 
 async function loadInitialData() {
-  if (!props.currentUser?.id) {
+  if (!effectiveCurrentUser.value?.id) {
     return
   }
 
@@ -1250,9 +1256,9 @@ async function loadCatalogs() {
 
   try {
     const [categoriesResponse, recurringTypesResponse, bankAccountsResponse] = await Promise.all([
-      fetchFinanceCategories(props.request),
-      fetchFinanceRecurringTypes(props.request),
-      fetchFinanceBankAccounts(props.request),
+      fetchFinanceCategories(),
+      fetchFinanceRecurringTypes(),
+      fetchFinanceBankAccounts(),
     ])
 
     categories.value = Array.isArray(categoriesResponse.data?.items) ? categoriesResponse.data.items : []
@@ -1279,10 +1285,10 @@ async function loadDashboard() {
     const selectedMonthDateRange = buildCurrentMonthDateRange(selectedMonthReferenceDate)
 
     const [summaryResponse, selectedMonthSummaryResponse, cashflowResponse, categoriesResponse] = await Promise.all([
-      fetchFinanceDashboardSummary(props.request, currentMonthDateRange),
-      fetchFinanceDashboardSummary(props.request, selectedMonthDateRange),
-      fetchFinanceDashboardCashflow(props.request),
-      fetchFinanceDashboardCategories(props.request, { limit: LIST_ITEMS_PER_PAGE }),
+      fetchFinanceDashboardSummary(currentMonthDateRange),
+      fetchFinanceDashboardSummary(selectedMonthDateRange),
+      fetchFinanceDashboardCashflow(),
+      fetchFinanceDashboardCategories({ limit: LIST_ITEMS_PER_PAGE }),
     ])
 
     dashboardSummary.value = summaryResponse.data?.item || null
@@ -1315,7 +1321,7 @@ async function loadEntries() {
   loadingState.entries = true
 
   try {
-    const response = await fetchFinanceEntries(props.request, {
+    const response = await fetchFinanceEntries({
       direction: entryFilters.direction || undefined,
       status: entryFilters.status || undefined,
       search: entryFilters.search || undefined,
@@ -1361,7 +1367,7 @@ async function loadRecurringRules() {
   loadingState.recurring = true
 
   try {
-    const response = await fetchFinanceRecurringRules(props.request)
+    const response = await fetchFinanceRecurringRules()
     recurringRules.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar recorrências.'), 'error')
@@ -1374,7 +1380,7 @@ async function loadInstallments() {
   loadingState.installments = true
 
   try {
-    const response = await fetchFinanceInstallmentPlans(props.request)
+    const response = await fetchFinanceInstallmentPlans()
     installmentPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar parcelamentos.'), 'error')
@@ -1387,7 +1393,7 @@ async function loadInvestments() {
   loadingState.investments = true
 
   try {
-    const response = await fetchFinanceInvestmentPlans(props.request)
+    const response = await fetchFinanceInvestmentPlans()
     investmentPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar planos de investimento.'), 'error')
@@ -1400,7 +1406,7 @@ async function loadDebtPlans() {
   loadingState.debts = true
 
   try {
-    const response = await fetchFinanceDebtPlans(props.request)
+    const response = await fetchFinanceDebtPlans()
     debtPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Falha ao carregar planos de dívida.'), 'error')
@@ -1428,7 +1434,7 @@ function buildDebtSimulationPayload() {
 async function previewDebtPlan() {
   try {
     const debtSimulationPayload = buildDebtSimulationPayload()
-    const response = await previewFinanceDebtPlan(props.request, debtSimulationPayload)
+    const response = await previewFinanceDebtPlan(debtSimulationPayload)
 
     debtPreview.value = response.data?.item || null
     debtPreviewRequestPayload.value = debtSimulationPayload
@@ -1469,7 +1475,7 @@ async function createDebtPlanFromSuggestion(suggestionOption) {
   debtPlanCreationSuggestionKey.value = selectedSuggestionKey
 
   try {
-    await createFinanceDebtPlan(props.request, {
+    await createFinanceDebtPlan({
       ...debtPreviewRequestPayload.value,
       selectedSuggestionKey,
       settlementMode: suggestionOption.settlementMode,
@@ -1488,7 +1494,7 @@ async function createDebtPlanFromSuggestion(suggestionOption) {
 
 async function loadCurrenciesCatalog() {
   try {
-    const response = await fetchFinanceCurrencies(props.request)
+    const response = await fetchFinanceCurrencies()
     currenciesCatalog.value = Array.isArray(response.data?.items) ? response.data.items : []
 
     if (currencyForm.codes.length === 0 && currenciesCatalog.value.length > 0) {
@@ -1521,7 +1527,7 @@ async function loadCurrencyRates(options = {}) {
     const selectedCurrencyCodes = Array.isArray(currencyForm.codes) ? currencyForm.codes : []
     const forceRefreshFromApi = Boolean(options.forceRefresh)
 
-    const response = await fetchFinanceCurrencyRates(props.request, {
+    const response = await fetchFinanceCurrencyRates({
       date: currencyForm.date || undefined,
       codes: selectedCurrencyCodes.join(',') || undefined,
       forceRefresh: forceRefreshFromApi ? '1' : undefined,
@@ -1600,7 +1606,7 @@ async function submitManualCurrencyRate() {
   }
 
   try {
-    await createFinanceCurrencyRateManual(props.request, {
+    await createFinanceCurrencyRateManual({
       quoteDate: manualCurrencyRateForm.quoteDate || getCurrentDateInputValue(),
       currencyCode: manualCurrencyCode,
       currencyName: manualCurrencyRateForm.currencyName || resolveCurrencyNameByCode(manualCurrencyCode),
@@ -1624,7 +1630,7 @@ async function loadExports(page = Number(exportMeta.value.page || 1)) {
   loadingState.exports = true
 
   try {
-    const response = await fetchFinanceExports(props.request, {
+    const response = await fetchFinanceExports({
       page,
       itemsPerPage: LIST_ITEMS_PER_PAGE,
     })
@@ -1651,8 +1657,8 @@ async function loadOpenFinance() {
 
   try {
     const [providersResponse, connectionsResponse] = await Promise.all([
-      fetchFinanceOpenFinanceProviders(props.request),
-      fetchFinanceOpenFinanceConnections(props.request),
+      fetchFinanceOpenFinanceProviders(),
+      fetchFinanceOpenFinanceConnections(),
     ])
 
     openFinanceProviders.value = Array.isArray(providersResponse.data?.items) ? providersResponse.data.items : []
@@ -1677,7 +1683,7 @@ async function submitEntry() {
 
       const dueDay = Number(entryDueDate.split('-')[2] || 5)
 
-      await createFinanceRecurringRule(props.request, {
+      await createFinanceRecurringRule({
         direction: 'RECEIVABLE',
         title: entryForm.title,
         amountBrl: Number(entryForm.expectedAmountBrl),
@@ -1708,10 +1714,10 @@ async function submitEntry() {
     }
 
     if (entryEditingId.value) {
-      await updateFinanceEntry(props.request, entryEditingId.value, entryPayload)
+      await updateFinanceEntry(entryEditingId.value, entryPayload)
       notifyUser('Lançamento atualizado com sucesso.', 'success')
     } else {
-      await createFinanceEntry(props.request, entryPayload)
+      await createFinanceEntry(entryPayload)
       notifyUser('Lançamento criado com sucesso.', 'success')
     }
 
@@ -1912,7 +1918,7 @@ function requestDeleteEntry(entryItem) {
 
 async function deleteEntry(entryItem) {
   try {
-    await deleteFinanceEntry(props.request, entryItem.id)
+    await deleteFinanceEntry(entryItem.id)
 
     if (entryEditingId.value === entryItem.id) {
       resetEntryForm()
@@ -1934,10 +1940,10 @@ async function submitCategory() {
     }
 
     if (categoryEditingId.value) {
-      await updateFinanceCategory(props.request, categoryEditingId.value, payload)
+      await updateFinanceCategory(categoryEditingId.value, payload)
       notifyUser('Categoria atualizada com sucesso.', 'success')
     } else {
-      await createFinanceCategory(props.request, payload)
+      await createFinanceCategory(payload)
       notifyUser('Categoria criada com sucesso.', 'success')
     }
 
@@ -1970,7 +1976,7 @@ async function toggleCategoryStatus(categoryItem) {
   }
 
   try {
-    await updateFinanceCategory(props.request, categoryItem.id, {
+    await updateFinanceCategory(categoryItem.id, {
       isActive: !categoryItem.isActive,
     })
 
@@ -1997,7 +2003,7 @@ async function deleteCategory(categoryItem) {
 
 async function executeDeleteCategory(categoryItem) {
   try {
-    await updateFinanceCategory(props.request, categoryItem.id, {
+    await updateFinanceCategory(categoryItem.id, {
       isActive: false,
     })
 
@@ -2020,10 +2026,10 @@ async function submitRecurringTypeCatalog() {
     }
 
     if (recurringTypeEditingId.value) {
-      await updateFinanceRecurringType(props.request, recurringTypeEditingId.value, payload)
+      await updateFinanceRecurringType(recurringTypeEditingId.value, payload)
       notifyUser('Tipo de recorrência atualizado com sucesso.', 'success')
     } else {
-      await createFinanceRecurringType(props.request, payload)
+      await createFinanceRecurringType(payload)
       notifyUser('Tipo de recorrência criado com sucesso.', 'success')
     }
 
@@ -2056,7 +2062,7 @@ async function toggleRecurringTypeStatus(recurringTypeItem) {
   }
 
   try {
-    await updateFinanceRecurringType(props.request, recurringTypeItem.id, {
+    await updateFinanceRecurringType(recurringTypeItem.id, {
       isActive: !recurringTypeItem.isActive,
     })
 
@@ -2083,7 +2089,7 @@ async function deleteRecurringType(recurringTypeItem) {
 
 async function executeDeleteRecurringType(recurringTypeItem) {
   try {
-    await deleteFinanceRecurringType(props.request, recurringTypeItem.id)
+    await deleteFinanceRecurringType(recurringTypeItem.id)
 
     if (recurringTypeEditingId.value === recurringTypeItem.id) {
       resetRecurringTypeForm()
@@ -2107,10 +2113,10 @@ async function submitBankAccount() {
     }
 
     if (bankAccountEditingId.value) {
-      await updateFinanceBankAccount(props.request, bankAccountEditingId.value, payload)
+      await updateFinanceBankAccount(bankAccountEditingId.value, payload)
       notifyUser('Conta bancária atualizada com sucesso.', 'success')
     } else {
-      await createFinanceBankAccount(props.request, payload)
+      await createFinanceBankAccount(payload)
       notifyUser('Conta bancária criada com sucesso.', 'success')
     }
 
@@ -2149,7 +2155,7 @@ async function toggleBankAccountStatus(bankAccount) {
   }
 
   try {
-    await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
+    await updateFinanceBankAccountStatus(bankAccount.id, {
       isActive: !bankAccount.isActive,
     })
 
@@ -2176,7 +2182,7 @@ async function deleteBankAccount(bankAccount) {
 
 async function executeDeleteBankAccount(bankAccount) {
   try {
-    await updateFinanceBankAccountStatus(props.request, bankAccount.id, {
+    await updateFinanceBankAccountStatus(bankAccount.id, {
       isActive: false,
     })
 
@@ -2243,7 +2249,7 @@ async function submitSettlement() {
   }
 
   try {
-    await createFinanceSettlement(props.request, entryId, settlementPayload)
+    await createFinanceSettlement(entryId, settlementPayload)
 
     resetSettlementForm()
     closeAccountActionModal()
@@ -2287,10 +2293,10 @@ async function submitRecurringRule() {
     }
 
     if (recurringRuleEditingId.value) {
-      await updateFinanceRecurringRule(props.request, recurringRuleEditingId.value, recurringRulePayload)
+      await updateFinanceRecurringRule(recurringRuleEditingId.value, recurringRulePayload)
       notifyUser('Recorrência atualizada com sucesso.', 'success')
     } else {
-      await createFinanceRecurringRule(props.request, recurringRulePayload)
+      await createFinanceRecurringRule(recurringRulePayload)
       notifyUser('Recorrência criada com sucesso.', 'success')
     }
 
@@ -2351,7 +2357,7 @@ function requestDeleteRecurringRule(recurringRuleItem) {
 
 async function executeDeleteRecurringRule(recurringRuleItem) {
   try {
-    await deleteFinanceRecurringRule(props.request, recurringRuleItem.id)
+    await deleteFinanceRecurringRule(recurringRuleItem.id)
 
     if (recurringRuleEditingId.value === Number(recurringRuleItem.id)) {
       resetRecurringRuleForm()
@@ -2373,7 +2379,7 @@ async function submitInstallmentPlan() {
   }
 
   try {
-    await createFinanceInstallmentPlan(props.request, {
+    await createFinanceInstallmentPlan({
       direction: targetDirection,
       title: installmentForm.title,
       totalAmountBrl: Number(installmentForm.totalAmountBrl),
@@ -2406,7 +2412,7 @@ async function submitRenegotiation() {
   }
 
   try {
-    await renegotiateFinanceInstallmentPlan(props.request, planId, {
+    await renegotiateFinanceInstallmentPlan(planId, {
       installmentsCount: Number(renegotiationForm.installmentsCount),
       reason: renegotiationForm.reason,
       categoryId: normalizeOptionalNumber(renegotiationForm.categoryId),
@@ -2456,7 +2462,7 @@ function requestDeleteInstallmentPlan(installmentPlan) {
 
 async function executeDeleteInstallmentPlan(installmentPlan) {
   try {
-    await updateFinanceInstallmentPlan(props.request, installmentPlan.id, {
+    await updateFinanceInstallmentPlan(installmentPlan.id, {
       status: 'CANCELED',
     })
     notifyUser('Plano de parcelamento cancelado com sucesso.', 'success')
@@ -2487,7 +2493,7 @@ function requestDeleteInvestmentPlan(investmentPlan) {
 
 async function executeDeleteInvestmentPlan(investmentPlan) {
   try {
-    await updateFinanceInvestmentPlan(props.request, investmentPlan.id, {
+    await updateFinanceInvestmentPlan(investmentPlan.id, {
       status: 'CANCELED',
     })
     notifyUser('Plano de investimento cancelado com sucesso.', 'success')
@@ -2517,7 +2523,7 @@ function requestDeleteDebtPlan(debtPlan) {
 
 async function executeDeleteDebtPlan(debtPlan) {
   try {
-    await deleteFinanceDebtPlan(props.request, debtPlan.id)
+    await deleteFinanceDebtPlan(debtPlan.id)
     notifyUser('Plano de dívida excluído com sucesso.', 'success')
     await Promise.all([loadDebtPlans(), loadEntries(), loadInstallments()])
     await loadDashboard()
@@ -2554,7 +2560,7 @@ function requestDeleteExportJob(exportJob) {
 
 async function executeDeleteExportJob(exportJob) {
   try {
-    await deleteFinanceExport(props.request, exportJob.id)
+    await deleteFinanceExport(exportJob.id)
     notifyUser('Exportação excluída com sucesso.', 'success')
     await loadExports(Number(exportMeta.value.page || 1))
   } catch (requestError) {
@@ -2582,7 +2588,7 @@ function requestDeleteOpenFinanceConnection(connection) {
 
 async function executeDeleteOpenFinanceConnection(connection) {
   try {
-    await deleteFinanceOpenFinanceConnection(props.request, connection.id)
+    await deleteFinanceOpenFinanceConnection(connection.id)
     notifyUser('Conexão Open Finance excluída com sucesso.', 'success')
     await loadOpenFinance()
   } catch (requestError) {
@@ -2592,7 +2598,7 @@ async function executeDeleteOpenFinanceConnection(connection) {
 
 async function submitSimulation() {
   try {
-    const response = await createFinanceSimulation(props.request, {
+    const response = await createFinanceSimulation({
       investmentType: simulationForm.investmentType,
       label: simulationForm.label,
       initialAmountBrl: Number(simulationForm.initialAmountBrl),
@@ -2618,7 +2624,7 @@ async function convertSimulationToPlan() {
   }
 
   try {
-    await convertFinanceSimulationToPlan(props.request, latestSimulation.value.id, {
+    await convertFinanceSimulationToPlan(latestSimulation.value.id, {
       label: convertPlanForm.label,
       startDate: convertPlanForm.startDate || getCurrentDateInputValue(),
       contributionDay: Number(convertPlanForm.contributionDay),
@@ -2637,7 +2643,7 @@ async function convertSimulationToPlan() {
 
 async function submitExport() {
   try {
-    await createFinanceExport(props.request, {
+    await createFinanceExport({
       exportType: exportForm.exportType,
       filters: {
         direction: entryFilters.direction || null,
@@ -2665,7 +2671,7 @@ async function downloadFinanceMigrationSnapshot() {
   loadingState.migration = true
 
   try {
-    const response = await fetchFinanceMigrationSnapshot(props.request)
+    const response = await fetchFinanceMigrationSnapshot()
     const snapshotItem = response.data?.item || null
     if (!snapshotItem || typeof snapshotItem !== 'object') {
       notifyUser('Não foi possível gerar o snapshot financeiro.', 'error')
@@ -2709,7 +2715,7 @@ async function submitFinanceMigrationImport() {
     const importedFileContent = await migrationImportFile.value.text()
     const parsedSnapshot = JSON.parse(importedFileContent)
 
-    const response = await importFinanceMigrationSnapshot(props.request, {
+    const response = await importFinanceMigrationSnapshot({
       snapshot: parsedSnapshot,
       replaceExisting: Boolean(migrationForm.replaceExisting),
     })
@@ -2733,7 +2739,7 @@ async function downloadExport(exportJob) {
   }
 
   try {
-    const response = await props.request({
+    const response = await requestClient({
       url: `/finance/exports/${encodeURIComponent(exportJob.id)}/download`,
       method: 'GET',
       responseType: 'blob',
@@ -2755,7 +2761,7 @@ async function downloadExport(exportJob) {
 
 async function createOpenFinanceConnection() {
   try {
-    await createFinanceOpenFinanceConnection(props.request, {
+    await createFinanceOpenFinanceConnection({
       providerId: Number(openFinanceForm.providerId),
       status: openFinanceForm.status,
     })
@@ -2769,7 +2775,7 @@ async function createOpenFinanceConnection() {
 
 async function runOpenFinanceSync(connectionId) {
   try {
-    await syncFinanceOpenFinanceConnection(props.request, connectionId, {
+    await syncFinanceOpenFinanceConnection(connectionId, {
       createMockData: Boolean(openFinanceForm.createMockData),
     })
 

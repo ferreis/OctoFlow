@@ -14,6 +14,11 @@ Documentar o comportamento real do login/sessao no sistema hoje.
 2. uma rota protegida retorna `401`.
 - Refresh token roda com rotacao obrigatoria a cada uso.
 - Reuso de token revogado derruba a familia inteira de tokens.
+- Rotas do host foram separadas em:
+  - publicas: `/auth/*`
+  - protegidas: `/app/*`
+  - aliases legados com redirecionamento: `/dashboard`, `/tasks`, `/finance`, `/profile`
+- Guardas de rota no frontend servem apenas para UX. Segurança/autorização final deve ser sempre do backend.
 
 ## Fluxo de auto-login no F5
 

@@ -1,4 +1,5 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
 import { formatDateTime } from '../../utils/date'
@@ -8,11 +9,12 @@ import { resolveTaskEntryBadgeToneClass } from '../../utils/statusTone'
 import { fetchLocalTasks, fetchTaskUpdateTemplates } from '../../services/tasks'
 import IssueCreateModal from '../tasks/IssueCreateModal.vue'
 import WorkItemEditModal from '../tasks/WorkItemEditModal.vue'
+import { useSessionStore } from '../../stores/sessionStore'
 
 const props = defineProps({
   request: {
     type: Function,
-    required: true,
+    default: null,
   },
   notify: {
     type: Function,
@@ -23,6 +25,10 @@ const props = defineProps({
     default: null,
   },
 })
+const sessionStore = useSessionStore()
+const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
+const requestClient = props.request || sessionStore.authRequest
+const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
 
 const { notifyUser } = useNotification(props.notify)
 
@@ -316,7 +322,7 @@ watch(
 )
 
 watch(
-  () => props.currentUser?.id,
+  () => effectiveCurrentUser.value?.id,
   async (userId, previousUserId) => {
     if (!userId) {
       issueBoard.value = null
@@ -393,7 +399,7 @@ async function loadCachedIssues(options = {}) {
   }
 
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/github/issues/cache',
       method: 'GET',
       params: buildIssueParams(),
@@ -431,7 +437,7 @@ async function loadLocalTasks() {
   loadingLocalTasks.value = true
 
   try {
-    const { data } = await fetchLocalTasks(props.request)
+    const { data } = await fetchLocalTasks()
     localTaskBoard.value = data || null
   } catch (requestError) {
     error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar as tarefas locais pendentes.')
@@ -442,7 +448,7 @@ async function loadLocalTasks() {
 
 async function loadIssueUpdateTemplates() {
   try {
-    const { data } = await fetchTaskUpdateTemplates(props.request)
+    const { data } = await fetchTaskUpdateTemplates()
     issueUpdateTemplates.value = Array.isArray(data?.items) ? data.items : []
   } catch (requestError) {
     issueUpdateTemplates.value = []
@@ -450,11 +456,11 @@ async function loadIssueUpdateTemplates() {
   }
 }
 
-async function syncIssues(options = {}) {
+async function syncIssues() {
   syncing.value = true
   error.value = ''
   try {
-    const { data } = await props.request({
+    const { data } = await requestClient({
       url: '/github/issues/assigned',
       method: 'GET',
       params: buildIssueParams(),
@@ -1171,8 +1177,6 @@ function resolveEntryOriginLabel(entry) {
 
     <IssueCreateModal
       v-if="createModalOpen"
-      :request="props.request"
-      :current-user="props.currentUser"
       :repositories="repositories"
       :initial-repository-key="createRepositoryKey"
       @close="createModalOpen = false"
@@ -1182,9 +1186,6 @@ function resolveEntryOriginLabel(entry) {
     <WorkItemEditModal
       v-if="activeEditingMode"
       :key="activeEditingKey"
-      :request="props.request"
-      :notify="props.notify"
-      :current-user="props.currentUser"
       :mode="activeEditingMode"
       :issue="editingIssue"
       :task="editingLocalTask"

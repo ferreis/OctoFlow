@@ -887,6 +887,17 @@ select optgroup {
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
 }
 
+.auth-page-shell {
+  display: grid;
+  gap: 18px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  margin: 0 auto;
+  max-width: 1480px;
+  min-height: 100vh;
+  padding: 22px 26px 22px 26px;
+  width: 100%;
+}
+
 .auth-copy-card,
 .auth-form-card {
   display: grid;
