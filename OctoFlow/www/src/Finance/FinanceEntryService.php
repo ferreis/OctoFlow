@@ -10,6 +10,7 @@ final class FinanceEntryService
     public function __construct(
         private readonly Connection $connection,
         private readonly FinanceCatalogService $financeCatalogService,
+        private readonly FinanceRecurringService $financeRecurringService,
     ) {
     }
 
@@ -422,7 +423,7 @@ final class FinanceEntryService
     {
         $ownerId = $this->requireOwnerId($user);
 
-        return $this->connection->transactional(function () use ($ownerId, $entryId, $payload): array {
+        return $this->connection->transactional(function () use ($user, $ownerId, $entryId, $payload): array {
             $entry = $this->getEntryById($ownerId, $entryId);
             $this->assertEntryCanReceiveSettlement($entry);
 
@@ -455,6 +456,7 @@ final class FinanceEntryService
 
                 $createdSettlements[] = $settlementOperationResult['settlement'];
                 $updatedEntries[] = $settlementOperationResult['entry'];
+                $this->generateNextRecurringReceivableEntryWhenNeeded($user, $settlementOperationResult['entry']);
 
                 if (isset($settlementOperationResult['creditCardEntry']) && is_array($settlementOperationResult['creditCardEntry'])) {
                     $generatedCreditCardEntries[] = $settlementOperationResult['creditCardEntry'];
@@ -814,6 +816,38 @@ final class FinanceEntryService
         }
     }
 
+    /**
+     * @param array<string, mixed> $updatedEntry
+     */
+    private function generateNextRecurringReceivableEntryWhenNeeded(User $user, array $updatedEntry): void
+    {
+        $normalizedEntryDirection = strtoupper(trim((string) ($updatedEntry['direction'] ?? '')));
+        if ($normalizedEntryDirection !== FinanceConstants::DIRECTION_RECEIVABLE) {
+            return;
+        }
+
+        $normalizedEntryStatus = strtoupper(trim((string) ($updatedEntry['status'] ?? '')));
+        if ($normalizedEntryStatus !== 'RECEIVED') {
+            return;
+        }
+
+        $recurringRuleId = (int) ($updatedEntry['recurringRuleId'] ?? 0);
+        if ($recurringRuleId <= 0) {
+            return;
+        }
+
+        $competenceReferenceDate = FinanceInput::normalizeOptionalDate($updatedEntry['competenceMonth'] ?? null)
+            ?? FinanceInput::normalizeOptionalDate($updatedEntry['dueDate'] ?? null)
+            ?? new \DateTimeImmutable('today');
+
+        $this->financeRecurringService->ensureNextMonthlyEntryForRule(
+            $user,
+            $recurringRuleId,
+            $competenceReferenceDate,
+            'settlement',
+        );
+    }
+
     public function refreshOverdueStatusesForAllUsers(): int
     {
         $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
@@ -875,6 +909,7 @@ final class FinanceEntryService
                 entry.fx_rate_date AS "fxRateDate",
                 entry.source_origin AS "sourceOrigin",
                 entry.source_system AS "sourceSystem",
+                entry.recurring_rule_id AS "recurringRuleId",
                 entry.fully_settled_at AS "fullySettledAt",
                 entry.created_at AS "createdAt",
                 entry.updated_at AS "updatedAt",

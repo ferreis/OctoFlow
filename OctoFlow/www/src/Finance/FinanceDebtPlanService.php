@@ -115,11 +115,11 @@ final class FinanceDebtPlanService
         }
 
         $maxRecommendedPaymentBrl = (float) $preview['maxRecommendedPaymentBrl'];
-        if ($selectedMonthlyPaymentBrl > ($maxRecommendedPaymentBrl + 0.01)) {
+        if ($maxRecommendedPaymentBrl > 0 && $selectedMonthlyPaymentBrl > ($maxRecommendedPaymentBrl + 0.01)) {
             throw new \InvalidArgumentException('A opção selecionada ultrapassa o limite recomendado para sua renda disponível.');
         }
 
-        if ($selectedSuggestion !== null && ($selectedSuggestion['withinLimit'] ?? false) !== true) {
+        if ($maxRecommendedPaymentBrl > 0 && $selectedSuggestion !== null && ($selectedSuggestion['withinLimit'] ?? false) !== true) {
             throw new \InvalidArgumentException('A opção selecionada está fora do limite permitido. Refaça a simulação e selecione uma opção válida.');
         }
 
@@ -294,6 +294,19 @@ final class FinanceDebtPlanService
             $proposedAmountBrl = null;
         }
 
+        $discountAmountBrl = FinanceInput::normalizeOptionalMoney($payload['discountAmountBrl'] ?? null, null);
+        if ($discountAmountBrl !== null && $discountAmountBrl <= 0) {
+            $discountAmountBrl = null;
+        }
+
+        if ($discountAmountBrl !== null && $discountAmountBrl >= $totalAmountBrl) {
+            throw new \InvalidArgumentException('O desconto deve ser menor que o valor total da dívida.');
+        }
+
+        if ($negotiatedAmountBrl === null && $proposedAmountBrl === null && $discountAmountBrl !== null) {
+            $negotiatedAmountBrl = $this->roundMoney($totalAmountBrl - $discountAmountBrl);
+        }
+
         $referenceAmountBrl = $totalAmountBrl;
         $referenceType = 'FULL';
         if ($negotiatedAmountBrl !== null && $negotiatedAmountBrl > 0) {
@@ -347,6 +360,7 @@ final class FinanceDebtPlanService
             'totalAmountBrl' => $this->roundMoney($totalAmountBrl),
             'negotiatedAmountBrl' => $negotiatedAmountBrl !== null ? $this->roundMoney($negotiatedAmountBrl) : null,
             'proposedAmountBrl' => $proposedAmountBrl !== null ? $this->roundMoney($proposedAmountBrl) : null,
+            'discountAmountBrl' => $discountAmountBrl !== null ? $this->roundMoney($discountAmountBrl) : null,
             'selectedReferenceAmountBrl' => $this->roundMoney($referenceAmountBrl),
             'selectedReferenceType' => $referenceType,
             'downPaymentBrl' => $this->roundMoney($downPaymentBrl),

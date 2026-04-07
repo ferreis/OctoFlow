@@ -92,15 +92,18 @@ final class FinanceInstallmentService
     public function updatePlan(User $user, int $planId, array $payload): array
     {
         $ownerId = $this->requireOwnerId($user);
-        $existingPlan = $this->getPlanById($ownerId, $planId);
 
         $requestedStatus = strtoupper(trim((string) ($payload['status'] ?? '')));
         if ($requestedStatus !== 'CANCELED') {
             throw new \InvalidArgumentException('Only CANCELED status is allowed in this operation.');
         }
 
-        $currentStatus = strtoupper(trim((string) ($existingPlan['status'] ?? '')));
-        if ($currentStatus !== 'CANCELED') {
+        return $this->connection->transactional(function () use ($user, $ownerId, $planId): array {
+            $existingPlan = $this->getPlanById($ownerId, $planId);
+
+            $this->softDeleteInstallmentEntriesForPlan($user, $planId);
+            $this->softDeleteDownPaymentEntriesForPlan($user, $ownerId, $existingPlan);
+
             $this->connection->update('finance_installment_plan', [
                 'status' => 'CANCELED',
                 'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
@@ -108,9 +111,9 @@ final class FinanceInstallmentService
                 'id' => $planId,
                 'owner_id' => $ownerId,
             ]);
-        }
 
-        return $this->getPlanById($ownerId, $planId);
+            return $this->getPlanById($ownerId, $planId);
+        });
     }
 
     /**
@@ -123,26 +126,7 @@ final class FinanceInstallmentService
         return $this->connection->transactional(function () use ($user, $ownerId, $planId): array {
             $plan = $this->getPlanById($ownerId, $planId);
 
-            /** @var list<int|string> $installmentEntryIds */
-            $installmentEntryIds = $this->connection->fetchFirstColumn(<<<'SQL'
-                SELECT entry.id
-                FROM finance_installment_item item
-                INNER JOIN finance_entry entry ON entry.id = item.entry_id
-                WHERE item.plan_id = :planId
-                  AND entry.deleted_at IS NULL
-            SQL, [
-                'planId' => $planId,
-            ]);
-
-            foreach ($installmentEntryIds as $entryIdValue) {
-                $entryId = (int) $entryIdValue;
-                if ($entryId <= 0) {
-                    continue;
-                }
-
-                $this->financeEntryService->softDeleteEntry($user, $entryId);
-            }
-
+            $this->softDeleteInstallmentEntriesForPlan($user, $planId);
             $this->softDeleteDownPaymentEntriesForPlan($user, $ownerId, $plan);
 
             $deletedAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -162,6 +146,29 @@ final class FinanceInstallmentService
                 'deletedAt' => $deletedAt,
             ];
         });
+    }
+
+    private function softDeleteInstallmentEntriesForPlan(User $user, int $planId): void
+    {
+        /** @var list<int|string> $installmentEntryIds */
+        $installmentEntryIds = $this->connection->fetchFirstColumn(<<<'SQL'
+            SELECT entry.id
+            FROM finance_installment_item item
+            INNER JOIN finance_entry entry ON entry.id = item.entry_id
+            WHERE item.plan_id = :planId
+              AND entry.deleted_at IS NULL
+        SQL, [
+            'planId' => $planId,
+        ]);
+
+        foreach ($installmentEntryIds as $entryIdValue) {
+            $entryId = (int) $entryIdValue;
+            if ($entryId <= 0) {
+                continue;
+            }
+
+            $this->financeEntryService->softDeleteEntry($user, $entryId);
+        }
     }
 
     /**

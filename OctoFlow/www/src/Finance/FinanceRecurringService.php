@@ -347,6 +347,31 @@ final class FinanceRecurringService
         return $generatedCount;
     }
 
+    public function ensureNextMonthlyEntryForRule(
+        User $user,
+        int $ruleId,
+        \DateTimeImmutable $referenceCompetenceMonth,
+        string $runSource = 'settlement',
+    ): int {
+        $ownerId = $this->requireOwnerId($user);
+        $rule = $this->getRuleGenerationDataById($ownerId, $ruleId);
+
+        if (!(bool) ($rule['isActive'] ?? false)) {
+            return 0;
+        }
+
+        $targetCompetenceMonth = (new \DateTimeImmutable($referenceCompetenceMonth->format('Y-m-01')))->modify('+1 month');
+
+        return $this->generateMissingEntriesForRule(
+            $ownerId,
+            $rule,
+            $targetCompetenceMonth,
+            $targetCompetenceMonth,
+            $runSource,
+            true,
+        );
+    }
+
     public function generateDailySync(int $monthsAhead = 2): int
     {
         $monthsToGenerate = max(1, min(12, $monthsAhead));

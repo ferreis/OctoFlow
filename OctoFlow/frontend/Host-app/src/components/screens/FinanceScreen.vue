@@ -352,6 +352,7 @@ const debtForm = reactive({
   totalAmountBrl: '',
   negotiatedAmountBrl: '',
   proposedAmountBrl: '',
+  discountAmountBrl: '',
   downPaymentBrl: '0',
   maxCommitmentPercent: '30',
   desiredInstallmentsCount: 12,
@@ -1014,6 +1015,23 @@ const selectedSettlementEntry = computed(() => {
 const selectedSettlementRemainingAmountBrl = computed(() => Number(selectedSettlementEntry.value?.remainingAmountBrl || 0))
 const selectedSettlementEntryTypeCode = computed(() => String(selectedSettlementEntry.value?.entryType || '').toUpperCase())
 
+function autofillSettlementAmountFromSelectedEntry(forceReplace = false) {
+  const remainingAmountBrl = Number(selectedSettlementEntry.value?.remainingAmountBrl || 0)
+  if (!Number.isFinite(remainingAmountBrl) || remainingAmountBrl <= 0) {
+    if (forceReplace) {
+      settlementForm.amountBrl = ''
+    }
+    return
+  }
+
+  const currentSettlementAmountBrl = normalizeMoneyInputValue(settlementForm.amountBrl, 0)
+  if (!forceReplace && currentSettlementAmountBrl > 0) {
+    return
+  }
+
+  settlementForm.amountBrl = remainingAmountBrl.toFixed(2)
+}
+
 onMounted(async () => {
   await loadInitialData()
 })
@@ -1148,6 +1166,13 @@ watch(
 
     settlementForm.creditCardId = ''
     settlementForm.creditCardDueDate = ''
+  },
+)
+
+watch(
+  () => settlementForm.entryId,
+  () => {
+    autofillSettlementAmountFromSelectedEntry(true)
   },
 )
 
@@ -1428,14 +1453,19 @@ async function loadDebtPlans() {
 }
 
 function buildDebtSimulationPayload() {
+  const normalizedNegotiatedAmountBrl = normalizeOptionalMoneyInputValue(debtForm.negotiatedAmountBrl)
+  const normalizedProposedAmountBrl = normalizeOptionalMoneyInputValue(debtForm.proposedAmountBrl)
+  const normalizedDiscountAmountBrl = normalizeOptionalMoneyInputValue(debtForm.discountAmountBrl)
+
   return {
     title: debtForm.title,
     creditorName: debtForm.creditorName || null,
-    totalAmountBrl: Number(debtForm.totalAmountBrl),
-    negotiatedAmountBrl: debtForm.negotiatedAmountBrl === '' ? null : Number(debtForm.negotiatedAmountBrl),
-    proposedAmountBrl: debtForm.proposedAmountBrl === '' ? null : Number(debtForm.proposedAmountBrl),
-    downPaymentBrl: Number(debtForm.downPaymentBrl || 0),
-    maxCommitmentPercent: Number(debtForm.maxCommitmentPercent || 30),
+    totalAmountBrl: normalizeMoneyInputValue(debtForm.totalAmountBrl, 0),
+    negotiatedAmountBrl: normalizedNegotiatedAmountBrl,
+    proposedAmountBrl: normalizedProposedAmountBrl,
+    discountAmountBrl: normalizedDiscountAmountBrl,
+    downPaymentBrl: normalizeMoneyInputValue(debtForm.downPaymentBrl, 0),
+    maxCommitmentPercent: normalizeMoneyInputValue(debtForm.maxCommitmentPercent, 30),
     desiredInstallmentsCount: Number(debtForm.desiredInstallmentsCount || 0),
     firstDueDate: debtForm.firstDueDate || null,
     categoryId: normalizeOptionalNumber(debtForm.categoryId),
@@ -1461,14 +1491,46 @@ function isCreatingDebtPlanFromSuggestion(suggestionOption) {
   return debtPlanCreationSuggestionKey.value !== '' && debtPlanCreationSuggestionKey.value === String(suggestionOption?.key || '')
 }
 
+function hasDebtRecommendationLimit() {
+  return Number(debtPreview.value?.maxRecommendedPaymentBrl || 0) > 0
+}
+
+function canCreateDebtPlanFromSuggestion(suggestionOption) {
+  if (!suggestionOption) {
+    return false
+  }
+
+  if (!hasDebtRecommendationLimit()) {
+    return true
+  }
+
+  return suggestionOption.withinLimit === true
+}
+
+function getDebtSuggestionLimitBadgeStatus(suggestionOption) {
+  if (!hasDebtRecommendationLimit()) {
+    return 'SCHEDULED'
+  }
+
+  return suggestionOption?.withinLimit === true ? 'PAID' : 'OVERDUE'
+}
+
+function getDebtSuggestionLimitBadgeLabel(suggestionOption) {
+  if (!hasDebtRecommendationLimit()) {
+    return 'Sem base'
+  }
+
+  return suggestionOption?.withinLimit === true ? 'Sim' : 'Não'
+}
+
 async function createDebtPlanFromSuggestion(suggestionOption) {
   if (!debtPreview.value || !debtPreviewRequestPayload.value) {
     notifyUser('Execute a simulação antes de criar o plano de dívida.', 'warning')
     return
   }
 
-  if (!suggestionOption || suggestionOption.withinLimit !== true) {
-    notifyUser('Selecione uma opção válida dentro do limite para criar o plano.', 'warning')
+  if (!canCreateDebtPlanFromSuggestion(suggestionOption)) {
+    notifyUser('Selecione uma opção válida para criar o plano.', 'warning')
     return
   }
 
@@ -2187,7 +2249,7 @@ async function submitSettlement() {
     return
   }
 
-  const settlementAmountBrl = Number(settlementForm.amountBrl)
+  const settlementAmountBrl = normalizeMoneyInputValue(settlementForm.amountBrl, 0)
   if (!Number.isFinite(settlementAmountBrl) || settlementAmountBrl <= 0) {
     notifyUser('Informe um valor de baixa maior que zero.', 'warning')
     return
@@ -2409,12 +2471,12 @@ async function submitInstallmentPlan() {
     await createFinanceInstallmentPlan({
       direction: targetDirection,
       title: installmentForm.title,
-      totalAmountBrl: Number(installmentForm.totalAmountBrl),
-      downPaymentBrl: Number(installmentForm.downPaymentBrl || 0),
+      totalAmountBrl: normalizeMoneyInputValue(installmentForm.totalAmountBrl, 0),
+      downPaymentBrl: normalizeMoneyInputValue(installmentForm.downPaymentBrl, 0),
       installmentsCount: Number(installmentForm.installmentsCount),
-      interestAmountBrl: Number(installmentForm.interestAmountBrl || 0),
-      discountAmountBrl: Number(installmentForm.discountAmountBrl || 0),
-      fineAmountBrl: Number(installmentForm.fineAmountBrl || 0),
+      interestAmountBrl: normalizeMoneyInputValue(installmentForm.interestAmountBrl, 0),
+      discountAmountBrl: normalizeMoneyInputValue(installmentForm.discountAmountBrl, 0),
+      fineAmountBrl: normalizeMoneyInputValue(installmentForm.fineAmountBrl, 0),
       firstDueDate: installmentForm.firstDueDate || getCurrentDateInputValue(),
       categoryId: normalizeOptionalNumber(installmentForm.categoryId),
       defaultBankAccountId: normalizeOptionalNumber(installmentForm.defaultBankAccountId),
@@ -2927,6 +2989,50 @@ function formatSettlementEntryOptionLabel(entryItem) {
   const entryDueDateLabel = formatDate(entryItem?.dueDate, '-')
   const entryRemainingAmountLabel = formatCurrency(entryItem?.remainingAmountBrl)
   return `${entryTitle} - ${entryDueDateLabel} - Em aberto ${entryRemainingAmountLabel}`
+}
+
+function normalizeMoneyInputValue(value, fallbackValue = 0) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallbackValue
+  }
+
+  const normalizedTextValue = String(value ?? '').trim()
+  if (normalizedTextValue === '') {
+    return fallbackValue
+  }
+
+  const compactTextValue = normalizedTextValue.replace(/\s+/g, '')
+  const hasCommaSeparator = compactTextValue.includes(',')
+  const hasDotSeparator = compactTextValue.includes('.')
+  let canonicalNumericValue = compactTextValue
+
+  if (hasCommaSeparator && hasDotSeparator) {
+    const lastCommaPosition = canonicalNumericValue.lastIndexOf(',')
+    const lastDotPosition = canonicalNumericValue.lastIndexOf('.')
+
+    if (lastCommaPosition > lastDotPosition) {
+      canonicalNumericValue = canonicalNumericValue.replace(/\./g, '').replace(',', '.')
+    } else {
+      canonicalNumericValue = canonicalNumericValue.replace(/,/g, '')
+    }
+  } else if (hasCommaSeparator) {
+    canonicalNumericValue = canonicalNumericValue.replace(/\./g, '').replace(',', '.')
+  } else {
+    canonicalNumericValue = canonicalNumericValue.replace(/,/g, '')
+  }
+
+  const parsedNumericValue = Number(canonicalNumericValue)
+  return Number.isFinite(parsedNumericValue) ? parsedNumericValue : fallbackValue
+}
+
+function normalizeOptionalMoneyInputValue(value) {
+  const normalizedTextValue = String(value ?? '').trim()
+  if (normalizedTextValue === '') {
+    return null
+  }
+
+  const parsedMoneyValue = normalizeMoneyInputValue(normalizedTextValue, Number.NaN)
+  return Number.isFinite(parsedMoneyValue) ? parsedMoneyValue : null
 }
 
 function normalizeOptionalNumber(value) {
@@ -4132,6 +4238,11 @@ function applyAccountsDirectionContext() {
           </label>
 
           <label>
+            <span>Desconto aplicado (opcional)</span>
+            <input v-model="debtForm.discountAmountBrl" type="number" step="0.01" min="0">
+          </label>
+
+          <label>
             <span>Entrada (opcional)</span>
             <input v-model="debtForm.downPaymentBrl" type="number" step="0.01" min="0">
           </label>
@@ -4243,13 +4354,13 @@ function applyAccountsDirectionContext() {
                 <td>{{ suggestion.commitmentPercent !== null ? formatPercent(suggestion.commitmentPercent) : '-' }}</td>
                 <td>
                   <RemoteFinanceStatusBadge
-                    :status="suggestion.withinLimit ? 'PAID' : 'OVERDUE'"
-                    :label="suggestion.withinLimit ? 'Sim' : 'Não'"
+                    :status="getDebtSuggestionLimitBadgeStatus(suggestion)"
+                    :label="getDebtSuggestionLimitBadgeLabel(suggestion)"
                   />
                 </td>
                 <td class="finance-actions-cell">
                   <button
-                    v-if="suggestion.withinLimit"
+                    v-if="canCreateDebtPlanFromSuggestion(suggestion)"
                     type="button"
                     class="finance-inline-action"
                     :disabled="debtPlanCreationSuggestionKey !== ''"
@@ -4823,7 +4934,7 @@ function applyAccountsDirectionContext() {
 
         <form
           v-else-if="accountActionModalState.actionType === 'SETTLEMENT'"
-          class="finance-form-grid"
+          class="finance-form-grid finance-settlement-form"
           @submit.prevent="submitSettlement"
         >
           <label>
@@ -4859,10 +4970,13 @@ function applyAccountsDirectionContext() {
             <small class="finance-field-hint">Se não informar, o sistema usa a data/hora atual.</small>
           </label>
 
-          <label class="finance-toggle-label">
-            <input v-model="settlementForm.useCreditCard" type="checkbox">
-            <span>Baixa de valor em Crédito</span>
-          </label>
+          <div class="finance-settlement-toggle-field">
+            <span>Forma da baixa</span>
+            <label class="finance-toggle-label">
+              <input v-model="settlementForm.useCreditCard" type="checkbox">
+              <span>Baixa de valor em crédito</span>
+            </label>
+          </div>
 
           <label v-if="settlementForm.useCreditCard">
             <span>Cartão de crédito</span>
@@ -5514,6 +5628,42 @@ function applyAccountsDirectionContext() {
 .finance-toggle-label input {
   width: auto;
   min-height: auto;
+}
+
+.finance-settlement-form {
+  align-items: start;
+}
+
+.finance-settlement-toggle-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.finance-settlement-toggle-field > span {
+  font-size: 0.78rem;
+  color: var(--muted, #475569);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.finance-settlement-form .finance-toggle-label {
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--line, #cbd5e1);
+  padding: 0 12px;
+  background: var(--app-field-bg, color-mix(in srgb, var(--surface-strong, #ffffff) 88%, transparent));
+}
+
+.finance-settlement-form .finance-toggle-label span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink, #0f172a);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .finance-inline-table-wrap {
