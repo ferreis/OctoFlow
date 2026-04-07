@@ -1,5 +1,41 @@
 @import "tailwindcss";
 @import "../../shared/styles/app-visual-standard.css";
+@import "./finance-components.css";
+
+@theme {
+  --color-primary: var(--color-primary);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-bg: var(--color-bg);
+  --color-text: var(--color-text);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-muted: var(--surface-muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-nav-bg: var(--nav-bg);
+  --color-nav-card: var(--nav-card);
+  --color-nav-card-hover: var(--nav-card-hover);
+  --color-nav-border: var(--nav-border);
+  --color-nav-text: var(--nav-text);
+  --color-nav-muted: var(--nav-muted);
+  --color-nav-active-bg: var(--nav-active-bg);
+  --color-nav-active-border: var(--nav-active-border);
+  --color-hero-surface: var(--hero-surface);
+  --color-modal-surface: var(--modal-surface);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary-soft: var(--secondary-soft);
+  --color-accent-soft: var(--accent-soft);
+  --color-soft-surface: var(--soft-surface);
+}
 
 :root {
   --radius-xl: 30px;
