@@ -409,7 +409,14 @@ final class FinanceEntryService
     /**
      * @param array<string, mixed> $payload
      *
-     * @return array{entry: array<string, mixed>, settlement: array<string, mixed>, creditCardEntry?: array<string, mixed>}
+     * @return array{
+     *   entry: array<string, mixed>,
+     *   settlement: array<string, mixed>,
+     *   creditCardEntry?: array<string, mixed>,
+     *   settlements?: list<array<string, mixed>>,
+     *   settledEntries?: list<array<string, mixed>>,
+     *   creditCardEntries?: list<array<string, mixed>>
+     * }
      */
     public function settleEntry(User $user, int $entryId, array $payload): array
     {
@@ -417,148 +424,394 @@ final class FinanceEntryService
 
         return $this->connection->transactional(function () use ($ownerId, $entryId, $payload): array {
             $entry = $this->getEntryById($ownerId, $entryId);
-            $currentStatus = (string) $entry['status'];
-            if (in_array($currentStatus, ['CANCELED', 'NEGOTIATED'], true)) {
-                throw new \InvalidArgumentException('Canceled or negotiated entries cannot receive settlements.');
-            }
-
-            $remainingAmountBrl = (float) $entry['remainingAmountBrl'];
-            if ($remainingAmountBrl <= 0.00001) {
-                throw new \InvalidArgumentException('This entry is already fully settled.');
-            }
+            $this->assertEntryCanReceiveSettlement($entry);
 
             $settlementAmountBrl = FinanceInput::normalizeMoney($payload['amountBrl'] ?? 0, 'amountBrl');
             if ($settlementAmountBrl <= 0) {
                 throw new \InvalidArgumentException('The settlement amount must be greater than zero.');
             }
 
-            if ($settlementAmountBrl - $remainingAmountBrl > 0.009) {
-                throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
-            }
+            $settlementContext = $this->resolveSettlementContext($ownerId, $entry, $payload);
+            $entrySettlementAllocations = $this->resolveSettlementEntryAllocations($ownerId, $entry, $settlementAmountBrl);
 
-            $settlementDate = FinanceInput::normalizeOptionalDate($payload['settledAt'] ?? null) ?? new \DateTimeImmutable();
-            $useCreditCard = FinanceInput::normalizeBoolean($payload['useCreditCard'] ?? false, false);
+            /** @var list<array<string, mixed>> $createdSettlements */
+            $createdSettlements = [];
+            /** @var list<array<string, mixed>> $updatedEntries */
+            $updatedEntries = [];
+            /** @var list<array<string, mixed>> $generatedCreditCardEntries */
+            $generatedCreditCardEntries = [];
 
-            $settlementType = strtoupper(trim((string) ($payload['settlementType'] ?? '')));
-            if ($settlementType === '') {
-                if ($useCreditCard) {
-                    $settlementType = 'CREDIT_CARD';
-                } else {
-                    $settlementType = ((string) $entry['direction']) === FinanceConstants::DIRECTION_PAYABLE
-                        ? 'PAYMENT'
-                        : 'RECEIPT';
-                }
-            }
+            foreach ($entrySettlementAllocations as $entrySettlementAllocation) {
+                $entryToSettle = $this->getEntryById($ownerId, (int) $entrySettlementAllocation['entryId']);
+                $this->assertEntryCanReceiveSettlement($entryToSettle);
 
-            if (!in_array($settlementType, ['PAYMENT', 'RECEIPT', 'TRANSFER', 'ADJUSTMENT', 'CREDIT_CARD'], true)) {
-                throw new \InvalidArgumentException('The settlement type is invalid.');
-            }
-
-            $settlementBankAccountId = null;
-            $creditCardId = null;
-
-            if ($useCreditCard) {
-                if ((string) $entry['direction'] !== FinanceConstants::DIRECTION_PAYABLE) {
-                    throw new \InvalidArgumentException('Credit card settlement is only allowed for payable entries.');
-                }
-
-                $creditCardId = $this->normalizeOwnedBankAccountId($ownerId, $payload['creditCardId'] ?? null, false);
-                if ($creditCardId === null) {
-                    throw new \InvalidArgumentException('A credit card account must be selected for credit settlement.');
-                }
-
-                $creditCard = $this->financeCatalogService->getBankAccountById($ownerId, $creditCardId);
-                $creditCardAccountType = strtoupper(trim((string) ($creditCard['accountType'] ?? '')));
-                if ($creditCardAccountType !== 'CREDIT') {
-                    throw new \InvalidArgumentException('The selected account is not a credit card.');
-                }
-
-                $settlementBankAccountId = $creditCardId;
-            } else {
-                $settlementBankAccountId = $this->normalizeOwnedBankAccountId(
+                $settlementOperationResult = $this->applySettlementOnEntry(
                     $ownerId,
-                    $payload['bankAccountId'] ?? $entry['bankAccountId'] ?? null,
-                    false,
-                );
-            }
-
-            $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-            $settlementNote = trim((string) ($payload['note'] ?? ''));
-            if ($settlementNote === '' && $useCreditCard && $creditCardId !== null) {
-                $settlementNote = sprintf('Settlement in credit card account #%d.', $creditCardId);
-            }
-
-            $this->connection->insert('finance_entry_settlement', [
-                'owner_id' => $ownerId,
-                'entry_id' => $entryId,
-                'bank_account_id' => $settlementBankAccountId,
-                'settlement_type' => $settlementType,
-                'amount_brl' => $settlementAmountBrl,
-                'settled_at' => $settlementDate->format('Y-m-d H:i:s'),
-                'note' => $settlementNote !== '' ? $settlementNote : null,
-                'created_at' => $now,
-            ]);
-
-            $settlementId = (int) $this->connection->lastInsertId();
-
-            if ($settlementBankAccountId !== null) {
-                $this->applyBankAccountBalanceChange(
-                    $ownerId,
-                    $settlementBankAccountId,
-                    $entryId,
-                    $settlementId,
-                    (string) $entry['direction'],
-                    $settlementAmountBrl,
-                    $settlementDate,
-                    false,
-                );
-            }
-
-            $updatedEntry = $this->recalculateEntrySettlement($ownerId, $entryId, 'SETTLED');
-            $generatedCreditCardEntry = null;
-
-            if ($useCreditCard && $creditCardId !== null) {
-                $generatedCreditCardEntry = $this->createCreditCardSettlementEntry(
-                    $ownerId,
-                    $entry,
-                    $settlementAmountBrl,
-                    $settlementDate,
-                    $creditCardId,
+                    $entryToSettle,
+                    (float) $entrySettlementAllocation['amountBrl'],
+                    $settlementContext,
                     $payload,
                 );
+
+                $createdSettlements[] = $settlementOperationResult['settlement'];
+                $updatedEntries[] = $settlementOperationResult['entry'];
+
+                if (isset($settlementOperationResult['creditCardEntry']) && is_array($settlementOperationResult['creditCardEntry'])) {
+                    $generatedCreditCardEntries[] = $settlementOperationResult['creditCardEntry'];
+                }
             }
 
-            /** @var array<string, mixed>|false $createdSettlement */
-            $createdSettlement = $this->connection->fetchAssociative(<<<'SQL'
-                SELECT
-                    id,
-                    entry_id AS "entryId",
-                    bank_account_id AS "bankAccountId",
-                    settlement_type AS "settlementType",
-                    amount_brl AS "amountBrl",
-                    settled_at AS "settledAt",
-                    note,
-                    created_at AS "createdAt"
-                FROM finance_entry_settlement
-                WHERE id = :settlementId
-                LIMIT 1
-            SQL, ['settlementId' => $settlementId]);
-
-            if (!is_array($createdSettlement)) {
-                throw new \RuntimeException('Failed to read created settlement.');
+            $lastCreatedSettlement = $createdSettlements[count($createdSettlements) - 1] ?? null;
+            if (!is_array($lastCreatedSettlement)) {
+                throw new \RuntimeException('Failed to process settlement.');
             }
 
+            $updatedRequestedEntry = $this->getEntryById($ownerId, $entryId);
             $response = [
-                'entry' => $updatedEntry,
-                'settlement' => $createdSettlement,
+                'entry' => $updatedRequestedEntry,
+                'settlement' => $lastCreatedSettlement,
             ];
 
-            if ($generatedCreditCardEntry !== null) {
-                $response['creditCardEntry'] = $generatedCreditCardEntry;
+            if (count($createdSettlements) > 1) {
+                $response['settlements'] = $createdSettlements;
+                $response['settledEntries'] = $updatedEntries;
+            }
+
+            if (count($generatedCreditCardEntries) === 1) {
+                $response['creditCardEntry'] = $generatedCreditCardEntries[0];
+            }
+
+            if (count($generatedCreditCardEntries) > 1) {
+                $response['creditCardEntries'] = $generatedCreditCardEntries;
             }
 
             return $response;
         });
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @param array<string, mixed> $payload
+     *
+     * @return array{
+     *   settlementDate: \DateTimeImmutable,
+     *   useCreditCard: bool,
+     *   settlementType: string,
+     *   settlementBankAccountId: int|null,
+     *   creditCardId: int|null,
+     *   settlementNote: string
+     * }
+     */
+    private function resolveSettlementContext(int $ownerId, array $entry, array $payload): array
+    {
+        $settlementDate = FinanceInput::normalizeOptionalDate($payload['settledAt'] ?? null) ?? new \DateTimeImmutable();
+        $useCreditCard = FinanceInput::normalizeBoolean($payload['useCreditCard'] ?? false, false);
+
+        $settlementType = strtoupper(trim((string) ($payload['settlementType'] ?? '')));
+        if ($settlementType === '') {
+            if ($useCreditCard) {
+                $settlementType = 'CREDIT_CARD';
+            } else {
+                $settlementType = ((string) $entry['direction']) === FinanceConstants::DIRECTION_PAYABLE
+                    ? 'PAYMENT'
+                    : 'RECEIPT';
+            }
+        }
+
+        if (!in_array($settlementType, ['PAYMENT', 'RECEIPT', 'TRANSFER', 'ADJUSTMENT', 'CREDIT_CARD'], true)) {
+            throw new \InvalidArgumentException('The settlement type is invalid.');
+        }
+
+        $settlementBankAccountId = null;
+        $creditCardId = null;
+
+        if ($useCreditCard) {
+            if ((string) $entry['direction'] !== FinanceConstants::DIRECTION_PAYABLE) {
+                throw new \InvalidArgumentException('Credit card settlement is only allowed for payable entries.');
+            }
+
+            $creditCardId = $this->normalizeOwnedBankAccountId($ownerId, $payload['creditCardId'] ?? null, false);
+            if ($creditCardId === null) {
+                throw new \InvalidArgumentException('A credit card account must be selected for credit settlement.');
+            }
+
+            $creditCard = $this->financeCatalogService->getBankAccountById($ownerId, $creditCardId);
+            $creditCardAccountType = strtoupper(trim((string) ($creditCard['accountType'] ?? '')));
+            if ($creditCardAccountType !== 'CREDIT') {
+                throw new \InvalidArgumentException('The selected account is not a credit card.');
+            }
+
+            $settlementBankAccountId = $creditCardId;
+        } else {
+            $settlementBankAccountId = $this->normalizeOwnedBankAccountId(
+                $ownerId,
+                $payload['bankAccountId'] ?? $entry['bankAccountId'] ?? null,
+                false,
+            );
+        }
+
+        $settlementNote = trim((string) ($payload['note'] ?? ''));
+        if ($settlementNote === '' && $useCreditCard && $creditCardId !== null) {
+            $settlementNote = sprintf('Settlement in credit card account #%d.', $creditCardId);
+        }
+
+        return [
+            'settlementDate' => $settlementDate,
+            'useCreditCard' => $useCreditCard,
+            'settlementType' => $settlementType,
+            'settlementBankAccountId' => $settlementBankAccountId,
+            'creditCardId' => $creditCardId,
+            'settlementNote' => $settlementNote,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     *
+     * @return list<array{entryId: int, amountBrl: float}>
+     */
+    private function resolveSettlementEntryAllocations(int $ownerId, array $entry, float $requestedSettlementAmountBrl): array
+    {
+        $entryId = (int) ($entry['id'] ?? 0);
+        $entryRemainingAmountBrl = (float) ($entry['remainingAmountBrl'] ?? 0);
+
+        if ($requestedSettlementAmountBrl - $entryRemainingAmountBrl <= 0.009) {
+            return [[
+                'entryId' => $entryId,
+                'amountBrl' => round($requestedSettlementAmountBrl, 2),
+            ]];
+        }
+
+        $openInstallmentEntries = $this->listOpenInstallmentEntryBalancesForAdvanceSettlement($ownerId, $entryId);
+        if ($openInstallmentEntries === []) {
+            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+        }
+
+        $totalOpenInstallmentAmountBrl = 0.0;
+        $selectedEntryInInstallmentPlan = false;
+
+        foreach ($openInstallmentEntries as $openInstallmentEntry) {
+            $openEntryId = (int) $openInstallmentEntry['entryId'];
+            $openEntryRemainingAmountBrl = (float) $openInstallmentEntry['remainingAmountBrl'];
+
+            if ($openEntryId === $entryId) {
+                $selectedEntryInInstallmentPlan = true;
+            }
+
+            $totalOpenInstallmentAmountBrl += $openEntryRemainingAmountBrl;
+        }
+
+        if (!$selectedEntryInInstallmentPlan) {
+            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+        }
+
+        $totalOpenInstallmentAmountBrl = round($totalOpenInstallmentAmountBrl, 2);
+        if ($requestedSettlementAmountBrl - $totalOpenInstallmentAmountBrl > 0.009) {
+            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+        }
+
+        /** @var list<array{entryId: int, amountBrl: float}> $allocations */
+        $allocations = [];
+        $remainingSettlementAmountBrl = round($requestedSettlementAmountBrl, 2);
+
+        foreach ($openInstallmentEntries as $openInstallmentEntry) {
+            if ($remainingSettlementAmountBrl <= 0.00001) {
+                break;
+            }
+
+            $openEntryRemainingAmountBrl = (float) $openInstallmentEntry['remainingAmountBrl'];
+            if ($openEntryRemainingAmountBrl <= 0.00001) {
+                continue;
+            }
+
+            $allocatedAmountBrl = round(min($openEntryRemainingAmountBrl, $remainingSettlementAmountBrl), 2);
+            if ($allocatedAmountBrl <= 0.00001) {
+                continue;
+            }
+
+            $allocations[] = [
+                'entryId' => (int) $openInstallmentEntry['entryId'],
+                'amountBrl' => $allocatedAmountBrl,
+            ];
+            $remainingSettlementAmountBrl = round($remainingSettlementAmountBrl - $allocatedAmountBrl, 2);
+        }
+
+        if ($remainingSettlementAmountBrl > 0.009) {
+            throw new \RuntimeException('Failed to allocate settlement amount across installment entries.');
+        }
+
+        return $allocations;
+    }
+
+    /**
+     * @return list<array{entryId: int, remainingAmountBrl: float}>
+     */
+    private function listOpenInstallmentEntryBalancesForAdvanceSettlement(int $ownerId, int $entryId): array
+    {
+        $planId = (int) $this->connection->fetchOne(<<<'SQL'
+            SELECT item.plan_id
+            FROM finance_installment_item item
+            INNER JOIN finance_entry entry ON entry.id = item.entry_id
+            WHERE entry.owner_id = :ownerId
+              AND entry.id = :entryId
+              AND entry.deleted_at IS NULL
+            LIMIT 1
+        SQL, [
+            'ownerId' => $ownerId,
+            'entryId' => $entryId,
+        ]);
+
+        if ($planId <= 0) {
+            return [];
+        }
+
+        /** @var list<array{entryId: int|string, remainingAmountBrl: float|string}> $rows */
+        $rows = $this->connection->fetchAllAssociative(<<<'SQL'
+            SELECT
+                entry.id AS "entryId",
+                entry.remaining_amount_brl AS "remainingAmountBrl"
+            FROM finance_installment_item item
+            INNER JOIN finance_entry entry ON entry.id = item.entry_id
+            WHERE item.plan_id = :planId
+              AND entry.owner_id = :ownerId
+              AND entry.deleted_at IS NULL
+              AND entry.remaining_amount_brl > 0
+              AND entry.status NOT IN ('CANCELED', 'NEGOTIATED')
+            ORDER BY item.installment_number ASC, entry.due_date ASC NULLS LAST, entry.id ASC
+        SQL, [
+            'ownerId' => $ownerId,
+            'planId' => $planId,
+        ]);
+
+        /** @var list<array{entryId: int, remainingAmountBrl: float}> $openInstallmentEntries */
+        $openInstallmentEntries = [];
+        foreach ($rows as $row) {
+            $openInstallmentEntries[] = [
+                'entryId' => (int) $row['entryId'],
+                'remainingAmountBrl' => round((float) $row['remainingAmountBrl'], 2),
+            ];
+        }
+
+        return $openInstallmentEntries;
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @param array{
+     *   settlementDate: \DateTimeImmutable,
+     *   useCreditCard: bool,
+     *   settlementType: string,
+     *   settlementBankAccountId: int|null,
+     *   creditCardId: int|null,
+     *   settlementNote: string
+     * } $settlementContext
+     * @param array<string, mixed> $payload
+     *
+     * @return array{entry: array<string, mixed>, settlement: array<string, mixed>, creditCardEntry?: array<string, mixed>}
+     */
+    private function applySettlementOnEntry(
+        int $ownerId,
+        array $entry,
+        float $settlementAmountBrl,
+        array $settlementContext,
+        array $payload,
+    ): array {
+        $entryId = (int) ($entry['id'] ?? 0);
+        $remainingAmountBrl = (float) ($entry['remainingAmountBrl'] ?? 0);
+        if ($settlementAmountBrl - $remainingAmountBrl > 0.009) {
+            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+        }
+
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $settlementDate = $settlementContext['settlementDate'];
+        $settlementBankAccountId = $settlementContext['settlementBankAccountId'];
+
+        $this->connection->insert('finance_entry_settlement', [
+            'owner_id' => $ownerId,
+            'entry_id' => $entryId,
+            'bank_account_id' => $settlementBankAccountId,
+            'settlement_type' => $settlementContext['settlementType'],
+            'amount_brl' => round($settlementAmountBrl, 2),
+            'settled_at' => $settlementDate->format('Y-m-d H:i:s'),
+            'note' => $settlementContext['settlementNote'] !== '' ? $settlementContext['settlementNote'] : null,
+            'created_at' => $now,
+        ]);
+
+        $settlementId = (int) $this->connection->lastInsertId();
+
+        if ($settlementBankAccountId !== null) {
+            $this->applyBankAccountBalanceChange(
+                $ownerId,
+                $settlementBankAccountId,
+                $entryId,
+                $settlementId,
+                (string) $entry['direction'],
+                round($settlementAmountBrl, 2),
+                $settlementDate,
+                false,
+            );
+        }
+
+        $updatedEntry = $this->recalculateEntrySettlement($ownerId, $entryId, 'SETTLED');
+        $generatedCreditCardEntry = null;
+
+        if ($settlementContext['useCreditCard'] && $settlementContext['creditCardId'] !== null) {
+            $generatedCreditCardEntry = $this->createCreditCardSettlementEntry(
+                $ownerId,
+                $entry,
+                round($settlementAmountBrl, 2),
+                $settlementDate,
+                $settlementContext['creditCardId'],
+                $payload,
+            );
+        }
+
+        /** @var array<string, mixed>|false $createdSettlement */
+        $createdSettlement = $this->connection->fetchAssociative(<<<'SQL'
+            SELECT
+                id,
+                entry_id AS "entryId",
+                bank_account_id AS "bankAccountId",
+                settlement_type AS "settlementType",
+                amount_brl AS "amountBrl",
+                settled_at AS "settledAt",
+                note,
+                created_at AS "createdAt"
+            FROM finance_entry_settlement
+            WHERE id = :settlementId
+            LIMIT 1
+        SQL, ['settlementId' => $settlementId]);
+
+        if (!is_array($createdSettlement)) {
+            throw new \RuntimeException('Failed to read created settlement.');
+        }
+
+        $response = [
+            'entry' => $updatedEntry,
+            'settlement' => $createdSettlement,
+        ];
+
+        if ($generatedCreditCardEntry !== null) {
+            $response['creditCardEntry'] = $generatedCreditCardEntry;
+        }
+
+        return $response;
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     */
+    private function assertEntryCanReceiveSettlement(array $entry): void
+    {
+        $currentStatus = (string) ($entry['status'] ?? '');
+        if (in_array($currentStatus, ['CANCELED', 'NEGOTIATED'], true)) {
+            throw new \InvalidArgumentException('Canceled or negotiated entries cannot receive settlements.');
+        }
+
+        $remainingAmountBrl = (float) ($entry['remainingAmountBrl'] ?? 0);
+        if ($remainingAmountBrl <= 0.00001) {
+            throw new \InvalidArgumentException('This entry is already fully settled.');
+        }
     }
 
     public function refreshOverdueStatusesForAllUsers(): int

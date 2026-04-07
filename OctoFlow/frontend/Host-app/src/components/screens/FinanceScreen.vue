@@ -771,6 +771,10 @@ const accountsDirectionByTab = computed(() => {
     return 'RECEIVABLE'
   }
 
+  if (activeAccountsTab.value === 'debts') {
+    return 'PAYABLE'
+  }
+
   return ''
 })
 
@@ -789,6 +793,10 @@ const availableAccountActionOptions = computed(() => {
       { value: 'ENTRY', label: 'Lançamento avulso' },
       { value: 'SETTLEMENT', label: 'Baixa de lançamento' },
     )
+  }
+
+  if (isDebtsAccountsTab.value) {
+    options.push({ value: 'SETTLEMENT', label: 'Baixa de lançamento' })
   }
 
   if (shouldShowRecurringSection.value) {
@@ -1004,6 +1012,7 @@ const selectedSettlementEntry = computed(() => {
 })
 
 const selectedSettlementRemainingAmountBrl = computed(() => Number(selectedSettlementEntry.value?.remainingAmountBrl || 0))
+const selectedSettlementEntryTypeCode = computed(() => String(selectedSettlementEntry.value?.entryType || '').toUpperCase())
 
 onMounted(async () => {
   await loadInitialData()
@@ -1187,6 +1196,7 @@ async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.val
       loadDebtPlans(),
       loadCatalogs(),
       loadInstallments(),
+      loadEntries(),
     ])
     return
   }
@@ -2184,7 +2194,9 @@ async function submitSettlement() {
   }
 
   const selectedEntryRemainingAmountBrl = Number(selectedSettlementEntry.value?.remainingAmountBrl || 0)
-  if (selectedEntryRemainingAmountBrl > 0 && settlementAmountBrl - selectedEntryRemainingAmountBrl > 0.009) {
+  const selectedEntryTypeCode = selectedSettlementEntryTypeCode.value
+  const isInstallmentEntry = selectedEntryTypeCode === 'INSTALLMENT'
+  if (!isInstallmentEntry && selectedEntryRemainingAmountBrl > 0 && settlementAmountBrl - selectedEntryRemainingAmountBrl > 0.009) {
     notifyUser(
       `O valor da baixa não pode ser maior que o saldo restante (${formatCurrency(selectedEntryRemainingAmountBrl)}).`,
       'warning',
@@ -4834,7 +4846,9 @@ function applyAccountsDirectionContext() {
               type="number"
               step="0.01"
               min="0.01"
-              :max="selectedSettlementRemainingAmountBrl > 0 ? selectedSettlementRemainingAmountBrl : undefined"
+              :max="selectedSettlementEntryTypeCode !== 'INSTALLMENT' && selectedSettlementRemainingAmountBrl > 0
+                ? selectedSettlementRemainingAmountBrl
+                : undefined"
               required
             >
           </label>
