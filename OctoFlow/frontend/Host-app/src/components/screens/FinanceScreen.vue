@@ -2732,18 +2732,45 @@ async function convertSimulationToPlan() {
 
 async function submitExport() {
   try {
-    await createFinanceExport({
-      exportType: exportForm.exportType,
-      filters: {
-        direction: entryFilters.direction || null,
-        status: entryFilters.status || null,
-      },
-    })
+    notifyUser('Gerando relatório, aguarde...', 'info')
 
-    notifyUser('Exportação enfileirada.', 'success')
-    await loadExports()
-  } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível enfileirar a exportação.'), 'error')
+    // Busca um lote grande com todos os possíveis filtros da tela
+    const response = await fetchFinanceEntries({
+      direction: entryFilters.direction || null,
+      status: entryFilters.status || null,
+    }, { itemsPerPage: 5000 })
+
+    const items = response.data?.items || []
+    if (!items.length) {
+      notifyUser('Nenhum dado encontrado para exportar com os filtros atuais.', 'warning')
+      return
+    }
+
+    const headers = ['Data Vencto/Referencia', 'Titulo', 'Categoria', 'Conta Bancaria', 'Valor Previsto', 'Valor Realizado', 'Status']
+    const rows = items.map(e => [
+      e.dueDate || e.expectedDate || '',
+      `"${(e.title || '').replace(/"/g, '""')}"`,
+      `"${(e.categoryName || '').replace(/"/g, '""')}"`,
+      `"${(e.bankAccountName || '').replace(/"/g, '""')}"`,
+      e.expectedAmountBrl || 0,
+      e.realizedAmountBrl || 0,
+      e.status || ''
+    ])
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `relatorio-financeiro-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+
+    notifyUser('Relatório exportado com sucesso!', 'success')
+  } catch (error) {
+    notifyUser('Falha ao gerar o relatório financeiro.', 'error')
   }
 }
 
@@ -3149,108 +3176,10 @@ function applyAccountsDirectionContext() {
   <section class="finance-screen">
     <section v-if="activeTab === 'reports'" class="finance-section finance-dashboard-section">
       <div class="finance-kpi-grid">
-        <RemoteFinanceKpiCard
-          v-for="kpiCard in kpiCards"
-          :key="kpiCard.key"
-          :label="kpiCard.label"
-          :value="kpiCard.value"
-          :caption="kpiCard.caption"
-          :tone="kpiCard.tone"
-        />
+        <RemoteFinanceKpiCard v-for="kpiCard in kpiCards" :key="kpiCard.key" :label="kpiCard.label"
+          :value="kpiCard.value" :caption="kpiCard.caption" :tone="kpiCard.tone" />
       </div>
 
-      <article class="finance-panel">
-        <header>
-          <h3>Painel de tendências - fluxo mensal</h3>
-          <small v-if="loadingState.dashboard">Atualizando...</small>
-        </header>
-
-        <div v-if="dashboardCashflowChartRows.length" class="finance-dashboard-chart-stack">
-          <div
-            v-for="chartRow in dashboardCashflowChartRows"
-            :key="chartRow.key"
-            class="finance-dashboard-chart-row"
-            :class="chartRow.columns === 1 ? 'finance-dashboard-chart-row-single' : 'finance-dashboard-chart-row-double'"
-          >
-            <article
-              v-for="chartCard in chartRow.charts"
-              :key="chartCard.key"
-              class="finance-dashboard-chart-card"
-            >
-              <div class="finance-dashboard-chart-card-header">
-                <h4>{{ chartCard.title }}</h4>
-                <small class="finance-dashboard-chart-summary">{{ chartCard.summaryLabel }}</small>
-              </div>
-
-              <RemoteFinanceTrendMiniChart
-                class="finance-dashboard-mini-chart"
-                :points="chartCard.points"
-                :stroke-color="chartCard.strokeColor"
-              />
-
-              <p class="finance-dashboard-chart-caption">{{ chartCard.caption }}</p>
-              <div class="finance-dashboard-chart-meta">
-                <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
-              </div>
-            </article>
-          </div>
-
-          <small v-if="dashboardCashflowMonthsLegend" class="finance-dashboard-legend">
-            {{ dashboardCashflowMonthsLegend }}
-          </small>
-        </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem dados de fluxo"
-          description="Cadastre lançamentos para preencher o histórico de fluxo mensal."
-        />
-      </article>
-
-      <article class="finance-panel">
-        <header>
-          <h3>Painel de tendências por categoria</h3>
-        </header>
-
-        <div v-if="dashboardCategoryChartRows.length" class="finance-dashboard-chart-stack">
-          <div
-            v-for="chartRow in dashboardCategoryChartRows"
-            :key="chartRow.key"
-            class="finance-dashboard-chart-row"
-            :class="chartRow.columns === 1 ? 'finance-dashboard-chart-row-single' : 'finance-dashboard-chart-row-double'"
-          >
-            <article
-              v-for="chartCard in chartRow.charts"
-              :key="chartCard.key"
-              class="finance-dashboard-chart-card"
-            >
-              <div class="finance-dashboard-chart-card-header">
-                <h4>{{ chartCard.title }}</h4>
-                <small class="finance-dashboard-chart-summary">{{ chartCard.summaryLabel }}</small>
-              </div>
-
-              <RemoteFinanceTrendMiniChart
-                class="finance-dashboard-mini-chart"
-                :points="chartCard.points"
-                :stroke-color="chartCard.strokeColor"
-              />
-
-              <p class="finance-dashboard-chart-caption">{{ chartCard.caption }}</p>
-              <div class="finance-dashboard-chart-meta">
-                <small class="finance-dashboard-chart-secondary">{{ chartCard.secondaryLabel }}</small>
-              </div>
-            </article>
-          </div>
-
-          <small v-if="dashboardCategoriesLegend" class="finance-dashboard-legend">
-            {{ dashboardCategoriesLegend }}
-          </small>
-        </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem categorias no período"
-          description="Nenhum lançamento encontrado para montar análise por categoria."
-        />
-      </article>
 
       <article class="finance-panel">
         <header>
@@ -3283,11 +3212,8 @@ function applyAccountsDirectionContext() {
             </tbody>
           </table>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem detalhamento de fluxo"
-          description="Cadastre lançamentos para visualizar o histórico mensal completo."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem detalhamento de fluxo"
+          description="Cadastre lançamentos para visualizar o histórico mensal completo." />
       </article>
 
       <article class="finance-panel">
@@ -3310,7 +3236,8 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="categoryItem in dashboardCategories" :key="`${categoryItem.categoryId || 'none'}-${categoryItem.categoryName}`">
+              <tr v-for="categoryItem in dashboardCategories"
+                :key="`${categoryItem.categoryId || 'none'}-${categoryItem.categoryName}`">
                 <td>{{ categoryItem.categoryName }}</td>
                 <td>{{ formatInteger(categoryItem.entriesCount) }}</td>
                 <td>{{ formatCurrency(categoryItem.expectedIncomeBrl) }}</td>
@@ -3323,24 +3250,16 @@ function applyAccountsDirectionContext() {
             </tbody>
           </table>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem categorias no período"
-          description="Nenhum lançamento encontrado para montar análise por categoria."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem categorias no período"
+          description="Nenhum lançamento encontrado para montar análise por categoria." />
       </article>
     </section>
 
     <section v-if="activeTab === 'accounts'" class="finance-section">
       <nav class="finance-subtabs" aria-label="Abas da tela de contas">
-        <button
-          v-for="accountsTabOption in accountsTabOptions"
-          :key="accountsTabOption.key"
-          type="button"
-          class="finance-subtab-button"
-          :class="{ active: activeAccountsTab === accountsTabOption.key }"
-          @click="activeAccountsTab = accountsTabOption.key"
-        >
+        <button v-for="accountsTabOption in accountsTabOptions" :key="accountsTabOption.key" type="button"
+          class="finance-subtab-button" :class="{ active: activeAccountsTab === accountsTabOption.key }"
+          @click="activeAccountsTab = accountsTabOption.key">
           {{ accountsTabOption.label }}
         </button>
       </nav>
@@ -3349,26 +3268,19 @@ function applyAccountsDirectionContext() {
         <header class="finance-overview-header">
           <div class="finance-overview-header-main">
             <h3>Resumo rápido: pagar x receber</h3>
-            <small>Mostrando o previsto de {{ accountsOverviewSelectedMonthLabel }}. Detalhes completos em Relatórios.</small>
+            <small>Mostrando o previsto de {{ accountsOverviewSelectedMonthLabel }}. Detalhes completos em
+              Relatórios.</small>
           </div>
 
           <div class="finance-overview-header-actions">
             <label class="finance-overview-month-field">
               <span>Mês</span>
-              <input
-                v-model="accountsOverviewMonth"
-                type="month"
-                class="finance-overview-month-input"
-                @change="handleAccountsOverviewMonthChange"
-              >
+              <input v-model="accountsOverviewMonth" type="month" class="finance-overview-month-input"
+                @change="handleAccountsOverviewMonthChange">
             </label>
 
-            <button
-              type="button"
-              class="finance-inline-action"
-              :disabled="loadingState.dashboard || loadingState.entries"
-              @click="refreshAccountsOverviewValues"
-            >
+            <button type="button" class="finance-inline-action"
+              :disabled="loadingState.dashboard || loadingState.entries" @click="refreshAccountsOverviewValues">
               {{ loadingState.dashboard || loadingState.entries ? 'Atualizando...' : 'Atualizar valores' }}
             </button>
           </div>
@@ -3386,11 +3298,8 @@ function applyAccountsDirectionContext() {
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="comparisonRow in accountsOverviewComparisonRows"
-                :key="comparisonRow.key"
-                :class="{ 'finance-total-summary-row': comparisonRow.key === 'total' }"
-              >
+              <tr v-for="comparisonRow in accountsOverviewComparisonRows" :key="comparisonRow.key"
+                :class="{ 'finance-total-summary-row': comparisonRow.key === 'total' }">
                 <td>{{ comparisonRow.label }}</td>
                 <td>{{ formatCurrency(comparisonRow.expectedBrl) }}</td>
                 <td>{{ formatCurrency(comparisonRow.realizedBrl) }}</td>
@@ -3402,17 +3311,12 @@ function applyAccountsDirectionContext() {
             </tbody>
           </table>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem dados de análise"
-          description="Cadastre lançamentos para visualizar o comparativo entre pagar e receber."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem dados de análise"
+          description="Cadastre lançamentos para visualizar o comparativo entre pagar e receber." />
       </article>
 
-      <article
-        v-if="shouldShowEntryManagement || shouldShowRecurringSection || shouldShowInstallmentSection"
-        class="finance-panel"
-      >
+      <article v-if="shouldShowEntryManagement || shouldShowRecurringSection || shouldShowInstallmentSection"
+        class="finance-panel">
         <header>
           <h3>Gerenciamento de lançamentos</h3>
           <small>Mantenha a tela limpa: use Adicionar para abrir o formulário em popup.</small>
@@ -3422,45 +3326,26 @@ function applyAccountsDirectionContext() {
           <label>
             <span>O que deseja adicionar</span>
             <select v-model="selectedAccountActionType">
-              <option
-                v-for="actionOption in availableAccountActionOptions"
-                :key="actionOption.value"
-                :value="actionOption.value"
-              >
+              <option v-for="actionOption in availableAccountActionOptions" :key="actionOption.value"
+                :value="actionOption.value">
                 {{ actionOption.label }}
               </option>
             </select>
           </label>
 
-          <button
-            type="button"
-            class="finance-action-button"
-            :disabled="availableAccountActionOptions.length <= 0"
-            @click="openSelectedAccountActionModal"
-          >
+          <button type="button" class="finance-action-button" :disabled="availableAccountActionOptions.length <= 0"
+            @click="openSelectedAccountActionModal">
             Adicionar
           </button>
         </div>
       </article>
 
-      <FinanceEntriesListPanel
-        v-if="!isDebtsAccountsTab"
-        :panel-title="accountsEntriesTitle"
-        :totals-label="totalsLabel"
-        :entries-items="entriesState"
-        :entries-meta="entriesMeta"
-        :filters="entryFilters"
-        :show-direction-filter="isOverviewAccountsTab"
-        :current-direction-label="accountsCurrentDirectionLabel"
-        :direction-options="directionOptions"
-        :status-options="entryStatusOptions"
-        :resolve-finance-label="getFinanceLabel"
-        :loading="loadingState.entries"
-        @submit-filters="applyEntryFilters"
-        @set-page="setEntriesPage"
-        @edit-entry="startEditingEntry"
-        @delete-entry="requestDeleteEntry"
-      />
+      <FinanceEntriesListPanel v-if="!isDebtsAccountsTab" :panel-title="accountsEntriesTitle"
+        :totals-label="totalsLabel" :entries-items="entriesState" :entries-meta="entriesMeta" :filters="entryFilters"
+        :show-direction-filter="isOverviewAccountsTab" :current-direction-label="accountsCurrentDirectionLabel"
+        :direction-options="directionOptions" :status-options="entryStatusOptions"
+        :resolve-finance-label="getFinanceLabel" :loading="loadingState.entries" @submit-filters="applyEntryFilters"
+        @set-page="setEntriesPage" @edit-entry="startEditingEntry" @delete-entry="requestDeleteEntry" />
     </section>
 
     <section v-if="activeTab === 'banks'" class="finance-section">
@@ -3488,11 +3373,8 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Tipo</span>
             <select v-model="bankAccountForm.accountType">
-              <option
-                v-for="bankAccountTypeOption in bankAccountTypeOptions"
-                :key="bankAccountTypeOption.value"
-                :value="bankAccountTypeOption.value"
-              >
+              <option v-for="bankAccountTypeOption in bankAccountTypeOptions" :key="bankAccountTypeOption.value"
+                :value="bankAccountTypeOption.value">
                 {{ bankAccountTypeOption.label }}
               </option>
             </select>
@@ -3506,12 +3388,7 @@ function applyAccountsDirectionContext() {
           <button class="finance-action-button" type="submit">
             {{ bankAccountEditingId ? 'Salvar alterações' : 'Salvar conta bancária' }}
           </button>
-          <button
-            v-if="bankAccountEditingId"
-            type="button"
-            class="finance-inline-action"
-            @click="resetBankAccountForm"
-          >
+          <button v-if="bankAccountEditingId" type="button" class="finance-inline-action" @click="resetBankAccountForm">
             Cancelar edição
           </button>
         </form>
@@ -3543,32 +3420,18 @@ function applyAccountsDirectionContext() {
                 <td>{{ getFinanceLabel(bankAccount.accountType, '-') }}</td>
                 <td>{{ formatCurrency(bankAccount.currentBalanceBrl) }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="bankAccount.isActive ? 'ACTIVE' : 'INACTIVE'"
-                    :label="bankAccount.isActive ? 'Ativa' : 'Inativa'"
-                  />
+                  <RemoteFinanceStatusBadge :status="bankAccount.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="bankAccount.isActive ? 'Ativa' : 'Inativa'" />
                 </td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingBankAccount(bankAccount)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingBankAccount(bankAccount)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="toggleBankAccountStatus(bankAccount)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="toggleBankAccountStatus(bankAccount)">
                     {{ bankAccount.isActive ? 'Inativar' : 'Ativar' }}
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    :disabled="!bankAccount.isActive"
-                    @click="deleteBankAccount(bankAccount)"
-                  >
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
+                    :disabled="!bankAccount.isActive" @click="deleteBankAccount(bankAccount)">
                     Excluir
                   </button>
                 </td>
@@ -3577,35 +3440,27 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="bankAccounts.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(bankAccounts, 'bankAccounts', 'contas') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(bankAccounts, 'bankAccounts', 'contas')
+          }}</span>
           <div v-if="getLocalListPageCount(bankAccounts) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('bankAccounts', bankAccounts) <= 1"
-              @click="setLocalListPage('bankAccounts', getLocalListPage('bankAccounts', bankAccounts) - 1, bankAccounts)"
-            >
+              @click="setLocalListPage('bankAccounts', getLocalListPage('bankAccounts', bankAccounts) - 1, bankAccounts)">
               Anterior
             </button>
             <span class="finance-pagination-page">
               Página {{ getLocalListPage('bankAccounts', bankAccounts) }} de {{ getLocalListPageCount(bankAccounts) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('bankAccounts', bankAccounts) >= getLocalListPageCount(bankAccounts)"
-              @click="setLocalListPage('bankAccounts', getLocalListPage('bankAccounts', bankAccounts) + 1, bankAccounts)"
-            >
+              @click="setLocalListPage('bankAccounts', getLocalListPage('bankAccounts', bankAccounts) + 1, bankAccounts)">
               Próxima
             </button>
           </div>
         </div>
 
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem contas bancárias"
-          description="Cadastre contas para vincular lançamentos e controlar saldo."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem contas bancárias"
+          description="Cadastre contas para vincular lançamentos e controlar saldo." />
       </article>
     </section>
 
@@ -3624,11 +3479,8 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Aplicação</span>
             <select v-model="categoryForm.kind">
-              <option
-                v-for="categoryKindOption in categoryKindOptions"
-                :key="categoryKindOption.value"
-                :value="categoryKindOption.value"
-              >
+              <option v-for="categoryKindOption in categoryKindOptions" :key="categoryKindOption.value"
+                :value="categoryKindOption.value">
                 {{ categoryKindOption.label }}
               </option>
             </select>
@@ -3637,12 +3489,7 @@ function applyAccountsDirectionContext() {
           <button class="finance-action-button" type="submit">
             {{ categoryEditingId ? 'Salvar alterações' : 'Salvar categoria' }}
           </button>
-          <button
-            v-if="categoryEditingId"
-            type="button"
-            class="finance-inline-action"
-            @click="resetCategoryForm"
-          >
+          <button v-if="categoryEditingId" type="button" class="finance-inline-action" @click="resetCategoryForm">
             Cancelar edição
           </button>
         </form>
@@ -3670,32 +3517,18 @@ function applyAccountsDirectionContext() {
                 <td>{{ getFinanceLabel(category.kind, category.kind || '-') }}</td>
                 <td>{{ category.isSystem ? 'Sistema' : 'Personalizada' }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="category.isActive ? 'ACTIVE' : 'INACTIVE'"
-                    :label="category.isActive ? 'Ativa' : 'Inativa'"
-                  />
+                  <RemoteFinanceStatusBadge :status="category.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="category.isActive ? 'Ativa' : 'Inativa'" />
                 </td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingCategory(category)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingCategory(category)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    :disabled="!category.isActive"
-                    @click="deleteCategory(category)"
-                  >
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
+                    :disabled="!category.isActive" @click="deleteCategory(category)">
                     Excluir
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="toggleCategoryStatus(category)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="toggleCategoryStatus(category)">
                     {{ category.isActive ? 'Inativar' : 'Ativar' }}
                   </button>
                 </td>
@@ -3704,34 +3537,26 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="categories.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(categories, 'categories', 'categorias') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(categories, 'categories', 'categorias')
+          }}</span>
           <div v-if="getLocalListPageCount(categories) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('categories', categories) <= 1"
-              @click="setLocalListPage('categories', getLocalListPage('categories', categories) - 1, categories)"
-            >
+              @click="setLocalListPage('categories', getLocalListPage('categories', categories) - 1, categories)">
               Anterior
             </button>
             <span class="finance-pagination-page">
               Página {{ getLocalListPage('categories', categories) }} de {{ getLocalListPageCount(categories) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('categories', categories) >= getLocalListPageCount(categories)"
-              @click="setLocalListPage('categories', getLocalListPage('categories', categories) + 1, categories)"
-            >
+              @click="setLocalListPage('categories', getLocalListPage('categories', categories) + 1, categories)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem categorias"
-          description="Cadastre categorias para padronizar análise financeira."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem categorias"
+          description="Cadastre categorias para padronizar análise financeira." />
       </article>
 
       <article class="finance-panel">
@@ -3753,12 +3578,8 @@ function applyAccountsDirectionContext() {
           <button class="finance-action-button" type="submit">
             {{ recurringTypeEditingId ? 'Salvar alterações' : 'Salvar tipo recorrente' }}
           </button>
-          <button
-            v-if="recurringTypeEditingId"
-            type="button"
-            class="finance-inline-action"
-            @click="resetRecurringTypeForm"
-          >
+          <button v-if="recurringTypeEditingId" type="button" class="finance-inline-action"
+            @click="resetRecurringTypeForm">
             Cancelar edição
           </button>
         </form>
@@ -3786,31 +3607,18 @@ function applyAccountsDirectionContext() {
                 <td>{{ recurringType.description || '-' }}</td>
                 <td>{{ recurringType.isSystem ? 'Sistema' : 'Personalizada' }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="recurringType.isActive ? 'ACTIVE' : 'INACTIVE'"
-                    :label="recurringType.isActive ? 'Ativo' : 'Inativo'"
-                  />
+                  <RemoteFinanceStatusBadge :status="recurringType.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="recurringType.isActive ? 'Ativo' : 'Inativo'" />
                 </td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingRecurringType(recurringType)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingRecurringType(recurringType)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="deleteRecurringType(recurringType)"
-                  >
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
+                    @click="deleteRecurringType(recurringType)">
                     Excluir
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="toggleRecurringTypeStatus(recurringType)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="toggleRecurringTypeStatus(recurringType)">
                     {{ recurringType.isActive ? 'Inativar' : 'Ativar' }}
                   </button>
                 </td>
@@ -3819,34 +3627,27 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="availableRecurringTypes.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(availableRecurringTypes, 'recurringTypes', 'tipos recorrentes') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(availableRecurringTypes, 'recurringTypes',
+            'tipos recorrentes') }}</span>
           <div v-if="getLocalListPageCount(availableRecurringTypes) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('recurringTypes', availableRecurringTypes) <= 1"
-              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', availableRecurringTypes) - 1, availableRecurringTypes)"
-            >
+              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', availableRecurringTypes) - 1, availableRecurringTypes)">
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('recurringTypes', availableRecurringTypes) }} de {{ getLocalListPageCount(availableRecurringTypes) }}
+              Página {{ getLocalListPage('recurringTypes', availableRecurringTypes) }} de {{
+                getLocalListPageCount(availableRecurringTypes) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('recurringTypes', availableRecurringTypes) >= getLocalListPageCount(availableRecurringTypes)"
-              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', availableRecurringTypes) + 1, availableRecurringTypes)"
-            >
+              @click="setLocalListPage('recurringTypes', getLocalListPage('recurringTypes', availableRecurringTypes) + 1, availableRecurringTypes)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem tipos recorrentes"
-          description="Cadastre os tipos recorrentes para usar nas regras automáticas."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem tipos recorrentes"
+          description="Cadastre os tipos recorrentes para usar nas regras automáticas." />
       </article>
     </section>
 
@@ -3875,32 +3676,20 @@ function applyAccountsDirectionContext() {
                 <td>{{ formatCurrency(rule.amountBrl) }}</td>
                 <td>{{ formatDate(rule.nextRunDate, '-') }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="rule.isActive ? 'ACTIVE' : 'INACTIVE'"
-                    :label="rule.isActive ? 'Ativa' : 'Inativa'"
-                  />
+                  <RemoteFinanceStatusBadge :status="rule.isActive ? 'ACTIVE' : 'INACTIVE'"
+                    :label="rule.isActive ? 'Ativa' : 'Inativa'" />
                 </td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
+                  <button type="button" class="finance-inline-action"
                     :disabled="manualRecurringGenerationRuleId === Number(rule.id) || loadingState.recurring"
-                    @click="generateRecurringRuleManually(rule)"
-                  >
+                    @click="generateRecurringRuleManually(rule)">
                     {{ manualRecurringGenerationRuleId === Number(rule.id) ? 'Lançando...' : 'Lançar manual' }}
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingRecurringRule(rule)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingRecurringRule(rule)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="requestDeleteRecurringRule(rule)"
-                  >
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteRecurringRule(rule)">
                     Excluir
                   </button>
                 </td>
@@ -3909,34 +3698,27 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="filteredRecurringRules.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(filteredRecurringRules, 'recurringRules', 'regras') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(filteredRecurringRules, 'recurringRules',
+            'regras') }}</span>
           <div v-if="getLocalListPageCount(filteredRecurringRules) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('recurringRules', filteredRecurringRules) <= 1"
-              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', filteredRecurringRules) - 1, filteredRecurringRules)"
-            >
+              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', filteredRecurringRules) - 1, filteredRecurringRules)">
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('recurringRules', filteredRecurringRules) }} de {{ getLocalListPageCount(filteredRecurringRules) }}
+              Página {{ getLocalListPage('recurringRules', filteredRecurringRules) }} de {{
+                getLocalListPageCount(filteredRecurringRules) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('recurringRules', filteredRecurringRules) >= getLocalListPageCount(filteredRecurringRules)"
-              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', filteredRecurringRules) + 1, filteredRecurringRules)"
-            >
+              @click="setLocalListPage('recurringRules', getLocalListPage('recurringRules', filteredRecurringRules) + 1, filteredRecurringRules)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem regras recorrentes"
-          description="Cadastre regras para gerar automaticamente os lançamentos da direção desta aba."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem regras recorrentes"
+          description="Cadastre regras para gerar automaticamente os lançamentos da direção desta aba." />
       </article>
     </section>
 
@@ -3961,27 +3743,17 @@ function applyAccountsDirectionContext() {
               <tr v-for="plan in paginatedInstallmentPlans" :key="plan.id">
                 <td>{{ plan.title }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="plan.status"
-                    :label="getFinanceLabel(plan.status)"
-                  />
+                  <RemoteFinanceStatusBadge :status="plan.status" :label="getFinanceLabel(plan.status)" />
                 </td>
                 <td>{{ formatCurrency(plan.totalAmountBrl) }}</td>
                 <td>{{ formatCurrency(plan.remainingAmountBrl) }}</td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingInstallmentPlan(plan)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingInstallmentPlan(plan)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
                     :disabled="String(plan.status || '').toUpperCase() === 'CANCELED'"
-                    @click="requestDeleteInstallmentPlan(plan)"
-                  >
+                    @click="requestDeleteInstallmentPlan(plan)">
                     Excluir
                   </button>
                 </td>
@@ -3990,34 +3762,27 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="filteredInstallmentPlans.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(filteredInstallmentPlans, 'installmentPlans', 'parcelamentos') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(filteredInstallmentPlans, 'installmentPlans',
+            'parcelamentos') }}</span>
           <div v-if="getLocalListPageCount(filteredInstallmentPlans) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('installmentPlans', filteredInstallmentPlans) <= 1"
-              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', filteredInstallmentPlans) - 1, filteredInstallmentPlans)"
-            >
+              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', filteredInstallmentPlans) - 1, filteredInstallmentPlans)">
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('installmentPlans', filteredInstallmentPlans) }} de {{ getLocalListPageCount(filteredInstallmentPlans) }}
+              Página {{ getLocalListPage('installmentPlans', filteredInstallmentPlans) }} de {{
+                getLocalListPageCount(filteredInstallmentPlans) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('installmentPlans', filteredInstallmentPlans) >= getLocalListPageCount(filteredInstallmentPlans)"
-              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', filteredInstallmentPlans) + 1, filteredInstallmentPlans)"
-            >
+              @click="setLocalListPage('installmentPlans', getLocalListPage('installmentPlans', filteredInstallmentPlans) + 1, filteredInstallmentPlans)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem parcelamentos"
-          description="Crie parcelamentos para gerar automaticamente as parcelas deste fluxo."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem parcelamentos"
+          description="Crie parcelamentos para gerar automaticamente as parcelas deste fluxo." />
       </article>
     </section>
 
@@ -4031,11 +3796,8 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Tipo</span>
             <select v-model="simulationForm.investmentType">
-              <option
-                v-for="investmentTypeOption in investmentTypeOptions"
-                :key="investmentTypeOption.value"
-                :value="investmentTypeOption.value"
-              >
+              <option v-for="investmentTypeOption in investmentTypeOptions" :key="investmentTypeOption.value"
+                :value="investmentTypeOption.value">
                 {{ investmentTypeOption.label }}
               </option>
             </select>
@@ -4086,7 +3848,8 @@ function applyAccountsDirectionContext() {
         <div class="finance-kpi-grid">
           <RemoteFinanceKpiCard label="Total investido" :value="investmentSummary?.invested || '-'" tone="neutral" />
           <RemoteFinanceKpiCard label="Rendimento" :value="investmentSummary?.yield || '-'" tone="positive" />
-          <RemoteFinanceKpiCard label="Patrimônio final" :value="investmentSummary?.finalAmount || '-'" tone="positive" />
+          <RemoteFinanceKpiCard label="Patrimônio final" :value="investmentSummary?.finalAmount || '-'"
+            tone="positive" />
         </div>
 
         <RemoteFinanceTrendMiniChart :points="latestSimulation.points || []" stroke-color="#16a34a" />
@@ -4110,11 +3873,8 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Gerar lançamentos de rendimento</span>
             <select v-model="convertPlanForm.yieldMode">
-              <option
-                v-for="investmentYieldModeOption in investmentYieldModeOptions"
-                :key="investmentYieldModeOption.value"
-                :value="investmentYieldModeOption.value"
-              >
+              <option v-for="investmentYieldModeOption in investmentYieldModeOptions"
+                :key="investmentYieldModeOption.value" :value="investmentYieldModeOption.value">
                 {{ investmentYieldModeOption.label }}
               </option>
             </select>
@@ -4144,27 +3904,17 @@ function applyAccountsDirectionContext() {
               <tr v-for="plan in paginatedInvestmentPlans" :key="plan.id">
                 <td>{{ plan.label }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="plan.status"
-                    :label="getFinanceLabel(plan.status)"
-                  />
+                  <RemoteFinanceStatusBadge :status="plan.status" :label="getFinanceLabel(plan.status)" />
                 </td>
                 <td>{{ formatCurrency(plan.monthlyContributionBrl) }}</td>
                 <td>{{ Number(plan.effectiveMonthlyRate || 0).toFixed(6) }}</td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingInvestmentPlan(plan)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingInvestmentPlan(plan)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
                     :disabled="String(plan.status || '').toUpperCase() === 'CANCELED'"
-                    @click="requestDeleteInvestmentPlan(plan)"
-                  >
+                    @click="requestDeleteInvestmentPlan(plan)">
                     Excluir
                   </button>
                 </td>
@@ -4173,34 +3923,27 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="investmentPlans.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(investmentPlans, 'investmentPlans', 'planos') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(investmentPlans, 'investmentPlans', 'planos')
+          }}</span>
           <div v-if="getLocalListPageCount(investmentPlans) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('investmentPlans', investmentPlans) <= 1"
-              @click="setLocalListPage('investmentPlans', getLocalListPage('investmentPlans', investmentPlans) - 1, investmentPlans)"
-            >
+              @click="setLocalListPage('investmentPlans', getLocalListPage('investmentPlans', investmentPlans) - 1, investmentPlans)">
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('investmentPlans', investmentPlans) }} de {{ getLocalListPageCount(investmentPlans) }}
+              Página {{ getLocalListPage('investmentPlans', investmentPlans) }} de {{
+                getLocalListPageCount(investmentPlans) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('investmentPlans', investmentPlans) >= getLocalListPageCount(investmentPlans)"
-              @click="setLocalListPage('investmentPlans', getLocalListPage('investmentPlans', investmentPlans) + 1, investmentPlans)"
-            >
+              @click="setLocalListPage('investmentPlans', getLocalListPage('investmentPlans', investmentPlans) + 1, investmentPlans)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem planos de investimento"
-          description="Gere uma simulação e converta para criar o primeiro plano real."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem planos de investimento"
+          description="Gere uma simulação e converta para criar o primeiro plano real." />
       </article>
     </section>
 
@@ -4266,7 +4009,8 @@ function applyAccountsDirectionContext() {
             <span>Categoria</span>
             <select v-model="debtForm.categoryId">
               <option value="">Sem categoria</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}
+              </option>
             </select>
           </label>
 
@@ -4274,7 +4018,8 @@ function applyAccountsDirectionContext() {
             <span>Conta bancária</span>
             <select v-model="debtForm.defaultBankAccountId">
               <option value="">Sem conta</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
+                bankAccount.name }}</option>
             </select>
           </label>
 
@@ -4293,7 +4038,8 @@ function applyAccountsDirectionContext() {
             <tbody>
               <tr>
                 <th>Base escolhida e valor original</th>
-                <td>{{ getDebtReferenceTypeLabel(debtPreview.selectedReferenceType) }} - {{ formatCurrency(debtPreview.totalAmountBrl) }}</td>
+                <td>{{ getDebtReferenceTypeLabel(debtPreview.selectedReferenceType) }} - {{
+                  formatCurrency(debtPreview.totalAmountBrl) }}</td>
               </tr>
               <tr>
                 <th>Valor planejado</th>
@@ -4321,16 +4067,14 @@ function applyAccountsDirectionContext() {
               </tr>
               <tr>
                 <th>Limite de parcela</th>
-                <td>{{ formatCurrency(debtPreview.maxRecommendedPaymentBrl) }} ({{ formatPercent(debtPreview.maxCommitmentPercent) }})</td>
+                <td>{{ formatCurrency(debtPreview.maxRecommendedPaymentBrl) }} ({{
+                  formatPercent(debtPreview.maxCommitmentPercent) }})</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem simulação"
-          description="Preencha o formulário e clique em simular para receber sugestões de pagamento."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem simulação"
+          description="Preencha o formulário e clique em simular para receber sugestões de pagamento." />
 
         <div v-if="debtPreviewSuggestions.length" class="finance-inline-table-wrap">
           <table class="finance-inline-table">
@@ -4353,19 +4097,12 @@ function applyAccountsDirectionContext() {
                 <td>{{ formatCurrency(suggestion.monthlyPaymentBrl) }}</td>
                 <td>{{ suggestion.commitmentPercent !== null ? formatPercent(suggestion.commitmentPercent) : '-' }}</td>
                 <td>
-                  <RemoteFinanceStatusBadge
-                    :status="getDebtSuggestionLimitBadgeStatus(suggestion)"
-                    :label="getDebtSuggestionLimitBadgeLabel(suggestion)"
-                  />
+                  <RemoteFinanceStatusBadge :status="getDebtSuggestionLimitBadgeStatus(suggestion)"
+                    :label="getDebtSuggestionLimitBadgeLabel(suggestion)" />
                 </td>
                 <td class="finance-actions-cell">
-                  <button
-                    v-if="canCreateDebtPlanFromSuggestion(suggestion)"
-                    type="button"
-                    class="finance-inline-action"
-                    :disabled="debtPlanCreationSuggestionKey !== ''"
-                    @click="createDebtPlanFromSuggestion(suggestion)"
-                  >
+                  <button v-if="canCreateDebtPlanFromSuggestion(suggestion)" type="button" class="finance-inline-action"
+                    :disabled="debtPlanCreationSuggestionKey !== ''" @click="createDebtPlanFromSuggestion(suggestion)">
                     {{ isCreatingDebtPlanFromSuggestion(suggestion) ? 'Criando...' : 'Criar plano' }}
                   </button>
                   <span v-else>-</span>
@@ -4406,18 +4143,11 @@ function applyAccountsDirectionContext() {
                   <RemoteFinanceStatusBadge :status="debtPlan.status" :label="getFinanceLabel(debtPlan.status)" />
                 </td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingDebtPlan(debtPlan)"
-                  >
+                  <button type="button" class="finance-inline-action" @click="startEditingDebtPlan(debtPlan)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="requestDeleteDebtPlan(debtPlan)"
-                  >
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteDebtPlan(debtPlan)">
                     Excluir
                   </button>
                 </td>
@@ -4426,34 +4156,26 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="debtPlans.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(debtPlans, 'debtPlans', 'planos de dívida') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(debtPlans, 'debtPlans', 'planos de dívida')
+          }}</span>
           <div v-if="getLocalListPageCount(debtPlans) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('debtPlans', debtPlans) <= 1"
-              @click="setLocalListPage('debtPlans', getLocalListPage('debtPlans', debtPlans) - 1, debtPlans)"
-            >
+              @click="setLocalListPage('debtPlans', getLocalListPage('debtPlans', debtPlans) - 1, debtPlans)">
               Anterior
             </button>
             <span class="finance-pagination-page">
               Página {{ getLocalListPage('debtPlans', debtPlans) }} de {{ getLocalListPageCount(debtPlans) }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('debtPlans', debtPlans) >= getLocalListPageCount(debtPlans)"
-              @click="setLocalListPage('debtPlans', getLocalListPage('debtPlans', debtPlans) + 1, debtPlans)"
-            >
+              @click="setLocalListPage('debtPlans', getLocalListPage('debtPlans', debtPlans) + 1, debtPlans)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem planos de dívida"
-          description="Crie seu primeiro plano de pagamento de dívidas para acompanhar negociações e parcelas."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem planos de dívida"
+          description="Crie seu primeiro plano de pagamento de dívidas para acompanhar negociações e parcelas." />
       </article>
     </section>
 
@@ -4494,7 +4216,8 @@ function applyAccountsDirectionContext() {
           </button>
 
           <button class="finance-action-button" type="submit">Atualizar cotações (cache diário)</button>
-          <button class="finance-inline-action finance-inline-action-danger" type="button" @click="requestForceCurrencyRefresh">
+          <button class="finance-inline-action finance-inline-action-danger" type="button"
+            @click="requestForceCurrencyRefresh">
             Forçar consulta da API
           </button>
         </form>
@@ -4561,18 +4284,12 @@ function applyAccountsDirectionContext() {
                 <td>{{ formatDate(currencyRateItem.quoteDate, '-') }}</td>
                 <td>{{ formatDateTime(currencyRateItem.quoteDateTime, '-') }}</td>
                 <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingCurrencyRate(currencyRateItem)"
-                  >
+                  <button type="button" class="finance-inline-action"
+                    @click="startEditingCurrencyRate(currencyRateItem)">
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="requestDeleteCurrencyRate(currencyRateItem)"
-                  >
+                  <button type="button" class="finance-inline-action finance-inline-action-danger"
+                    @click="requestDeleteCurrencyRate(currencyRateItem)">
                     Excluir
                   </button>
                 </td>
@@ -4581,34 +4298,27 @@ function applyAccountsDirectionContext() {
           </table>
         </div>
         <div v-if="currencyRates.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(currencyRates, 'currencyRates', 'cotações') }}</span>
+          <span class="finance-pagination-summary">{{ getLocalListSummary(currencyRates, 'currencyRates', 'cotações')
+          }}</span>
           <div v-if="getLocalListPageCount(currencyRates) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('currencyRates', currencyRates) <= 1"
-              @click="setLocalListPage('currencyRates', getLocalListPage('currencyRates', currencyRates) - 1, currencyRates)"
-            >
+              @click="setLocalListPage('currencyRates', getLocalListPage('currencyRates', currencyRates) - 1, currencyRates)">
               Anterior
             </button>
             <span class="finance-pagination-page">
-              Página {{ getLocalListPage('currencyRates', currencyRates) }} de {{ getLocalListPageCount(currencyRates) }}
+              Página {{ getLocalListPage('currencyRates', currencyRates) }} de {{ getLocalListPageCount(currencyRates)
+              }}
             </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
+            <button type="button" class="finance-inline-action finance-pagination-button"
               :disabled="getLocalListPage('currencyRates', currencyRates) >= getLocalListPageCount(currencyRates)"
-              @click="setLocalListPage('currencyRates', getLocalListPage('currencyRates', currencyRates) + 1, currencyRates)"
-            >
+              @click="setLocalListPage('currencyRates', getLocalListPage('currencyRates', currencyRates) + 1, currencyRates)">
               Próxima
             </button>
           </div>
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem cotações"
-          description="Selecione moedas e atualize para buscar cotações da API do Bacen."
-        />
+        <RemoteFinanceEmptyState v-else title="Sem cotações"
+          description="Selecione moedas e atualize para buscar cotações da API do Bacen." />
       </article>
     </section>
 
@@ -4622,264 +4332,88 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Tipo de exportação</span>
             <select v-model="exportForm.exportType">
-              <option
-                v-for="exportTypeOption in exportTypeOptions"
-                :key="exportTypeOption.value"
-                :value="exportTypeOption.value"
-              >
+              <option v-for="exportTypeOption in exportTypeOptions" :key="exportTypeOption.value"
+                :value="exportTypeOption.value">
                 {{ exportTypeOption.label }}
               </option>
             </select>
           </label>
 
-          <button class="finance-action-button" type="submit">Enfileirar exportação</button>
+          <button class="button-primary" type="submit">Gerar Relatório (CSV)</button>
         </form>
       </article>
 
       <article class="finance-panel">
-        <header>
+        <header style="margin-bottom: 24px;">
           <h3>Migração completa (JSON)</h3>
-          <small>Exporte todo o financeiro para importar em outra conta/usuário.</small>
+          <small>Exporte ou importe todo o histórico financeiro.</small>
         </header>
 
-        <div class="finance-actions-row">
-          <button
-            type="button"
-            class="finance-action-button"
-            :disabled="loadingState.migration"
-            @click="downloadFinanceMigrationSnapshot"
-          >
-            {{ loadingState.migration ? 'Gerando JSON...' : 'Exportar snapshot JSON' }}
-          </button>
-        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px;">
 
-        <form class="finance-form-grid" @submit.prevent="submitFinanceMigrationImport">
-          <label>
-            <span>Arquivo JSON</span>
-            <input type="file" accept=".json,application/json" @change="onMigrationImportFileChange">
-          </label>
-
-          <label class="finance-toggle-label">
-            <input v-model="migrationForm.replaceExisting" type="checkbox">
-            <span>Substituir dados financeiros atuais antes de importar</span>
-          </label>
-
-          <button class="finance-action-button" type="submit" :disabled="loadingState.migration || !migrationImportFile">
-            {{ loadingState.migration ? 'Importando...' : 'Importar snapshot JSON' }}
-          </button>
-        </form>
-      </article>
-
-      <article class="finance-panel">
-        <header>
-          <h3>Histórico de exportações</h3>
-        </header>
-
-        <div v-if="exportJobs.length" class="finance-inline-table-wrap">
-          <table class="finance-inline-table">
-            <thead>
-              <tr>
-                <th>Tipo</th>
-                <th>Status</th>
-                <th>Solicitado em</th>
-                <th>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="exportJob in exportJobs" :key="exportJob.id">
-                <td>{{ getFinanceExportTypeLabel(exportJob.exportType, '-') }}</td>
-                <td>
-                  <RemoteFinanceStatusBadge
-                    :status="exportJob.status"
-                    :label="getFinanceExportStatusLabel(exportJob.status)"
-                  />
-                </td>
-                <td>{{ formatDateTime(exportJob.requestedAt, '-') }}</td>
-                <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingExportJob(exportJob)"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="requestDeleteExportJob(exportJob)"
-                  >
-                    Excluir
-                  </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    :disabled="exportJob.status !== 'DONE'"
-                    @click="downloadExport(exportJob)"
-                  >
-                    Download
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-if="exportJobs.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ exportTotalsLabel }}</span>
-          <div v-if="exportPageCount > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
-              :disabled="Number(exportMeta.page || 1) <= 1"
-              @click="setExportPage(Number(exportMeta.page || 1) - 1)"
-            >
-              Anterior
-            </button>
-            <span class="finance-pagination-page">
-              Página {{ Number(exportMeta.page || 1) }} de {{ exportPageCount }}
-            </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
-              :disabled="Number(exportMeta.page || 1) >= exportPageCount"
-              @click="setExportPage(Number(exportMeta.page || 1) + 1)"
-            >
-              Próxima
+          <!-- Painel Exportar -->
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 600;">Exportar dados</h4>
+              <p style="margin: 0; font-size: 0.82rem; line-height: 1.4; color: var(--muted, #475569);">
+                Gere um snapshot de todas as suas entradas para fazer backup, análises externas ou migrações seguras.
+              </p>
+            </div>
+            <button type="button" class="button-primary" style="width: fit-content; margin-top: auto;"
+              :disabled="loadingState.migration" @click="downloadFinanceMigrationSnapshot">
+              {{ loadingState.migration ? 'Gerando JSON...' : 'Exportar snapshot JSON' }}
             </button>
           </div>
-        </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem exportações"
-          description="As exportações geradas aparecerão aqui para download."
-        />
-      </article>
 
-      <article class="finance-panel">
-        <header>
-          <h3>Open Finance (base preparada)</h3>
-        </header>
+          <!-- Painel Importar -->
+          <form @submit.prevent="submitFinanceMigrationImport"
+            style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 600;">Importar dados</h4>
+              <p style="margin: 0; font-size: 0.82rem; line-height: 1.4; color: var(--muted, #475569);">
+                Restaure um histórico financeiro a partir de um arquivo JSON exportado do sistema.
+              </p>
+            </div>
 
-        <form class="finance-form-grid" @submit.prevent="createOpenFinanceConnection">
-          <label>
-            <span>Provider</span>
-            <select v-model="openFinanceForm.providerId">
-              <option value="">Selecione</option>
-              <option v-for="provider in openFinanceProviders" :key="provider.id" :value="provider.id">{{ provider.name }}</option>
-            </select>
-          </label>
+            <div class="flex flex-col gap-2 w-full">
+              <label class="button-secondary w-full m-0 flex items-center justify-center cursor-pointer transition-colors duration-200">
+                <span class="font-semibold text-center whitespace-nowrap">+ Escolher arquivo .json</span>
+                <input type="file" accept=".json,application/json" class="hidden" @change="onMigrationImportFileChange">
+              </label>
 
-          <label>
-            <span>Status inicial</span>
-            <select v-model="openFinanceForm.status">
-              <option
-                v-for="connectionStatusOption in openFinanceConnectionStatusOptions"
-                :key="connectionStatusOption.value"
-                :value="connectionStatusOption.value"
-              >
-                {{ connectionStatusOption.label }}
-              </option>
-            </select>
-          </label>
+              <input v-if="migrationImportFile" type="text" :value="migrationImportFile.name" disabled
+                class="w-full text-center px-4 py-2 border rounded-md bg-transparent text-sm font-medium cursor-not-allowed"
+                style="border-color: var(--line, #cbd5e1); color: var(--muted, #475569);">
+            </div>
 
-          <label class="finance-toggle-label">
-            <input v-model="openFinanceForm.createMockData" type="checkbox">
-            <span>Gerar dados mock na sincronização</span>
-          </label>
+            <label class="finance-toggle-label"
+              style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--line, #cbd5e1); border-radius: 8px; margin-top: 4px; cursor: pointer;">
+              <span style="margin: 0; font-size: 0.78rem; color: var(--muted, #475569); font-weight: 700;">Substituir
+                dados atuais da conta</span>
+              <input v-model="migrationForm.replaceExisting" type="checkbox"
+                style="margin: 0; cursor: pointer; transform: scale(1.1);">
+            </label>
 
-          <button class="finance-action-button" type="submit">Criar conexão</button>
-        </form>
-
-        <div v-if="openFinanceConnections.length" class="finance-inline-table-wrap">
-          <table class="finance-inline-table">
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Status</th>
-                <th>Última sync</th>
-                <th>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="connection in paginatedOpenFinanceConnections" :key="connection.id">
-                <td>{{ connection.providerName }}</td>
-                <td>
-                  <RemoteFinanceStatusBadge
-                    :status="connection.status"
-                    :label="getFinanceLabel(connection.status)"
-                  />
-                </td>
-                <td>{{ formatDateTime(connection.lastSyncAt, '-') }}</td>
-                <td class="finance-actions-cell">
-                  <button
-                    type="button"
-                    class="finance-inline-action"
-                    @click="startEditingOpenFinanceConnection(connection)"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    class="finance-inline-action finance-inline-action-danger"
-                    @click="requestDeleteOpenFinanceConnection(connection)"
-                  >
-                    Excluir
-                  </button>
-                  <button type="button" class="finance-inline-action" @click="runOpenFinanceSync(connection.id)">Sincronizar</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-if="openFinanceConnections.length" class="finance-pagination">
-          <span class="finance-pagination-summary">{{ getLocalListSummary(openFinanceConnections, 'openFinanceConnections', 'conexões') }}</span>
-          <div v-if="getLocalListPageCount(openFinanceConnections) > 1" class="finance-pagination-actions">
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('openFinanceConnections', openFinanceConnections) <= 1"
-              @click="setLocalListPage('openFinanceConnections', getLocalListPage('openFinanceConnections', openFinanceConnections) - 1, openFinanceConnections)"
-            >
-              Anterior
+            <button class="button-primary" type="submit" style="margin-top: auto; width: 100%;"
+              :disabled="loadingState.migration || !migrationImportFile">
+              {{ loadingState.migration ? 'Importando aguarde...' : 'Importar snapshot JSON' }}
             </button>
-            <span class="finance-pagination-page">
-              Página {{ getLocalListPage('openFinanceConnections', openFinanceConnections) }} de {{ getLocalListPageCount(openFinanceConnections) }}
-            </span>
-            <button
-              type="button"
-              class="finance-inline-action finance-pagination-button"
-              :disabled="getLocalListPage('openFinanceConnections', openFinanceConnections) >= getLocalListPageCount(openFinanceConnections)"
-              @click="setLocalListPage('openFinanceConnections', getLocalListPage('openFinanceConnections', openFinanceConnections) + 1, openFinanceConnections)"
-            >
-              Próxima
-            </button>
-          </div>
+          </form>
+
         </div>
-        <RemoteFinanceEmptyState
-          v-else
-          title="Sem conexões Open Finance"
-          description="Crie conexões para preparar o vínculo com dados bancários externos."
-        />
       </article>
     </section>
 
-    <div
-      v-if="accountActionModalState.isOpen"
-      class="app-modal-overlay flex items-center justify-center"
-      role="dialog"
-      aria-modal="true"
-      @click.self="closeAccountActionModal"
-    >
+    <div v-if="accountActionModalState.isOpen" class="app-modal-overlay flex items-center justify-center" role="dialog"
+      aria-modal="true" @click.self="closeAccountActionModal">
       <div class="app-modal-frame w-full max-w-4xl p-6 md:p-7">
         <header class="finance-modal-header">
           <h3>{{ accountActionModalTitle }}</h3>
           <p>Os dados serão aplicados nas listagens desta aba.</p>
         </header>
 
-        <form
-          v-if="accountActionModalState.actionType === 'ENTRY'"
-          class="finance-form-grid"
-          @submit.prevent="submitEntry"
-        >
+        <form v-if="accountActionModalState.actionType === 'ENTRY'" class="finance-form-grid"
+          @submit.prevent="submitEntry">
           <label>
             <span>Título</span>
             <input v-model="entryForm.title" type="text" required>
@@ -4888,11 +4422,8 @@ function applyAccountsDirectionContext() {
           <label>
             <span>Tipo de lançamento</span>
             <select v-model="entryForm.entryType">
-              <option
-                v-for="entryTypeOption in entryTypeOptionsForForm"
-                :key="entryTypeOption.value"
-                :value="entryTypeOption.value"
-              >
+              <option v-for="entryTypeOption in entryTypeOptionsForForm" :key="entryTypeOption.value"
+                :value="entryTypeOption.value">
                 {{ entryTypeOption.label }}
               </option>
             </select>
@@ -4912,7 +4443,8 @@ function applyAccountsDirectionContext() {
             <span>Categoria</span>
             <select v-model="entryForm.categoryId">
               <option value="">Sem categoria</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}
+              </option>
             </select>
           </label>
 
@@ -4920,7 +4452,8 @@ function applyAccountsDirectionContext() {
             <span>Conta bancária</span>
             <select v-model="entryForm.bankAccountId">
               <option value="">Sem conta</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
+                bankAccount.name }}</option>
             </select>
           </label>
 
@@ -4932,11 +4465,8 @@ function applyAccountsDirectionContext() {
           </div>
         </form>
 
-        <form
-          v-else-if="accountActionModalState.actionType === 'SETTLEMENT'"
-          class="finance-form-grid finance-settlement-form"
-          @submit.prevent="submitSettlement"
-        >
+        <form v-else-if="accountActionModalState.actionType === 'SETTLEMENT'"
+          class="finance-form-grid finance-settlement-form" @submit.prevent="submitSettlement">
           <label>
             <span>Lançamento</span>
             <select v-model="settlementForm.entryId">
@@ -4952,16 +4482,9 @@ function applyAccountsDirectionContext() {
 
           <label>
             <span>Valor da baixa</span>
-            <input
-              v-model="settlementForm.amountBrl"
-              type="number"
-              step="0.01"
-              min="0.01"
-              :max="selectedSettlementEntryTypeCode !== 'INSTALLMENT' && selectedSettlementRemainingAmountBrl > 0
-                ? selectedSettlementRemainingAmountBrl
-                : undefined"
-              required
-            >
+            <input v-model="settlementForm.amountBrl" type="number" step="0.01" min="0.01" :max="selectedSettlementEntryTypeCode !== 'INSTALLMENT' && selectedSettlementRemainingAmountBrl > 0
+              ? selectedSettlementRemainingAmountBrl
+              : undefined" required>
           </label>
 
           <label>
@@ -4982,11 +4505,8 @@ function applyAccountsDirectionContext() {
             <span>Cartão de crédito</span>
             <select v-model="settlementForm.creditCardId" required>
               <option value="">Selecione</option>
-              <option
-                v-for="creditCardAccount in availableCreditCardAccounts"
-                :key="creditCardAccount.id"
-                :value="creditCardAccount.id"
-              >
+              <option v-for="creditCardAccount in availableCreditCardAccounts" :key="creditCardAccount.id"
+                :value="creditCardAccount.id">
                 {{ formatCreditCardOptionLabel(creditCardAccount) }}
               </option>
             </select>
@@ -5014,7 +4534,8 @@ function applyAccountsDirectionContext() {
             <span>Conta bancária</span>
             <select v-model="settlementForm.bankAccountId" :required="!settlementForm.useCreditCard">
               <option value="">Selecione</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
+                bankAccount.name }}</option>
             </select>
           </label>
 
@@ -5024,11 +4545,8 @@ function applyAccountsDirectionContext() {
           </div>
         </form>
 
-        <form
-          v-else-if="accountActionModalState.actionType === 'RECURRING_RULE'"
-          class="finance-form-grid"
-          @submit.prevent="submitRecurringRule"
-        >
+        <form v-else-if="accountActionModalState.actionType === 'RECURRING_RULE'" class="finance-form-grid"
+          @submit.prevent="submitRecurringRule">
           <label>
             <span>Título</span>
             <input v-model="recurringForm.title" type="text" required>
@@ -5053,7 +4571,8 @@ function applyAccountsDirectionContext() {
             <span>Tipo recorrente</span>
             <select v-model="recurringForm.recurringTypeId" required>
               <option value="">Selecione</option>
-              <option v-for="recurringType in availableRecurringTypes" :key="recurringType.id" :value="recurringType.id">{{ recurringType.name }}</option>
+              <option v-for="recurringType in availableRecurringTypes" :key="recurringType.id"
+                :value="recurringType.id">{{ recurringType.name }}</option>
             </select>
           </label>
 
@@ -5061,7 +4580,8 @@ function applyAccountsDirectionContext() {
             <span>Categoria</span>
             <select v-model="recurringForm.categoryId">
               <option value="">Sem categoria</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}
+              </option>
             </select>
           </label>
 
@@ -5069,7 +4589,8 @@ function applyAccountsDirectionContext() {
             <span>Conta bancária padrão</span>
             <select v-model="recurringForm.defaultBankAccountId">
               <option value="">Sem conta</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
+                bankAccount.name }}</option>
             </select>
           </label>
 
@@ -5081,11 +4602,8 @@ function applyAccountsDirectionContext() {
           </div>
         </form>
 
-        <form
-          v-else-if="accountActionModalState.actionType === 'INSTALLMENT_PLAN'"
-          class="finance-form-grid"
-          @submit.prevent="submitInstallmentPlan"
-        >
+        <form v-else-if="accountActionModalState.actionType === 'INSTALLMENT_PLAN'" class="finance-form-grid"
+          @submit.prevent="submitInstallmentPlan">
           <label>
             <span>Título</span>
             <input v-model="installmentForm.title" type="text" required>
@@ -5115,7 +4633,8 @@ function applyAccountsDirectionContext() {
             <span>Categoria</span>
             <select v-model="installmentForm.categoryId">
               <option value="">Sem categoria</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}
+              </option>
             </select>
           </label>
 
@@ -5123,7 +4642,8 @@ function applyAccountsDirectionContext() {
             <span>Conta bancária padrão</span>
             <select v-model="installmentForm.defaultBankAccountId">
               <option value="">Sem conta</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
+                bankAccount.name }}</option>
             </select>
           </label>
 
@@ -5133,11 +4653,8 @@ function applyAccountsDirectionContext() {
           </div>
         </form>
 
-        <form
-          v-else-if="accountActionModalState.actionType === 'RENEGOTIATION'"
-          class="finance-form-grid"
-          @submit.prevent="submitRenegotiation"
-        >
+        <form v-else-if="accountActionModalState.actionType === 'RENEGOTIATION'" class="finance-form-grid"
+          @submit.prevent="submitRenegotiation">
           <label>
             <span>Plano</span>
             <select v-model="renegotiationForm.planId">
@@ -5160,7 +4677,8 @@ function applyAccountsDirectionContext() {
             <span>Categoria</span>
             <select v-model="renegotiationForm.categoryId">
               <option value="">Manter atual</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}
+              </option>
             </select>
           </label>
 
@@ -5168,7 +4686,8 @@ function applyAccountsDirectionContext() {
             <span>Conta bancária padrão</span>
             <select v-model="renegotiationForm.defaultBankAccountId">
               <option value="">Manter atual</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
+                bankAccount.name }}</option>
             </select>
           </label>
 
@@ -5180,16 +4699,10 @@ function applyAccountsDirectionContext() {
       </div>
     </div>
 
-    <AppConfirmDialog
-      :is-open="confirmDialogState.isOpen"
-      :title="confirmDialogState.title"
-      :message="confirmDialogState.message"
-      :confirm-label="confirmDialogState.confirmLabel"
-      :confirm-tone="confirmDialogState.confirmTone"
-      :processing="confirmDialogState.processing"
-      @cancel="closeConfirmDialog"
-      @confirm="handleConfirmDialogAction"
-    />
+    <AppConfirmDialog :is-open="confirmDialogState.isOpen" :title="confirmDialogState.title"
+      :message="confirmDialogState.message" :confirm-label="confirmDialogState.confirmLabel"
+      :confirm-tone="confirmDialogState.confirmTone" :processing="confirmDialogState.processing"
+      @cancel="closeConfirmDialog" @confirm="handleConfirmDialogAction" />
   </section>
 </template>
 
@@ -5314,7 +4827,7 @@ function applyAccountsDirectionContext() {
 .finance-panel {
   border: 1px solid var(--line, #cbd5e1);
   border-radius: 14px;
-  background: var(--surface-strong, #1d4ed8);
+  background: var(--surface-strong, #ffffff);
   padding: 16px;
   display: grid;
   gap: 14px;
@@ -5416,11 +4929,9 @@ function applyAccountsDirectionContext() {
   border: 1px solid color-mix(in srgb, var(--accent, #1d4ed8) 30%, var(--line, #cbd5e1));
   border-radius: 14px;
   padding: 14px;
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--accent, #1d4ed8) 10%, var(--surface-strong, #ffffff)) 0%,
-    color-mix(in srgb, var(--surface-strong, #ffffff) 94%, #ffffff) 100%
-  );
+  background: linear-gradient(160deg,
+      color-mix(in srgb, var(--accent, #1d4ed8) 10%, var(--surface-strong, #ffffff)) 0%,
+      color-mix(in srgb, var(--surface-strong, #ffffff) 94%, #ffffff) 100%);
   box-shadow: 0 10px 20px color-mix(in srgb, var(--ink, #0f172a) 10%, transparent);
   display: grid;
   gap: 11px;
@@ -5564,8 +5075,8 @@ function applyAccountsDirectionContext() {
   margin-left: 8px;
 }
 
-.finance-form-grid > .finance-action-button,
-.finance-filter-grid > .finance-action-button {
+.finance-form-grid>.finance-action-button,
+.finance-filter-grid>.finance-action-button {
   justify-self: start;
   width: auto;
   min-width: 168px;
@@ -5602,7 +5113,7 @@ function applyAccountsDirectionContext() {
   vertical-align: middle;
 }
 
-.finance-actions-cell .finance-inline-action + .finance-inline-action {
+.finance-actions-cell .finance-inline-action+.finance-inline-action {
   margin-left: 8px;
 }
 
@@ -5640,7 +5151,7 @@ function applyAccountsDirectionContext() {
   min-width: 0;
 }
 
-.finance-settlement-toggle-field > span {
+.finance-settlement-toggle-field>span {
   font-size: 0.78rem;
   color: var(--muted, #475569);
   font-weight: 700;
@@ -5754,8 +5265,8 @@ function applyAccountsDirectionContext() {
     gap: 12px;
   }
 
-  .finance-form-grid > .finance-action-button,
-  .finance-filter-grid > .finance-action-button {
+  .finance-form-grid>.finance-action-button,
+  .finance-filter-grid>.finance-action-button {
     width: 100%;
   }
 }
