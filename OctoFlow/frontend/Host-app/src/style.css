@@ -996,7 +996,8 @@ select optgroup {
 .bg-cyan-50\/80,
 .bg-cyan-50\/95,
 .bg-cyan-100,
-.bg-cyan-400\/12 {
+.bg-cyan-400\/12,
+.bg-sky-50\/80 {
   background-color: var(--secondary-soft) !important;
 }
 
@@ -1012,11 +1013,15 @@ select optgroup {
 }
 
 .bg-amber-50,
+.bg-amber-50\/80,
 .bg-amber-50\/95,
 .bg-amber-100 {
   background-color: var(--warning-bg) !important;
 }
 
+.bg-rose-50,
+.bg-rose-50\/70,
+.bg-rose-50\/80,
 .bg-rose-50\/95,
 .bg-rose-100,
 .bg-red-50 {
@@ -1029,6 +1034,7 @@ select optgroup {
 }
 
 .border-white\/60,
+.border-white\/80,
 .border-slate-200,
 .border-slate-200\/80,
 .border-slate-300 {
@@ -1190,6 +1196,153 @@ select optgroup {
 .to-slate-700,
 .to-teal-500 {
   --tw-gradient-to: var(--color-accent) var(--tw-gradient-to-position) !important;
+}
+
+/* Sidebar Styles */
+.menu-sidebar {
+  border-right: 1px solid var(--nav-border);
+  background-color: var(--nav-bg);
+  color: var(--nav-text);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 40;
+}
+
+.menu-sidebar-panel {
+  border: 1px solid var(--nav-border);
+  background: color-mix(in srgb, var(--nav-bg) 84%, var(--color-text) 16%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.menu-logo {
+  border: 1px solid color-mix(in srgb, var(--color-secondary) 34%, transparent);
+  background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-secondary) 25%, transparent);
+}
+
+.menu-title,
+.menu-nav-label,
+.menu-profile-user,
+.menu-nav-icon {
+  color: var(--nav-text);
+}
+
+.menu-subtitle,
+.menu-profile-kicker {
+  color: var(--nav-muted);
+}
+
+.menu-nav-item {
+  border-color: var(--nav-border);
+}
+
+.menu-nav-group {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-nav-group-children {
+  display: grid;
+  gap: 6px;
+  padding: 0 4px 0 14px;
+}
+
+.menu-nav-child {
+  border-color: var(--nav-border);
+}
+
+.menu-nav-child-idle {
+  background: color-mix(in srgb, var(--nav-card) 72%, transparent);
+  color: var(--nav-text);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-nav-child-idle:hover {
+  background: var(--nav-card-hover);
+  border-color: var(--nav-border-strong);
+  transform: translateX(4px);
+}
+
+.menu-nav-child-active {
+  background: var(--nav-active-bg);
+  border-color: var(--nav-active-border);
+  color: var(--nav-text);
+  box-shadow: var(--nav-active-shadow);
+}
+
+.menu-nav-child-label {
+  display: block;
+}
+
+.menu-nav-item-idle {
+  background: var(--nav-card);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-nav-item-idle:hover {
+  background: var(--nav-card-hover);
+  border-color: var(--nav-border-strong);
+  transform: translateX(4px);
+}
+
+.menu-nav-item-active {
+  background: var(--nav-active-bg);
+  border-color: var(--nav-active-border);
+  box-shadow: var(--nav-active-shadow);
+}
+
+.menu-nav-icon-idle,
+.menu-profile-avatar {
+  background: color-mix(in srgb, var(--nav-card) 70%, var(--color-text) 30%);
+  transition: all 0.2s ease;
+}
+
+.menu-profile-avatar-image {
+  border-radius: inherit;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.menu-nav-icon-active {
+  background: color-mix(in srgb, var(--color-secondary) 18%, transparent);
+}
+
+.menu-group-toggle-indicator {
+  color: var(--nav-muted);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-group-toggle-indicator.is-open {
+  transform: rotate(180deg);
+}
+
+.menu-profile-button-active {
+  background: var(--nav-active-bg);
+  box-shadow: inset 0 0 0 1px var(--nav-active-border);
+}
+
+.menu-profile-button-idle {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-profile-button-idle:hover {
+  background: var(--nav-card);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.menu-logout {
+  border-color: var(--nav-border);
+  background: var(--surface);
+  color: var(--ink);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-logout:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 1180px) {
