@@ -5,11 +5,40 @@ set -euo pipefail
 cd /home/node/app
 
 SENTINEL_FILE="/home/node/app/naorodar.txt"
+STATE_DIR="/home/node/app/.install-state"
+
+mkdir -p "${STATE_DIR}"
 
 run_install() {
   local app_dir="$1"
+  local app_name
+  local package_json
+  local package_lock
+  local signature_file
+  local current_signature
+  local previous_signature
 
-  if [ ! -f "${app_dir}/package.json" ]; then
+  package_json="${app_dir}/package.json"
+  package_lock="${app_dir}/package-lock.json"
+
+  if [ ! -f "${package_json}" ]; then
+    return
+  fi
+
+  app_name="$(basename "${app_dir}")"
+  signature_file="${STATE_DIR}/${app_name}.sha256"
+  current_signature="$(
+    {
+      sha256sum "${package_json}"
+      if [ -f "${package_lock}" ]; then
+        sha256sum "${package_lock}"
+      fi
+    } | sha256sum | awk '{print $1}'
+  )"
+  previous_signature="$(cat "${signature_file}" 2>/dev/null || true)"
+
+  if [ -d "${app_dir}/node_modules" ] && [ "${current_signature}" = "${previous_signature}" ]; then
+    echo "[frontend] Dependencias de ${app_dir} ja estao atualizadas"
     return
   fi
 
@@ -18,6 +47,8 @@ run_install() {
     cd "${app_dir}"
     npm install
   )
+
+  printf '%s\n' "${current_signature}" > "${signature_file}"
 }
 
 if [ -x /home/node/app/roda.sh ]; then
@@ -28,13 +59,16 @@ elif [ ! -e "${SENTINEL_FILE}" ]; then
   run_install /home/node/app/Host-app
   {
     echo "este arquivo e gerado automaticamente"
-    echo "ao apagar este arquivo, o npm install ira rodar no proximo up"
+    echo "as dependencias sao revalidadas automaticamente no proximo up"
   } > "${SENTINEL_FILE}"
 else
   echo ""
   echo "Arquivo naorodar.txt existente"
   echo ""
 fi
+
+run_install /home/node/app/Components-app
+run_install /home/node/app/Host-app
 
 if [ -x /home/node/app/up_node.sh ]; then
   exec /bin/bash /home/node/app/up_node.sh

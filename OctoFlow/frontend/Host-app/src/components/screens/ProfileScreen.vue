@@ -19,6 +19,7 @@ import AccountEmailsPanel from '../AccountEmailsPanel.vue'
 import AccountPasswordChangeModal from '../shared/AccountPasswordChangeModal.vue'
 import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
 import {
+  DEFAULT_APP_THEME_KEY,
   COLOR_VISION_MODE_OPTIONS,
   CUSTOM_THEME_COLOR_KEYS,
   CUSTOM_THEME_KEY,
@@ -82,18 +83,41 @@ const sessionStore = useSessionStore()
 const {
   currentUser: sessionCurrentUser,
   activeThemeKey: sessionActiveThemeKey,
-  availableThemes: sessionAvailableThemes,
   uiSettings: sessionUiSettings,
 } = storeToRefs(sessionStore)
 const requestClient = props.request || sessionStore.authRequest
 const currentUser = computed(() => props.currentUser || sessionCurrentUser.value)
-const effectiveActiveThemeKey = computed(() => props.activeThemeKey || sessionActiveThemeKey.value)
+const effectiveActiveThemeKey = computed(() => {
+  const propThemeKey = typeof props.activeThemeKey === 'string' ? props.activeThemeKey.trim() : ''
+  if (propThemeKey !== '') {
+    return propThemeKey
+  }
+
+  const storeThemeKey = typeof sessionActiveThemeKey.value === 'string' ? sessionActiveThemeKey.value.trim() : ''
+  if (storeThemeKey !== '') {
+    return storeThemeKey
+  }
+
+  return DEFAULT_APP_THEME_KEY
+})
 const effectiveAvailableThemes = computed(() => (
   Array.isArray(props.availableThemes) && props.availableThemes.length > 0
     ? props.availableThemes
-    : sessionAvailableThemes.value
+    : Array.isArray(sessionStore.availableThemes)
+      ? sessionStore.availableThemes
+      : []
 ))
-const effectiveUiSettings = computed(() => props.uiSettings || sessionUiSettings.value)
+const effectiveUiSettings = computed(() => {
+  if (props.uiSettings && typeof props.uiSettings === 'object') {
+    return props.uiSettings
+  }
+
+  if (sessionUiSettings.value && typeof sessionUiSettings.value === 'object') {
+    return sessionUiSettings.value
+  }
+
+  return {}
+})
 const setThemeHandler = props.setTheme || sessionStore.setAppTheme
 const updateUiSettingsHandler = props.updateUiSettings || sessionStore.updateUiSettings
 
@@ -1542,8 +1566,8 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
             :key="theme.key"
             type="button"
             class="theme-option"
-            :class="{ selected: theme.key === activeThemeKey }"
-            :aria-pressed="theme.key === activeThemeKey"
+            :class="{ selected: theme.key === effectiveActiveThemeKey }"
+            :aria-pressed="theme.key === effectiveActiveThemeKey"
             @click="selectTheme(theme.key)"
           >
             <div class="theme-swatch-row" aria-hidden="true">
@@ -1557,7 +1581,7 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
             <div class="theme-copy">
               <div class="theme-copy-head">
                 <strong>{{ theme.label }}</strong>
-                <span class="theme-badge">{{ theme.key === activeThemeKey ? 'Ativo' : 'Aplicar' }}</span>
+                <span class="theme-badge">{{ theme.key === effectiveActiveThemeKey ? 'Ativo' : 'Aplicar' }}</span>
               </div>
               <p>{{ theme.description }}</p>
             </div>

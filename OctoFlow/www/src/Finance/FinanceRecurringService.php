@@ -278,6 +278,43 @@ final class FinanceRecurringService
         });
     }
 
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function generateRuleEntryManually(User $user, int $ruleId, array $payload = []): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+        $rule = $this->getRuleGenerationDataById($ownerId, $ruleId);
+
+        if (!(bool) ($rule['isActive'] ?? false)) {
+            throw new \InvalidArgumentException('Inactive recurring rules cannot generate entries.');
+        }
+
+        $requestedCompetenceDate = FinanceInput::normalizeOptionalDate($payload['competenceMonth'] ?? null);
+        $ruleNextRunDate = FinanceInput::normalizeOptionalDate($rule['nextRunDate'] ?? null);
+        $referenceDate = $requestedCompetenceDate ?? $ruleNextRunDate ?? new \DateTimeImmutable('today');
+        $targetCompetenceMonth = new \DateTimeImmutable($referenceDate->format('Y-m-01'));
+
+        $generatedCount = $this->generateMissingEntriesForRule(
+            $ownerId,
+            $rule,
+            $targetCompetenceMonth,
+            $targetCompetenceMonth,
+            'manual',
+            true,
+        );
+
+        return [
+            'generated' => $generatedCount > 0,
+            'generatedCount' => $generatedCount,
+            'competenceMonth' => $targetCompetenceMonth->format('Y-m-01'),
+            'entry' => $this->findActiveGeneratedEntryByRuleAndCompetence($ownerId, $ruleId, $targetCompetenceMonth),
+            'rule' => $this->getRuleById($ownerId, $ruleId),
+        ];
+    }
+
     public function generateMissingEntriesForRange(User $user, \DateTimeImmutable $startDate, \DateTimeImmutable $endDate, string $runSource = 'lazy'): int
     {
         $ownerId = $this->requireOwnerId($user);
@@ -365,15 +402,20 @@ final class FinanceRecurringService
         \DateTimeImmutable $startMonth,
         \DateTimeImmutable $endMonth,
         string $runSource,
+        bool $forceGeneration = false,
     ): int {
         $ruleId = (int) $rule['id'];
+        $dayOfMonth = (int) ($rule['dayOfMonth'] ?? 1);
         $ruleStartDate = new \DateTimeImmutable((string) $rule['startsAt']);
         $ruleEndDate = !empty($rule['endsAt']) ? new \DateTimeImmutable((string) $rule['endsAt']) : null;
+        $ruleStartCompetenceMonth = $ruleStartDate->format('Y-m-01');
+        $today = new \DateTimeImmutable('today');
 
         $generatedCount = 0;
 
         foreach ($this->iterateMonths($startMonth, $endMonth) as $month) {
-            $dueDate = $this->buildDateInMonth($month, (int) $rule['dayOfMonth']);
+            $competenceMonth = $month->format('Y-m-01');
+            $dueDate = $this->buildDateInMonth($month, $dayOfMonth);
             if ($dueDate < $ruleStartDate) {
                 continue;
             }
@@ -382,21 +424,42 @@ final class FinanceRecurringService
                 continue;
             }
 
-            $competenceMonth = $month->format('Y-m-01');
+            // Gera a próxima competência apenas depois do vencimento da competência anterior.
+            // A regra segue o vencimento, mesmo se o lançamento anterior ainda estiver em aberto.
+            if (!$forceGeneration && $competenceMonth !== $ruleStartCompetenceMonth) {
+                $previousMonth = $month->modify('-1 month');
+                $previousDueDate = $this->buildDateInMonth($previousMonth, $dayOfMonth);
+                if ($previousDueDate > $today) {
+                    continue;
+                }
+            }
 
-            $existingRunId = $this->connection->fetchOne(<<<'SQL'
-                SELECT id
-                FROM finance_recurring_rule_run
-                WHERE recurring_rule_id = :ruleId
-                  AND competence_month = :competenceMonth
+            /** @var array<string, mixed>|false $existingRun */
+            $existingRun = $this->connection->fetchAssociative(<<<'SQL'
+                SELECT
+                    run.id AS "runId",
+                    run.generated_entry_id AS "generatedEntryId",
+                    entry.deleted_at AS "generatedEntryDeletedAt"
+                FROM finance_recurring_rule_run run
+                LEFT JOIN finance_entry entry ON entry.id = run.generated_entry_id
+                WHERE run.recurring_rule_id = :ruleId
+                  AND run.competence_month = :competenceMonth
                 LIMIT 1
             SQL, [
                 'ruleId' => $ruleId,
                 'competenceMonth' => $competenceMonth,
             ]);
 
-            if ($existingRunId !== false) {
-                continue;
+            $existingRunId = null;
+            if (is_array($existingRun)) {
+                $existingRunId = (int) ($existingRun['runId'] ?? 0);
+                $generatedEntryId = (int) ($existingRun['generatedEntryId'] ?? 0);
+                $generatedEntryDeletedAt = $existingRun['generatedEntryDeletedAt'] ?? null;
+
+                // Já existe lançamento ativo para a competência: mantém idempotência.
+                if ($generatedEntryId > 0 && $generatedEntryDeletedAt === null) {
+                    continue;
+                }
             }
 
             $entryStatus = FinanceInput::defaultStatusByDirection(
@@ -433,13 +496,24 @@ final class FinanceRecurringService
 
             $generatedEntryId = (int) $this->connection->lastInsertId();
 
-            $this->connection->insert('finance_recurring_rule_run', [
-                'recurring_rule_id' => $ruleId,
-                'generated_entry_id' => $generatedEntryId,
-                'competence_month' => $competenceMonth,
-                'run_source' => $runSource,
-                'generated_at' => $now,
-            ]);
+            if ($existingRunId !== null && $existingRunId > 0) {
+                $this->connection->update('finance_recurring_rule_run', [
+                    'generated_entry_id' => $generatedEntryId,
+                    'run_source' => $runSource,
+                    'generated_at' => $now,
+                ], [
+                    'id' => $existingRunId,
+                    'recurring_rule_id' => $ruleId,
+                ]);
+            } else {
+                $this->connection->insert('finance_recurring_rule_run', [
+                    'recurring_rule_id' => $ruleId,
+                    'generated_entry_id' => $generatedEntryId,
+                    'competence_month' => $competenceMonth,
+                    'run_source' => $runSource,
+                    'generated_at' => $now,
+                ]);
+            }
 
             $this->connection->insert('finance_entry_status_history', [
                 'owner_id' => $ownerId,
@@ -455,6 +529,84 @@ final class FinanceRecurringService
         }
 
         return $generatedCount;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function getRuleGenerationDataById(int $ownerId, int $ruleId): array
+    {
+        /** @var array<string, mixed>|false $result */
+        $result = $this->connection->fetchAssociative(<<<'SQL'
+            SELECT
+                id,
+                direction,
+                title,
+                amount_brl AS "amountBrl",
+                day_of_month AS "dayOfMonth",
+                starts_at AS "startsAt",
+                ends_at AS "endsAt",
+                category_id AS "categoryId",
+                default_bank_account_id AS "defaultBankAccountId",
+                next_run_date AS "nextRunDate",
+                is_active AS "isActive"
+            FROM finance_recurring_rule
+            WHERE owner_id = :ownerId
+              AND id = :ruleId
+            LIMIT 1
+        SQL, [
+            'ownerId' => $ownerId,
+            'ruleId' => $ruleId,
+        ]);
+
+        if (!is_array($result)) {
+            throw new \InvalidArgumentException('Recurring rule not found.');
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findActiveGeneratedEntryByRuleAndCompetence(
+        int $ownerId,
+        int $ruleId,
+        \DateTimeImmutable $competenceMonth,
+    ): ?array {
+        /** @var array<string, mixed>|false $entry */
+        $entry = $this->connection->fetchAssociative(<<<'SQL'
+            SELECT
+                id,
+                direction,
+                entry_type AS "entryType",
+                status,
+                title,
+                due_date AS "dueDate",
+                competence_month AS "competenceMonth",
+                expected_amount_brl AS "expectedAmountBrl",
+                remaining_amount_brl AS "remainingAmountBrl",
+                created_at AS "createdAt",
+                updated_at AS "updatedAt"
+            FROM finance_entry
+            WHERE owner_id = :ownerId
+              AND recurring_rule_id = :ruleId
+              AND source_system = 'RECURRING_ENGINE'
+              AND competence_month = :competenceMonth
+              AND deleted_at IS NULL
+            ORDER BY id DESC
+            LIMIT 1
+        SQL, [
+            'ownerId' => $ownerId,
+            'ruleId' => $ruleId,
+            'competenceMonth' => $competenceMonth->format('Y-m-01'),
+        ]);
+
+        if (!is_array($entry)) {
+            return null;
+        }
+
+        return $entry;
     }
 
     /**

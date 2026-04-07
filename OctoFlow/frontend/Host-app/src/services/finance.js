@@ -194,6 +194,15 @@ export function deleteFinanceRecurringRule(ruleId) {
   })
 }
 
+export function generateFinanceRecurringRuleManually(ruleId, payload = {}) {
+  return requestWithSession({
+    url: `/finance/recurring-rules/${encodeURIComponent(ruleId)}/generate-manual`,
+    method: 'POST',
+    csrfActionId: 'finance.recurring-rules.generate-manual',
+    data: payload,
+  })
+}
+
 export function fetchFinanceInstallmentPlans() {
   return requestWithSession({
     url: '/finance/installment-plans',

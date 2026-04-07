@@ -91,4 +91,28 @@ final class FinanceRecurringController
         }
     }
 
+    #[Route('/recurring-rules/{ruleId<\d+>}/generate-manual', name: 'finance_recurring_rules_generate_manual', methods: ['POST'])]
+    public function generateRuleManually(int $ruleId, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        $payload = [];
+        if (trim($request->getContent()) !== '') {
+            $payload = $this->decodeJson($request);
+            if ($payload === null) {
+                return $this->buildInvalidJsonResponse();
+            }
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->financeRecurringService->generateRuleEntryManually($user, $ruleId, $payload),
+            ]);
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
+
 }

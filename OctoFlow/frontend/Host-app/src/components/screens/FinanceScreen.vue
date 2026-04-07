@@ -37,6 +37,7 @@ import {
   fetchFinanceMigrationSnapshot,
   fetchFinanceRecurringRules,
   fetchFinanceRecurringTypes,
+  generateFinanceRecurringRuleManually,
   importFinanceMigrationSnapshot,
   previewFinanceDebtPlan,
   renegotiateFinanceInstallmentPlan,
@@ -260,6 +261,7 @@ const recurringForm = reactive({
   defaultBankAccountId: '',
 })
 const recurringRuleEditingId = ref(null)
+const manualRecurringGenerationRuleId = ref(null)
 
 const installmentForm = reactive({
   direction: 'PAYABLE',
@@ -1674,35 +1676,6 @@ async function submitEntry() {
   try {
     const entryDueDate = entryForm.dueDate || getCurrentDateInputValue()
 
-    if (!entryEditingId.value && shouldCreateSalaryRecurringRuleFromEntry()) {
-      const recurringTypeId = resolveSalaryRecurringTypeId()
-      if (!recurringTypeId) {
-        notifyUser('Nao foi possivel localizar um tipo de recorrencia para salario.', 'warning')
-        return
-      }
-
-      const dueDay = Number(entryDueDate.split('-')[2] || 5)
-
-      await createFinanceRecurringRule({
-        direction: 'RECEIVABLE',
-        title: entryForm.title,
-        amountBrl: Number(entryForm.expectedAmountBrl),
-        dayOfMonth: Number.isFinite(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : 5,
-        startsAt: entryDueDate,
-        recurringTypeId,
-        categoryId: resolveSalaryCategoryId(),
-        defaultBankAccountId: normalizeOptionalNumber(entryForm.bankAccountId),
-      })
-
-      resetEntryForm()
-      closeAccountActionModal()
-
-      notifyUser('Salario cadastrado como recorrencia com sucesso.', 'success')
-      await Promise.all([loadRecurringRules(), loadEntries()])
-      await loadDashboard()
-      return
-    }
-
     const entryPayload = {
       direction: entryForm.direction,
       entryType: entryForm.entryType,
@@ -2341,6 +2314,48 @@ function resetRecurringRuleForm() {
   recurringForm.defaultBankAccountId = ''
 }
 
+function resolveManualRecurringCompetenceDate(recurringRuleItem) {
+  const rawNextRunDate = String(recurringRuleItem?.nextRunDate || '').trim().slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawNextRunDate)) {
+    return rawNextRunDate
+  }
+
+  return `${getCurrentYearMonthInputValue()}-01`
+}
+
+async function generateRecurringRuleManually(recurringRuleItem) {
+  if (!recurringRuleItem?.id) {
+    return
+  }
+
+  const recurringRuleId = Number(recurringRuleItem.id)
+  if (!Number.isFinite(recurringRuleId) || recurringRuleId <= 0) {
+    return
+  }
+
+  manualRecurringGenerationRuleId.value = recurringRuleId
+
+  try {
+    const response = await generateFinanceRecurringRuleManually(recurringRuleId, {
+      competenceMonth: resolveManualRecurringCompetenceDate(recurringRuleItem),
+    })
+    const generatedCount = Number(response.data?.item?.generatedCount || 0)
+
+    if (generatedCount > 0) {
+      notifyUser('Lançamento recorrente gerado manualmente com sucesso.', 'success')
+    } else {
+      notifyUser('Já existe um lançamento ativo para essa competência.', 'warning')
+    }
+
+    await Promise.all([loadRecurringRules(), loadEntries()])
+    await loadDashboard()
+  } catch (requestError) {
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível gerar o lançamento manual da recorrência.'), 'error')
+  } finally {
+    manualRecurringGenerationRuleId.value = null
+  }
+}
+
 function requestDeleteRecurringRule(recurringRuleItem) {
   if (!recurringRuleItem?.id) {
     return
@@ -2958,53 +2973,6 @@ function normalizeTextForComparison(rawValue) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
-}
-
-function findCategoryByNormalizedName(targetName) {
-  const normalizedTargetName = normalizeTextForComparison(targetName)
-  return categories.value.find((categoryItem) => (
-    normalizeTextForComparison(categoryItem?.name) === normalizedTargetName
-  )) || null
-}
-
-function findRecurringTypeByNormalizedName(targetName) {
-  const normalizedTargetName = normalizeTextForComparison(targetName)
-  return recurringTypes.value.find((recurringTypeItem) => (
-    normalizeTextForComparison(recurringTypeItem?.name) === normalizedTargetName
-  )) || null
-}
-
-function resolveSalaryCategoryId() {
-  const selectedCategoryId = normalizeOptionalNumber(entryForm.categoryId)
-  if (selectedCategoryId) {
-    return selectedCategoryId
-  }
-
-  return normalizeOptionalNumber(findCategoryByNormalizedName('Salario')?.id)
-}
-
-function resolveSalaryRecurringTypeId() {
-  const salaryRecurringTypeId = normalizeOptionalNumber(findRecurringTypeByNormalizedName('Salario')?.id)
-  if (salaryRecurringTypeId) {
-    return salaryRecurringTypeId
-  }
-
-  const firstActiveRecurringType = recurringTypes.value.find((recurringTypeItem) => Boolean(recurringTypeItem?.isActive))
-  return normalizeOptionalNumber(firstActiveRecurringType?.id)
-}
-
-function shouldCreateSalaryRecurringRuleFromEntry() {
-  if (entryForm.direction !== 'RECEIVABLE') {
-    return false
-  }
-
-  const normalizedTitle = normalizeTextForComparison(entryForm.title)
-  const selectedCategoryName = categories.value.find((categoryItem) => (
-    String(categoryItem?.id) === String(entryForm.categoryId)
-  ))?.name || ''
-  const normalizedCategoryName = normalizeTextForComparison(selectedCategoryName)
-
-  return normalizedTitle.includes('salario') || normalizedCategoryName === 'salario'
 }
 
 function getFinanceLabel(termCode, fallbackLabel = '-') {
@@ -3795,6 +3763,14 @@ function applyAccountsDirectionContext() {
                   />
                 </td>
                 <td class="finance-actions-cell">
+                  <button
+                    type="button"
+                    class="finance-inline-action"
+                    :disabled="manualRecurringGenerationRuleId === Number(rule.id) || loadingState.recurring"
+                    @click="generateRecurringRuleManually(rule)"
+                  >
+                    {{ manualRecurringGenerationRuleId === Number(rule.id) ? 'Lançando...' : 'Lançar manual' }}
+                  </button>
                   <button
                     type="button"
                     class="finance-inline-action"
