@@ -1,14 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DashboardScreen from '../components/screens/DashboardScreen.vue'
-import FinanceScreen from '../components/screens/FinanceScreen.vue'
 import ProfileScreen from '../components/screens/ProfileScreen.vue'
 import TasksScreen from '../components/screens/TasksScreen.vue'
 import TestScreen from '../components/screens/TestScreen.vue'
 import AppLayoutView from '../views/AppLayoutView.vue'
 import AuthEntryView from '../views/AuthEntryView.vue'
 import AuthGooglePasswordSetupView from '../views/AuthGooglePasswordSetupView.vue'
+import FinanceLayout from '../views/finance/FinanceLayout.vue'
 import { useSessionStore } from '../stores/sessionStore'
-import { normalizeFinanceSectionName } from './viewRouting'
 
 const appRoutes = [
   {
@@ -66,19 +65,39 @@ const appRoutes = [
       },
       {
         path: 'finance',
-        name: 'finance',
-        component: FinanceScreen,
-        props: {
-          initialSection: 'accounts',
-        },
-      },
-      {
-        path: 'finance/:section',
-        name: 'finance-section',
-        component: FinanceScreen,
-        props: (route) => ({
-          initialSection: normalizeFinanceSectionName(route.params.section),
-        }),
+        component: FinanceLayout,
+        children: [
+          {
+            path: '',
+            name: 'finance',
+            redirect: { name: 'finance-accounts' },
+          },
+          {
+            path: 'accounts',
+            name: 'finance-accounts',
+            component: () => import('../views/finance/FinanceAccountsView.vue'),
+          },
+          {
+            path: 'banks',
+            name: 'finance-banks',
+            component: () => import('../views/finance/FinanceBanksView.vue'),
+          },
+          {
+            path: 'investments',
+            name: 'finance-investments',
+            component: () => import('../views/finance/FinanceInvestmentsView.vue'),
+          },
+          {
+            path: 'settings',
+            name: 'finance-settings',
+            component: () => import('../views/finance/FinanceSettingsView.vue'),
+          },
+          {
+            path: 'reports',
+            name: 'finance-reports',
+            component: () => import('../views/finance/FinanceReportsView.vue'),
+          },
+        ],
       },
       {
         path: 'profile',
@@ -87,6 +106,7 @@ const appRoutes = [
       },
     ],
   },
+  // ─── Redirects legados ───
   {
     path: '/dashboard',
     redirect: { name: 'dashboard' },
@@ -101,12 +121,23 @@ const appRoutes = [
   },
   {
     path: '/finance',
-    redirect: { name: 'finance' },
+    redirect: { name: 'finance-accounts' },
   },
   {
     path: '/finance/:section',
-    name: 'legacy-finance-section',
-    redirect: (to) => ({ name: 'finance-section', params: { section: to.params.section } }),
+    redirect: (to) => {
+      const sectionMap = {
+        accounts: 'finance-accounts',
+        banks: 'finance-banks',
+        investments: 'finance-investments',
+        settings: 'finance-settings',
+        currencies: 'finance-settings',
+        reports: 'finance-reports',
+        debts: 'finance-accounts',
+      }
+      const routeName = sectionMap[to.params.section] || 'finance-accounts'
+      return { name: routeName }
+    },
   },
   {
     path: '/profile',
@@ -127,20 +158,6 @@ appRouter.beforeEach(async (to) => {
   const sessionStore = useSessionStore()
 
   await sessionStore.ensureInitialized()
-
-  if (to.name === 'finance-section') {
-    const normalizedSectionName = normalizeFinanceSectionName(to.params.section)
-    if (normalizedSectionName !== to.params.section) {
-      return {
-        name: normalizedSectionName === 'accounts' ? 'finance' : 'finance-section',
-        params: normalizedSectionName === 'accounts'
-          ? {}
-          : { section: normalizedSectionName },
-        query: to.query,
-        hash: to.hash,
-      }
-    }
-  }
 
   const mustBeAuthenticated = to.matched.some((record) => record.meta.requiresAuth === true)
   const guestOnlyRoute = to.matched.some((record) => record.meta.guestOnly === true)

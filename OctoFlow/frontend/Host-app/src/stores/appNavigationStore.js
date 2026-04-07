@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import {
-  FINANCE_VIEW_TO_SECTION,
+  FINANCE_ROUTE_NAMES,
   normalizeViewKey,
   resolveRouteLocationFromView,
   resolveViewKeyFromRoute,
@@ -11,8 +11,12 @@ export const useAppNavigationStore = defineStore('appNavigation', {
     activeViewKey: 'dashboard',
   }),
   getters: {
-    isFinanceView: (state) => String(state.activeViewKey || '').startsWith('finance.'),
-    financeSectionByView: (state) => FINANCE_VIEW_TO_SECTION[state.activeViewKey] || 'accounts',
+    isFinanceView: (state) => String(state.activeViewKey || '').startsWith('finance'),
+    financeSectionByView: (state) => {
+      const viewKey = String(state.activeViewKey || '')
+      const entry = Object.entries(FINANCE_ROUTE_NAMES).find(([, routeName]) => routeName === viewKey)
+      return entry ? entry[0] : 'accounts'
+    },
   },
   actions: {
     normalizeViewKey(viewKey) {
@@ -42,10 +46,8 @@ export const useAppNavigationStore = defineStore('appNavigation', {
 
         return true
       } catch {
-        // Navegação pode falhar por duplicidade de rota ou bloqueio de guard.
         return false
       }
     },
   },
 })
-

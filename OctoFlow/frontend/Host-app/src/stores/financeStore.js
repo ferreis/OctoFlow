@@ -6,189 +6,233 @@ import {
   fetchFinanceRecurringRules,
   fetchFinanceRecurringTypes,
   fetchFinanceInstallmentPlans,
-  fetchFinanceDebtPlans,
   fetchFinanceCurrencyRates,
   fetchFinanceCurrencies,
   fetchFinanceDashboardSummary,
   fetchFinanceDashboardCashflow,
-  fetchFinanceDashboardCategories
+  fetchFinanceDashboardCategories,
 } from '../services/finance'
 
 export const useFinanceStore = defineStore('finance', {
   state: () => ({
-    bankAccounts: [],
+    // ─── Catálogos (carregados 1x, compartilhados entre todas as views) ───
     categories: [],
-    entries: [],
-    entriesMeta: { totalPages: 1, totalItems: 0 },
+    bankAccounts: [],
     recurringTypes: [],
     recurringRules: [],
     installmentPlans: [],
-    debtPlans: [],
-    currencyRates: [],
     currencies: [],
+    currencyRates: [],
+
+    // ─── Dashboard / KPIs ───
     dashboard: {
       summary: null,
       cashflow: [],
-      categories: []
+      categories: [],
     },
+
+    // ─── Lançamentos (entries) ───
+    entries: [],
+    entriesMeta: { page: 1, itemsPerPage: 10, total: 0 },
+    entryFilters: {
+      direction: '',
+      status: '',
+      search: '',
+      startDate: '',
+      endDate: '',
+    },
+
+    // ─── Loading states centralizados ───
     loading: {
+      catalogs: false,
       bankAccounts: false,
       categories: false,
       entries: false,
       recurring: false,
       installmentPlans: false,
-      debtPlans: false,
       currency: false,
       dashboard: false,
+      investments: false,
+      exports: false,
+      migration: false,
     },
+
+    // ─── Flags de inicialização ───
+    catalogsLoaded: false,
+    dashboardLoaded: false,
     error: null,
   }),
 
   getters: {
-    activeBankAccounts: (state) => state.bankAccounts.filter(acc => acc.isActive),
-    activeCategories: (state) => state.categories.filter(cat => cat.isActive),
+    activeBankAccounts: (state) => state.bankAccounts.filter((acc) => acc.isActive !== false),
+    creditCardAccounts: (state) => state.bankAccounts.filter(
+      (acc) => acc.isActive !== false && String(acc.accountType || '').toUpperCase() === 'CREDIT_CARD',
+    ),
+    isCatalogsReady: (state) => state.catalogsLoaded && !state.loading.catalogs,
   },
 
   actions: {
-    async loadBankAccounts(force = false) {
-      if (this.bankAccounts.length > 0 && !force) return
-      this.loading.bankAccounts = true
+    // ─── Catálogos base (chamado uma vez no FinanceLayout) ───
+    async loadCatalogs(force = false) {
+      if (this.catalogsLoaded && !force) return
+      this.loading.catalogs = true
+      this.error = null
       try {
-        const res = await fetchFinanceBankAccounts()
-        this.bankAccounts = res.data?.items || []
+        const [catRes, bankRes, typesRes] = await Promise.all([
+          fetchFinanceCategories(),
+          fetchFinanceBankAccounts(),
+          fetchFinanceRecurringTypes(),
+        ])
+        this.categories = catRes.data?.items || []
+        this.bankAccounts = bankRes.data?.items || []
+        this.recurringTypes = typesRes.data?.items || []
+        this.catalogsLoaded = true
       } catch (err) {
-        this.error = 'Falha ao carregar contas bancárias.'
-        console.error(err)
+        this.error = 'Falha ao carregar catálogos financeiros.'
+        console.error('[financeStore] loadCatalogs error:', err)
       } finally {
-        this.loading.bankAccounts = false
+        this.loading.catalogs = false
       }
     },
 
-    async loadCategories(force = false) {
-      if (this.categories.length > 0 && !force) return
-      this.loading.categories = true
+    // ─── Reload individual de catálogos (após CRUD) ───
+    async reloadCategories() {
       try {
         const res = await fetchFinanceCategories()
         this.categories = res.data?.items || []
       } catch (err) {
-        this.error = 'Falha ao carregar categorias.'
-        console.error(err)
-      } finally {
-        this.loading.categories = false
+        console.error('[financeStore] reloadCategories error:', err)
       }
     },
 
-    async loadEntries(filters = {}, pagination = { page: 1 }) {
-      this.loading.entries = true
+    async reloadBankAccounts() {
       try {
-        const res = await fetchFinanceEntries(filters, pagination)
-        this.entries = res.data?.items || []
-        this.entriesMeta = {
-          totalPages: res.data?.item?.totalPages || 1,
-          totalItems: res.data?.item?.totalItems || 0,
-        }
+        const res = await fetchFinanceBankAccounts()
+        this.bankAccounts = res.data?.items || []
       } catch (err) {
-        this.error = 'Falha ao carregar lançamentos.'
-        console.error(err)
-      } finally {
-        this.loading.entries = false
+        console.error('[financeStore] reloadBankAccounts error:', err)
       }
     },
 
-    async loadRecurringData(force = false) {
-      if (this.recurringRules.length > 0 && !force) return
+    async reloadRecurringData() {
       this.loading.recurring = true
       try {
         const [typesRes, rulesRes] = await Promise.all([
           fetchFinanceRecurringTypes(),
-          fetchFinanceRecurringRules()
+          fetchFinanceRecurringRules(),
         ])
         this.recurringTypes = typesRes.data?.items || []
         this.recurringRules = rulesRes.data?.items || []
       } catch (err) {
-        this.error = 'Falha ao carregar dados recorrentes.'
-        console.error(err)
+        console.error('[financeStore] reloadRecurringData error:', err)
       } finally {
         this.loading.recurring = false
       }
     },
 
-    async loadInstallmentPlans(force = false) {
-      if (this.installmentPlans.length > 0 && !force) return
+    async reloadInstallmentPlans() {
       this.loading.installmentPlans = true
       try {
         const res = await fetchFinanceInstallmentPlans()
         this.installmentPlans = res.data?.items || []
       } catch (err) {
-        this.error = 'Falha ao carregar planos de parcelamento.'
-        console.error(err)
+        console.error('[financeStore] reloadInstallmentPlans error:', err)
       } finally {
         this.loading.installmentPlans = false
       }
     },
 
-    async loadDebtPlans(force = false) {
-      if (this.debtPlans.length > 0 && !force) return
-      this.loading.debtPlans = true
+    // ─── Dashboard ───
+    async loadDashboardData(force = false) {
+      if (this.dashboardLoaded && !force) return
+      this.loading.dashboard = true
       try {
-        const res = await fetchFinanceDebtPlans()
-        this.debtPlans = res.data?.items || []
+        const [sumRes, flowRes, catRes] = await Promise.all([
+          fetchFinanceDashboardSummary(),
+          fetchFinanceDashboardCashflow(),
+          fetchFinanceDashboardCategories(),
+        ])
+        this.dashboard.summary = sumRes.data?.item || null
+        this.dashboard.cashflow = flowRes.data?.items || []
+        this.dashboard.categories = catRes.data?.items || []
+        this.dashboardLoaded = true
       } catch (err) {
-        this.error = 'Falha ao carregar planos de dívidas.'
-        console.error(err)
+        this.error = 'Falha ao carregar dashboard.'
+        console.error('[financeStore] loadDashboardData error:', err)
       } finally {
-        this.loading.debtPlans = false
+        this.loading.dashboard = false
       }
     },
 
+    async loadDashboardSummary(params = {}) {
+      this.loading.dashboard = true
+      try {
+        const res = await fetchFinanceDashboardSummary(params)
+        return res.data?.item || null
+      } catch (err) {
+        console.error('[financeStore] loadDashboardSummary error:', err)
+        return null
+      } finally {
+        this.loading.dashboard = false
+      }
+    },
+
+    // ─── Entries ───
+    async loadEntries(filters = {}, pagination = {}) {
+      this.loading.entries = true
+      try {
+        const res = await fetchFinanceEntries(filters, pagination)
+        this.entries = res.data?.items || []
+        this.entriesMeta = {
+          page: Number(res.data?.item?.page || pagination.page || 1),
+          itemsPerPage: Number(res.data?.item?.itemsPerPage || pagination.itemsPerPage || 10),
+          total: Number(res.data?.item?.totalItems || res.data?.item?.total || 0),
+        }
+      } catch (err) {
+        console.error('[financeStore] loadEntries error:', err)
+      } finally {
+        this.loading.entries = false
+      }
+    },
+
+    setEntryFilters(newFilters) {
+      Object.assign(this.entryFilters, newFilters)
+    },
+
+    resetEntryFilters() {
+      this.entryFilters = { direction: '', status: '', search: '', startDate: '', endDate: '' }
+    },
+
+    // ─── Currency ───
     async loadCurrencyData(force = false) {
       if (this.currencies.length > 0 && !force) return
       this.loading.currency = true
       try {
         const [currRes, ratesRes] = await Promise.all([
           fetchFinanceCurrencies(),
-          fetchFinanceCurrencyRates()
+          fetchFinanceCurrencyRates(),
         ])
         this.currencies = currRes.data?.items || []
         this.currencyRates = ratesRes.data?.items || []
       } catch (err) {
-        this.error = 'Falha ao carregar dados de moedas.'
-        console.error(err)
+        console.error('[financeStore] loadCurrencyData error:', err)
       } finally {
         this.loading.currency = false
       }
     },
 
-    async loadAllBaseData(force = false) {
-      await Promise.all([
-        this.loadBankAccounts(force),
-        this.loadCategories(force),
-        this.loadRecurringData(force),
-        this.loadInstallmentPlans(force),
-        this.loadDebtPlans(force),
-        this.loadCurrencyData(force),
-        this.loadDashboardData(force)
-      ])
+    async reloadCurrencyRates() {
+      try {
+        const res = await fetchFinanceCurrencyRates()
+        this.currencyRates = res.data?.items || []
+      } catch (err) {
+        console.error('[financeStore] reloadCurrencyRates error:', err)
+      }
     },
 
-    async loadDashboardData(force = false) {
-      if (this.dashboard.summary && !force) return
-      this.loading.dashboard = true
-      try {
-        const [sumRes, flowRes, catRes] = await Promise.all([
-          fetchFinanceDashboardSummary(),
-          fetchFinanceDashboardCashflow(),
-          fetchFinanceDashboardCategories()
-        ])
-        this.dashboard.summary = sumRes.data?.item || null
-        this.dashboard.cashflow = sumRes.data?.items || flowRes.data?.items || []
-        this.dashboard.categories = catRes.data?.items || []
-      } catch (err) {
-        this.error = 'Falha ao carregar dashboard.'
-        console.error(err)
-      } finally {
-        this.loading.dashboard = false
-      }
-    }
-  }
+    // ─── Reset completo ───
+    resetAll() {
+      this.$reset()
+    },
+  },
 })

@@ -188,10 +188,62 @@
     background: var(--surface-strong);
   }
 
+  /* Dashboard Chart Rows */
+  .finance-dashboard-chart-row {
+    @apply grid gap-5;
+    grid-template-columns: 1fr;
+  }
+  .finance-dashboard-chart-row-double {
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  }
+
+  /* Migração JSON */
+  .finance-migration-grid {
+    @apply grid gap-8;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+  .finance-migration-card {
+    @apply flex flex-col gap-4;
+  }
+  .finance-migration-title {
+    @apply m-0 mb-1.5 text-[0.95rem] font-semibold text-ink;
+  }
+  .finance-migration-desc {
+    @apply m-0 text-[0.82rem] leading-snug text-muted;
+  }
+  .finance-migration-file-area {
+    @apply flex flex-col gap-2 w-full;
+  }
+  .finance-migration-file-btn {
+    @apply w-full justify-center cursor-pointer;
+  }
+  .finance-migration-filename {
+    @apply w-full text-center px-4 py-2 border border-line rounded-lg text-sm font-medium cursor-not-allowed;
+    background: transparent;
+    color: var(--muted);
+  }
+  .finance-migration-toggle {
+    @apply flex flex-row items-center justify-between py-3 px-4 border border-line rounded-lg cursor-pointer mt-1;
+  }
+  .finance-migration-toggle span {
+    @apply text-[0.78rem] text-muted font-bold;
+  }
+  .finance-migration-toggle input[type="checkbox"] {
+    @apply cursor-pointer;
+    transform: scale(1.1);
+  }
+
+  /* Form Actions (para alinhamento flex de botões em formulários) */
+  .finance-form-actions {
+    @apply flex gap-3 items-end flex-wrap;
+  }
+
   /* Mobile */
   @media (max-width: 768px) {
     .finance-screen, .finance-dashboard-section { gap: 16px; }
     .finance-panel { @apply p-4 rounded-xl; }
     .finance-subtabs { @apply w-full flex-nowrap rounded-[12px]; }
+    .finance-migration-grid { grid-template-columns: 1fr; }
+    .finance-dashboard-chart-row-double { grid-template-columns: 1fr; }
   }
 }
