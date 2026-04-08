@@ -1,27 +1,32 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+  ref,
+  watch,
+} from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   RemoteFinanceEmptyState,
   RemoteFinanceKpiCard,
   RemoteFinanceTrendMiniChart,
 } from '../../federation/remoteComponents'
+import { useDashboardFinanceData } from '../../composables/useDashboardFinanceData'
+import { useDashboardTasksData } from '../../composables/useDashboardTasksData'
+import { useI18n } from '../../composables/useI18n'
 import { useNotification } from '../../composables/useNotification'
-import {
-  fetchFinanceBankAccounts,
-  fetchFinanceDashboardCashflow,
-  fetchFinanceDashboardCategories,
-  fetchFinanceDashboardSummary,
-  fetchFinanceDebtPlans,
-  fetchFinanceEntries,
-  fetchFinanceInstallmentPlans,
-  fetchFinanceRecurringRules,
-} from '../../services/finance'
-import { fetchFinanceInvestmentPlans } from '../../services/financeInvestments'
-import { fetchGithubProfile, fetchGithubWorkspace } from '../../services/githubWorkspace'
-import { fetchGithubIssuesCache, syncGithubIssues } from '../../services/tasks'
-import { extractHttpMessage } from '../../utils/httpErrors'
-import { buildCurrentMonthDateRange, formatDate } from '../../utils/date'
+import { formatDate } from '../../utils/date'
+import { normalizeDashboardTabQuery } from '../../utils/navigationSecurity'
+import { useAppNavigationStore } from '../../stores/appNavigationStore'
 import { useSessionStore } from '../../stores/sessionStore'
 
 const props = defineProps({
@@ -35,34 +40,31 @@ const props = defineProps({
   },
 })
 const sessionStore = useSessionStore()
+const appRoute = useRoute()
+const appRouter = useRouter()
+const appNavigationStore = useAppNavigationStore()
+const { t } = useI18n()
 const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
+const { dashboardTab } = storeToRefs(appNavigationStore)
 const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
-
-const profile = ref(null)
-const workspace = ref(null)
-const issueBoard = ref(null)
-const loading = ref(false)
-const syncing = ref(false)
-const error = ref('')
-const status = ref('')
-const activeTab = ref('tasks')
 const activeFinancialGroupKey = ref('accountsPayable')
-const financeLoading = ref(false)
-const financeLoaded = ref(false)
-const financeErrorMessage = ref('')
-const financeSummaryGlobal = ref(null)
-const financeSummaryByGroup = ref(null)
-const financeCashflowGlobal = ref([])
-const financeCashflowByGroup = ref([])
-const financeCategoriesGlobal = ref([])
-const financeCategoriesByGroup = ref([])
-const financeEntries = ref([])
-const financeEntriesMeta = ref({ page: 1, itemsPerPage: 10, total: 0 })
-const financeBankAccounts = ref([])
-const financeRecurringRules = ref([])
-const financeInstallmentPlans = ref([])
-const financeDebtPlans = ref([])
-const financeInvestmentPlans = ref([])
+const dashboardRuntimeError = ref('')
+const dashboardRenderCycleInProgress = ref(false)
+const dashboardKeepAlivePaused = ref(false)
+
+function translateDashboard(messageKey, fallbackMessage = '') {
+  const translatedMessage = t(messageKey)
+  return translatedMessage === messageKey ? fallbackMessage : translatedMessage
+}
+
+const activeTab = computed({
+  get() {
+    return appNavigationStore.normalizeDashboardTab(dashboardTab.value)
+  },
+  set(nextTab) {
+    void appNavigationStore.navigateDashboardTab(appRouter, appRoute, nextTab)
+  },
+})
 const dashboardChartContainerKeys = [
   'issueStatus',
   'closureWindow',
@@ -85,22 +87,39 @@ const issueStatusDonutCircumference = 2 * Math.PI * issueStatusDonutRadius
 const financialGroupOptions = [
   {
     key: 'accountsPayable',
-    label: 'Contas a Pagar',
-    description: 'Compromissos de saida e vencimentos',
+    label: translateDashboard('dashboard.finance.groups.accountsPayable.label', 'Contas a Pagar'),
+    description: translateDashboard('dashboard.finance.groups.accountsPayable.description', 'Compromissos de saida e vencimentos'),
   },
   {
     key: 'accountsReceivable',
-    label: 'Contas a Receber',
-    description: 'Entradas previstas e em aberto',
+    label: translateDashboard('dashboard.finance.groups.accountsReceivable.label', 'Contas a Receber'),
+    description: translateDashboard('dashboard.finance.groups.accountsReceivable.description', 'Entradas previstas e em aberto'),
   },
 ]
 
-const workspaceReady = computed(() => Boolean(profile.value?.workspaceReady))
+const {
+  profile,
+  issueBoard,
+  loading,
+  syncing,
+  errorMessage: tasksErrorMessage,
+  statusMessage: tasksStatusMessage,
+  workspaceReady,
+  loadDashboardContext,
+  clearTasksState,
+  setTasksComponentActive,
+} = useDashboardTasksData({
+  currentUserRef: effectiveCurrentUser,
+  translate: (messageKey) => t(messageKey),
+})
+
 const allDashboardContainersCollapsed = computed(() => {
   return dashboardChartContainerKeys.every((containerKey) => Boolean(collapsedDashboardContainers.value[containerKey]))
 })
 const dashboardContainersToggleLabel = computed(() => {
-  return allDashboardContainersCollapsed.value ? 'Expandir containers' : 'Recolher containers'
+  return allDashboardContainersCollapsed.value
+    ? translateDashboard('dashboard.actions.expandContainers', 'Expandir containers')
+    : translateDashboard('dashboard.actions.collapseContainers', 'Recolher containers')
 })
 const activeFinancialDirection = computed(() => {
   return activeFinancialGroupKey.value === 'accountsPayable'
@@ -114,15 +133,54 @@ const activeFinancialGroup = computed(() => {
 
   return selectedFinancialGroup || financialGroupOptions[0]
 })
+
+const infoStatusMessage = ref('')
+
+const {
+  financeLoading,
+  financeLoaded,
+  financeErrorMessage,
+  financeSummaryGlobal,
+  financeSummaryByGroup,
+  financeCashflowGlobal,
+  financeCashflowByGroup,
+  financeCategoriesGlobal,
+  financeCategoriesByGroup,
+  financeEntries,
+  financeEntriesMeta,
+  financeBankAccounts,
+  financeRecurringRules,
+  financeInstallmentPlans,
+  financeDebtPlans,
+  financeInvestmentPlans,
+  loadFinanceDashboard,
+  resetFinanceState,
+  setFinanceComponentActive,
+} = useDashboardFinanceData({
+  currentUserRef: effectiveCurrentUser,
+  activeFinancialDirectionRef: activeFinancialDirection,
+  activeFinancialGroupLabelRef: computed(() => activeFinancialGroup.value.label),
+  translate: (messageKey) => t(messageKey),
+  handleInfoStatus: (statusMessage) => {
+    infoStatusMessage.value = statusMessage
+  },
+})
+
 const financialGroupTitle = computed(() => {
   return activeFinancialDirection.value === 'PAYABLE'
-    ? 'Controle de pagamentos do periodo'
-    : 'Controle de recebimentos do periodo'
+    ? translateDashboard('dashboard.finance.groupTitle.payable', 'Controle de pagamentos do periodo')
+    : translateDashboard('dashboard.finance.groupTitle.receivable', 'Controle de recebimentos do periodo')
 })
 const financialGroupDescription = computed(() => {
   return activeFinancialDirection.value === 'PAYABLE'
-    ? 'Organize titulos pendentes, vencimentos e previsao de saidas para nao misturar fluxo financeiro com a operacao de tarefas.'
-    : 'Organize valores previstos, carteira em aberto e recebimentos liquidados para manter visibilidade de entrada de caixa.'
+    ? translateDashboard(
+      'dashboard.finance.groupDescription.payable',
+      'Organize titulos pendentes, vencimentos e previsao de saidas para nao misturar fluxo financeiro com a operacao de tarefas.',
+    )
+    : translateDashboard(
+      'dashboard.finance.groupDescription.receivable',
+      'Organize valores previstos, carteira em aberto e recebimentos liquidados para manter visibilidade de entrada de caixa.',
+    )
 })
 const financialSummaryCards = computed(() => {
   if (!financeSummaryByGroup.value || !financeSummaryGlobal.value) {
@@ -212,8 +270,8 @@ const refreshButtonDisabled = computed(() => {
 })
 const refreshButtonTitle = computed(() => {
   return activeTab.value === 'tasks'
-    ? 'Atualizar analises'
-    : 'Atualizar dashboard financeiro'
+    ? translateDashboard('dashboard.actions.refreshTasks', 'Atualizar analises')
+    : translateDashboard('dashboard.actions.refreshFinance', 'Atualizar dashboard financeiro')
 })
 const financeBankAccountsList = computed(() => {
   return Array.isArray(financeBankAccounts.value) ? financeBankAccounts.value : []
@@ -548,14 +606,16 @@ const repositoryLabel = computed(() => {
   const owner = String(profile.value?.repositoryOwner || '').trim()
 
   if (repositories.length > 0) {
-    return `${repositories.length} repositorios cadastrados`
+    return translateDashboard('dashboard.tasks.workspace.repositoriesConfigured', '{count} repositorios cadastrados')
+      .replace('{count}', String(repositories.length))
   }
 
   if (owner !== '') {
-    return `Owner padrao: ${owner}`
+    return translateDashboard('dashboard.tasks.workspace.defaultOwner', 'Owner padrao: {owner}')
+      .replace('{owner}', owner)
   }
 
-  return 'Nenhum repositorio cadastrado'
+  return translateDashboard('dashboard.tasks.workspace.repositoriesMissing', 'Nenhum repositorio cadastrado')
 })
 const issues = computed(() => Array.isArray(issueBoard.value?.items) ? issueBoard.value.items : [])
 const repositories = computed(() => Array.isArray(issueBoard.value?.repositories) ? issueBoard.value.repositories : [])
@@ -563,33 +623,33 @@ const openIssues = computed(() => issues.value.filter((issue) => issue.state !==
 const closedIssues = computed(() => issues.value.filter((issue) => issue.state === 'CLOSED'))
 const taskOverviewCards = computed(() => [
   {
-    label: 'Issues totais',
+    label: translateDashboard('dashboard.tasks.overview.totalIssues.label', 'Issues totais'),
     value: String(issues.value.length),
-    note: 'volume atual analisado',
+    note: translateDashboard('dashboard.tasks.overview.totalIssues.note', 'volume atual analisado'),
     cardClass: 'border-slate-200 bg-white/85',
     labelClass: 'text-slate-500',
     valueClass: 'text-slate-950',
   },
   {
-    label: 'Abertas',
+    label: translateDashboard('dashboard.tasks.overview.openIssues.label', 'Abertas'),
     value: String(openIssues.value.length),
-    note: 'backlog em andamento',
+    note: translateDashboard('dashboard.tasks.overview.openIssues.note', 'backlog em andamento'),
     cardClass: 'border-emerald-200 bg-emerald-50/80',
     labelClass: 'text-emerald-700',
     valueClass: 'text-emerald-950',
   },
   {
-    label: 'Fechadas',
+    label: translateDashboard('dashboard.tasks.overview.closedIssues.label', 'Fechadas'),
     value: String(closedIssues.value.length),
-    note: 'tarefas concluidas',
+    note: translateDashboard('dashboard.tasks.overview.closedIssues.note', 'tarefas concluidas'),
     cardClass: 'border-slate-200 bg-slate-100/80',
     labelClass: 'text-slate-500',
     valueClass: 'text-slate-950',
   },
   {
-    label: 'Repositorios',
+    label: translateDashboard('dashboard.tasks.overview.repositories.label', 'Repositorios'),
     value: String(repositories.value.length),
-    note: 'fontes em observação',
+    note: translateDashboard('dashboard.tasks.overview.repositories.note', 'fontes em observação'),
     cardClass: 'border-cyan-200 bg-cyan-50/80',
     labelClass: 'text-cyan-700',
     valueClass: 'text-cyan-950',
@@ -600,7 +660,7 @@ const issueStatusSeries = computed(() => {
 
   return [
     {
-      label: 'Abertas',
+      label: translateDashboard('dashboard.tasks.series.issueStatus.open', 'Abertas'),
       value: openIssues.value.length,
       share: (openIssues.value.length / total) * 100,
       cardClass: 'border-emerald-200 bg-emerald-50/80',
@@ -611,7 +671,7 @@ const issueStatusSeries = computed(() => {
       strokeColor: 'var(--app-chart-open-start)',
     },
     {
-      label: 'Fechadas',
+      label: translateDashboard('dashboard.tasks.series.issueStatus.closed', 'Fechadas'),
       value: closedIssues.value.length,
       share: (closedIssues.value.length / total) * 100,
       cardClass: 'border-slate-200 bg-slate-100/80',
@@ -644,15 +704,15 @@ const issueStatusDonutSegments = computed(() => {
 })
 const closureWindowSeries = computed(() => withPercent([
   {
-    label: 'Semana',
+    label: translateDashboard('dashboard.tasks.series.closureWindow.week', 'Semana'),
     value: countClosedWithinDays(closedIssues.value, 7),
   },
   {
-    label: 'Mes',
+    label: translateDashboard('dashboard.tasks.series.closureWindow.month', 'Mes'),
     value: countClosedWithinDays(closedIssues.value, 30),
   },
   {
-    label: 'Ano',
+    label: translateDashboard('dashboard.tasks.series.closureWindow.year', 'Ano'),
     value: countClosedWithinDays(closedIssues.value, 365),
   },
 ]))
@@ -660,39 +720,41 @@ const averageResolutionHours = computed(() => averageDurationHours(closedIssues.
 const averageOpenAgeHours = computed(() => averageAgeHours(openIssues.value))
 const cycleTimeCards = computed(() => [
   {
-    label: 'Media para finalizar',
+    label: translateDashboard('dashboard.tasks.cycleTime.averageToClose.label', 'Media para finalizar'),
     value: formatDuration(averageResolutionHours.value),
     note: closedIssues.value.length > 0
-      ? `${closedIssues.value.length} issues fechadas analisadas`
-      : 'sem base de issues fechadas ainda',
+      ? translateDashboard('dashboard.tasks.cycleTime.averageToClose.noteWithCount', '{count} issues fechadas analisadas')
+        .replace('{count}', String(closedIssues.value.length))
+      : translateDashboard('dashboard.tasks.cycleTime.averageToClose.noteEmpty', 'sem base de issues fechadas ainda'),
     cardClass: 'border-cyan-200 bg-cyan-50/80',
     valueClass: 'text-cyan-950',
   },
   {
-    label: 'Tempo medio sem update',
+    label: translateDashboard('dashboard.tasks.cycleTime.averageWithoutUpdate.label', 'Tempo medio sem update'),
     value: formatDuration(averageOpenAgeHours.value),
     note: openIssues.value.length > 0
-      ? `${openIssues.value.length} issues abertas consideradas`
-      : 'sem issues abertas no momento',
+      ? translateDashboard('dashboard.tasks.cycleTime.averageWithoutUpdate.noteWithCount', '{count} issues abertas consideradas')
+        .replace('{count}', String(openIssues.value.length))
+      : translateDashboard('dashboard.tasks.cycleTime.averageWithoutUpdate.noteEmpty', 'sem issues abertas no momento'),
     cardClass: 'border-violet-200 bg-violet-50/80',
     valueClass: 'text-violet-950',
   },
 ])
 const updateFreshnessSeries = computed(() => withPercent([
   {
-    label: 'Ate 24h',
+    label: translateDashboard('dashboard.tasks.series.updateFreshness.under24h', 'Ate 24h'),
     value: countIssuesByUpdateAge(openIssues.value, 0, 24),
   },
   {
-    label: '1-7 dias',
+    label: translateDashboard('dashboard.tasks.series.updateFreshness.days1to7', '1-7 dias'),
     value: countIssuesByUpdateAge(openIssues.value, 24, 24 * 7),
   },
   {
-    label: '8-30 dias',
+    label: translateDashboard('dashboard.tasks.series.updateFreshness.days8to30', '8-30 dias'),
     value: countIssuesByUpdateAge(openIssues.value, 24 * 7, 24 * 30),
   },
   {
-    label: 'Mais de 30 dias',
+    label: translateDashboard('dashboard.tasks.series.updateFreshness.over30days', 'Mais de 30 dias'),
     value: countIssuesByUpdateAge(openIssues.value, 24 * 30, Number.POSITIVE_INFINITY),
   },
 ]))
@@ -744,7 +806,53 @@ const responseByTypeSeries = computed(() => {
     { includeShare: false }
   )
 })
+function resolveRouteTabValue(rawRouteTabValue) {
+  if (typeof rawRouteTabValue === 'string') {
+    return rawRouteTabValue.trim()
+  }
+
+  if (Array.isArray(rawRouteTabValue) && typeof rawRouteTabValue[0] === 'string') {
+    return rawRouteTabValue[0].trim()
+  }
+
+  return ''
+}
+
+function synchronizeDashboardTabWithRoute() {
+  if (String(appRoute.name || '') !== 'dashboard') {
+    return
+  }
+
+  const rawRouteTabValue = resolveRouteTabValue(appRoute.query.tab)
+  const normalizedRouteTabValue = normalizeDashboardTabQuery(rawRouteTabValue)
+
+  appNavigationStore.syncDashboardTabFromRoute({
+    name: appRoute.name,
+    query: {
+      ...appRoute.query,
+      tab: normalizedRouteTabValue,
+    },
+  })
+
+  if (rawRouteTabValue !== normalizedRouteTabValue) {
+    void appRouter.replace({
+      name: 'dashboard',
+      query: {
+        ...appRoute.query,
+        tab: normalizedRouteTabValue,
+      },
+    })
+  }
+}
+
+onBeforeMount(() => {
+  synchronizeDashboardTabWithRoute()
+})
+
 onMounted(async () => {
+  setTasksComponentActive(true)
+  setFinanceComponentActive(true)
+
   await loadDashboardContext(false)
 
   if (activeTab.value === 'finance') {
@@ -752,16 +860,77 @@ onMounted(async () => {
   }
 })
 
+onBeforeUpdate(() => {
+  if (!dashboardRenderCycleInProgress.value) {
+    dashboardRenderCycleInProgress.value = true
+  }
+})
+
+onUpdated(() => {
+  if (dashboardRenderCycleInProgress.value) {
+    dashboardRenderCycleInProgress.value = false
+  }
+})
+
+onBeforeUnmount(() => {
+  setTasksComponentActive(false)
+  setFinanceComponentActive(false)
+  dashboardKeepAlivePaused.value = true
+})
+
+onUnmounted(() => {
+  dashboardRuntimeError.value = ''
+  dashboardRenderCycleInProgress.value = false
+})
+
+onActivated(() => {
+  if (!dashboardKeepAlivePaused.value) {
+    return
+  }
+
+  dashboardKeepAlivePaused.value = false
+  setTasksComponentActive(true)
+  setFinanceComponentActive(true)
+
+  if (!effectiveCurrentUser.value?.id) {
+    return
+  }
+
+  if (activeTab.value === 'finance') {
+    void loadFinanceDashboard(false)
+    return
+  }
+
+  void loadDashboardContext(false)
+})
+
+onDeactivated(() => {
+  dashboardKeepAlivePaused.value = true
+  setTasksComponentActive(false)
+  setFinanceComponentActive(false)
+})
+
+onErrorCaptured((capturedError) => {
+  dashboardRuntimeError.value = String(capturedError?.message || capturedError || '')
+  return false
+})
+
+watch(
+  () => appRoute.query.tab,
+  () => {
+    synchronizeDashboardTabWithRoute()
+  },
+  {
+    immediate: true,
+  },
+)
+
 watch(
   () => effectiveCurrentUser.value?.id,
   async (userId, previousUserId) => {
     if (!userId) {
-      profile.value = null
-      workspace.value = null
-      issueBoard.value = null
+      clearTasksState()
       resetFinanceState()
-      error.value = ''
-      status.value = ''
       return
     }
 
@@ -808,200 +977,44 @@ watch(
   },
 )
 
-watch(error, (message) => {
+watch(tasksErrorMessage, (message) => {
   if (!message) {
     return
   }
 
   notifyUser(message, 'error')
-  error.value = ''
+  tasksErrorMessage.value = ''
 })
 
-watch(status, (message) => {
+watch(tasksStatusMessage, (message) => {
   if (!message) {
     return
   }
 
   notifyUser(message, 'info')
-  status.value = ''
+  tasksStatusMessage.value = ''
 })
 
-async function loadDashboardContext(showStatus = false) {
-  if (!effectiveCurrentUser.value?.id) {
+watch(infoStatusMessage, (message) => {
+  if (!message) {
     return
   }
 
-  loading.value = true
-  error.value = ''
+  notifyUser(message, 'info')
+  infoStatusMessage.value = ''
+})
 
-  if (showStatus) {
-    status.value = ''
-  }
-
-  try {
-    const profileResponse = await fetchGithubProfile()
-    profile.value = profileResponse.data?.profile || null
-
-    if (!workspaceReady.value) {
-      workspace.value = null
-      issueBoard.value = null
-
-      if (showStatus) {
-        status.value = 'Perfil GitHub carregado. Finalize a configuração no Perfil para liberar as analises.'
-      }
-
-      return
-    }
-
-    await loadWorkspaceContext()
-    await loadIssueAnalytics(showStatus)
-  } catch (requestError) {
-    workspace.value = null
-    issueBoard.value = null
-    error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar o dashboard analitico.')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function loadWorkspaceContext() {
-  const { data } = await fetchGithubWorkspace()
-  workspace.value = data || null
-}
-
-async function loadIssueAnalytics(showStatus = false) {
-  const cacheResponse = await fetchGithubIssuesCache({ scope: 'all' })
-
-  issueBoard.value = cacheResponse.data || null
-
-  const hasItems = Array.isArray(cacheResponse.data?.items) && cacheResponse.data.items.length > 0
-  const needsRefresh = Boolean(cacheResponse.data?.cache?.needsRefresh)
-
-  if (!hasItems) {
-    await syncIssueAnalytics(showStatus)
+watch(dashboardRuntimeError, (message) => {
+  if (!message) {
     return
   }
 
-  if (showStatus) {
-    status.value = 'Dashboard carregado do banco local.'
-  }
-
-  if (needsRefresh) {
-    void syncIssueAnalytics(false)
-  }
-}
-
-async function syncIssueAnalytics(showStatus = false) {
-  syncing.value = true
-  error.value = ''
-
-  try {
-    const response = await syncGithubIssues({ scope: 'all' })
-
-    issueBoard.value = response.data || null
-
-    if (showStatus || issues.value.length === 0) {
-      status.value = 'Analises atualizadas com os dados mais recentes do GitHub.'
-    }
-  } catch (requestError) {
-    if (issues.value.length > 0) {
-      status.value = 'Mantendo as analises do banco local enquanto a sincronização do GitHub nao responde.'
-      return
-    }
-
-    error.value = extractHttpMessage(requestError, 'Nao foi possivel sincronizar as analises do GitHub.')
-  } finally {
-    syncing.value = false
-  }
-}
-
-function resetFinanceState() {
-  financeSummaryGlobal.value = null
-  financeSummaryByGroup.value = null
-  financeCashflowGlobal.value = []
-  financeCashflowByGroup.value = []
-  financeCategoriesGlobal.value = []
-  financeCategoriesByGroup.value = []
-  financeEntries.value = []
-  financeEntriesMeta.value = { page: 1, itemsPerPage: 10, total: 0 }
-  financeBankAccounts.value = []
-  financeRecurringRules.value = []
-  financeInstallmentPlans.value = []
-  financeDebtPlans.value = []
-  financeInvestmentPlans.value = []
-  financeLoading.value = false
-  financeLoaded.value = false
-  financeErrorMessage.value = ''
-}
-
-async function loadFinanceDashboard(showStatus = false) {
-  if (!effectiveCurrentUser.value?.id) {
-    return
-  }
-
-  financeLoading.value = true
-  financeErrorMessage.value = ''
-
-  try {
-    const direction = activeFinancialDirection.value
-    const currentMonthDateRange = buildCurrentMonthDateRange()
-
-    const [
-      summaryGlobalResponse,
-      summaryByGroupResponse,
-      cashflowGlobalResponse,
-      cashflowByGroupResponse,
-      categoriesGlobalResponse,
-      categoriesByGroupResponse,
-      entriesResponse,
-      bankAccountsResponse,
-      recurringRulesResponse,
-      installmentPlansResponse,
-      debtPlansResponse,
-      investmentPlansResponse,
-    ] = await Promise.all([
-      fetchFinanceDashboardSummary(currentMonthDateRange),
-      fetchFinanceDashboardSummary({ ...currentMonthDateRange, direction }),
-      fetchFinanceDashboardCashflow(),
-      fetchFinanceDashboardCashflow({ direction }),
-      fetchFinanceDashboardCategories({ limit: 10 }),
-      fetchFinanceDashboardCategories({ direction, limit: 10 }),
-      fetchFinanceEntries({ direction }, { page: 1, itemsPerPage: 10, sort: 'dueDate:asc' }),
-      fetchFinanceBankAccounts(),
-      fetchFinanceRecurringRules(),
-      fetchFinanceInstallmentPlans(),
-      fetchFinanceDebtPlans(),
-      fetchFinanceInvestmentPlans(),
-    ])
-
-    financeSummaryGlobal.value = summaryGlobalResponse.data?.item || null
-    financeSummaryByGroup.value = summaryByGroupResponse.data?.item || null
-    financeCashflowGlobal.value = Array.isArray(cashflowGlobalResponse.data?.items) ? cashflowGlobalResponse.data.items : []
-    financeCashflowByGroup.value = Array.isArray(cashflowByGroupResponse.data?.items) ? cashflowByGroupResponse.data.items : []
-    financeCategoriesGlobal.value = Array.isArray(categoriesGlobalResponse.data?.items) ? categoriesGlobalResponse.data.items : []
-    financeCategoriesByGroup.value = Array.isArray(categoriesByGroupResponse.data?.items) ? categoriesByGroupResponse.data.items : []
-    financeEntries.value = Array.isArray(entriesResponse.data?.items) ? entriesResponse.data.items : []
-    financeEntriesMeta.value = entriesResponse.data?.meta || { page: 1, itemsPerPage: 10, total: 0 }
-    financeBankAccounts.value = Array.isArray(bankAccountsResponse.data?.items) ? bankAccountsResponse.data.items : []
-    financeRecurringRules.value = Array.isArray(recurringRulesResponse.data?.items) ? recurringRulesResponse.data.items : []
-    financeInstallmentPlans.value = Array.isArray(installmentPlansResponse.data?.items) ? installmentPlansResponse.data.items : []
-    financeDebtPlans.value = Array.isArray(debtPlansResponse.data?.items) ? debtPlansResponse.data.items : []
-    financeInvestmentPlans.value = Array.isArray(investmentPlansResponse.data?.items) ? investmentPlansResponse.data.items : []
-    financeLoaded.value = true
-
-    if (showStatus) {
-      status.value = `Dashboard financeiro atualizado para ${activeFinancialGroup.value.label.toLowerCase()}.`
-    }
-  } catch (requestError) {
-    financeErrorMessage.value = extractHttpMessage(requestError, 'Nao foi possivel carregar o dashboard financeiro.')
-
-    if (showStatus) {
-      notifyUser(financeErrorMessage.value, 'error')
-    }
-  } finally {
-    financeLoading.value = false
-  }
-}
+  notifyUser(
+    translateDashboard('dashboard.common.errors.childComponent', 'Ocorreu um erro inesperado no dashboard.'),
+    'error',
+  )
+  dashboardRuntimeError.value = ''
+})
 
 function refreshActiveDashboardTab() {
   if (activeTab.value === 'tasks') {
@@ -1017,15 +1030,15 @@ function detectTaskType(issue) {
   const rawKey = match?.[1]?.trim().toLowerCase()
 
   const catalog = {
-    support: 'Suporte',
-    incident: 'Incidente',
-    service: 'Servico',
-    feat: 'Melhoria',
-    bug: 'Bug',
-    chore: 'Tecnico',
+    support: translateDashboard('dashboard.tasks.type.support', 'Suporte'),
+    incident: translateDashboard('dashboard.tasks.type.incident', 'Incidente'),
+    service: translateDashboard('dashboard.tasks.type.service', 'Servico'),
+    feat: translateDashboard('dashboard.tasks.type.feature', 'Melhoria'),
+    bug: translateDashboard('dashboard.tasks.type.bug', 'Bug'),
+    chore: translateDashboard('dashboard.tasks.type.technical', 'Tecnico'),
   }
 
-  return catalog[rawKey] || 'Outros'
+  return catalog[rawKey] || translateDashboard('dashboard.tasks.type.other', 'Outros')
 }
 
 function countClosedWithinDays(issueList, days) {
@@ -1183,7 +1196,7 @@ function formatPercentage(value, decimalPlaces = 1) {
 
 function formatDuration(hours) {
   if (!Number.isFinite(hours) || hours === null) {
-    return 'sem base'
+    return translateDashboard('dashboard.common.noBase', 'sem base')
   }
 
   if (hours < 1) {
@@ -1200,7 +1213,7 @@ function formatDuration(hours) {
   }
 
   const months = days / 30
-  return `${months.toFixed(1)} mes`
+  return `${months.toFixed(1)} ${translateDashboard('dashboard.common.monthAbbreviation', 'mes')}`
 }
 
 function formatCurrency(rawValue) {
@@ -1312,18 +1325,20 @@ function calculateDaysUntil(rawDate) {
 
 function formatDueStatus(daysUntilDue) {
   if (daysUntilDue === null) {
-    return 'sem vencimento'
+    return translateDashboard('dashboard.finance.dueStatus.noDueDate', 'sem vencimento')
   }
 
   if (daysUntilDue < 0) {
-    return `${Math.abs(daysUntilDue)}d atrasado`
+    return translateDashboard('dashboard.finance.dueStatus.overdue', '{days}d atrasado')
+      .replace('{days}', String(Math.abs(daysUntilDue)))
   }
 
   if (daysUntilDue === 0) {
-    return 'vence hoje'
+    return translateDashboard('dashboard.finance.dueStatus.today', 'vence hoje')
   }
 
-  return `vence em ${daysUntilDue}d`
+  return translateDashboard('dashboard.finance.dueStatus.upcoming', 'vence em {days}d')
+    .replace('{days}', String(daysUntilDue))
 }
 
 function isFinanceEntryOverdue(financeEntry) {
@@ -1337,14 +1352,14 @@ function isFinanceEntryOverdue(financeEntry) {
 
 function getFinanceEntryStatusLabel(statusCode) {
   const statusCatalog = {
-    PENDING: 'Pendente',
-    PARTIALLY_SETTLED: 'Parcial',
-    PAID: 'Pago',
-    OVERDUE: 'Atrasado',
-    CANCELED: 'Cancelado',
+    PENDING: translateDashboard('dashboard.finance.statusCatalog.pending', 'Pendente'),
+    PARTIALLY_SETTLED: translateDashboard('dashboard.finance.statusCatalog.partiallySettled', 'Parcial'),
+    PAID: translateDashboard('dashboard.finance.statusCatalog.paid', 'Pago'),
+    OVERDUE: translateDashboard('dashboard.finance.statusCatalog.overdue', 'Atrasado'),
+    CANCELED: translateDashboard('dashboard.finance.statusCatalog.canceled', 'Cancelado'),
   }
 
-  return statusCatalog[statusCode] || statusCode || 'Sem status'
+  return statusCatalog[statusCode] || statusCode || translateDashboard('dashboard.finance.statusCatalog.unknown', 'Sem status')
 }
 
 function getFinanceStatusToneClasses(statusCode) {
@@ -1462,7 +1477,9 @@ function toggleAllDashboardContainers() {
   <section class="grid gap-5">
     <article class="themed-hero-surface rounded-[28px] border border-white/60 p-5 app-depth-soft backdrop-blur">
       <div class="min-w-0">
-        <h2 class="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Dashboard</h2>
+        <h2 class="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+          {{ translateDashboard('dashboard.title', 'Dashboard') }}
+        </h2>
       </div>
     </article>
 
@@ -1474,13 +1491,13 @@ function toggleAllDashboardContainers() {
             <button type="button"
               class="app-btn min-w-[120px]"
               :class="activeTab === 'tasks' ? 'app-btn-tab-active' : 'app-btn-secondary'" @click="activeTab = 'tasks'">
-              Tarefas
+              {{ translateDashboard('dashboard.tabs.tasks', 'Tarefas') }}
             </button>
 
             <button type="button"
               class="app-btn min-w-[120px]"
               :class="activeTab === 'finance' ? 'app-btn-tab-active' : 'app-btn-secondary'" @click="activeTab = 'finance'">
-              Financeiro
+              {{ translateDashboard('dashboard.tabs.finance', 'Financeiro') }}
             </button>
           </div>
         </div>
@@ -1509,35 +1526,57 @@ function toggleAllDashboardContainers() {
 
       <article
         v-if="activeTab === 'tasks' && loading"
-        class="grid min-h-[220px] place-items-center rounded-[24px] border border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500"
+        class="dashboard-state-panel grid min-h-[220px] place-items-center rounded-[24px] border border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500"
       >
-        Carregando dashboard analitico...
+        {{ translateDashboard('dashboard.tasks.loading', 'Carregando dashboard analitico...') }}
       </article>
 
       <article
         v-else-if="activeTab === 'tasks' && !workspaceReady"
-        class="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
+        class="dashboard-state-panel grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-5"
       >
           <div>
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Perfil necessario</p>
-            <h3 class="mt-1 text-2xl font-semibold text-slate-950">Configure o GitHub antes de liberar as analises</h3>
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">
+              {{ translateDashboard('dashboard.tasks.workspace.kicker', 'Perfil necessario') }}
+            </p>
+            <h3 class="mt-1 text-2xl font-semibold text-slate-950">
+              {{ translateDashboard('dashboard.tasks.workspace.title', 'Configure o GitHub antes de liberar as analises') }}
+            </h3>
             <p class="mt-3 text-sm leading-7 text-slate-600">
-            Salve o token do GitHub e cadastre ao menos um repositorio para liberar as analises do dashboard.
+              {{ translateDashboard('dashboard.tasks.workspace.description', 'Salve o token do GitHub e cadastre ao menos um repositorio para liberar as analises do dashboard.') }}
             </p>
           </div>
 
         <div class="grid gap-3 sm:grid-cols-3">
           <div class="rounded-2xl border border-slate-200 bg-white p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Repositorios</span>
+            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {{ translateDashboard('dashboard.tasks.workspace.repositoryLabel', 'Repositorios') }}
+            </span>
             <strong class="mt-2 block break-all text-sm font-semibold text-slate-950">{{ repositoryLabel }}</strong>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Token</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ profile?.tokenConfigured ? 'Salvo' : 'Ausente' }}</strong>
+            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {{ translateDashboard('dashboard.tasks.workspace.tokenLabel', 'Token') }}
+            </span>
+            <strong class="mt-2 block text-sm font-semibold text-slate-950">
+              {{
+                profile?.tokenConfigured
+                  ? translateDashboard('dashboard.tasks.workspace.tokenConfigured', 'Salvo')
+                  : translateDashboard('dashboard.tasks.workspace.tokenMissing', 'Ausente')
+              }}
+            </strong>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-4">
-            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Workspace</span>
-            <strong class="mt-2 block text-sm font-semibold text-slate-950">{{ profile?.workspaceReady ? 'Pronto' : 'Pendente' }}</strong>
+            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {{ translateDashboard('dashboard.tasks.workspace.workspaceLabel', 'Workspace') }}
+            </span>
+            <strong class="mt-2 block text-sm font-semibold text-slate-950">
+              {{
+                profile?.workspaceReady
+                  ? translateDashboard('dashboard.tasks.workspace.workspaceReady', 'Pronto')
+                  : translateDashboard('dashboard.tasks.workspace.workspacePending', 'Pendente')
+              }}
+            </strong>
           </div>
         </div>
       </article>
@@ -1545,13 +1584,17 @@ function toggleAllDashboardContainers() {
       <div v-else-if="activeTab === 'tasks'" class="grid gap-5">
         <article
           v-if="issues.length === 0 && !syncing"
-          class="grid gap-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50/80 p-5"
+          class="dashboard-state-panel dashboard-state-empty grid gap-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50/80 p-5"
         >
           <div>
-            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">Sem base analitica</p>
-            <h3 class="mt-1 text-2xl font-semibold text-slate-950">Ainda nao existem issues suficientes para montar os graficos</h3>
+            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-orange-600">
+              {{ translateDashboard('dashboard.tasks.empty.kicker', 'Sem base analitica') }}
+            </p>
+            <h3 class="mt-1 text-2xl font-semibold text-slate-950">
+              {{ translateDashboard('dashboard.tasks.empty.title', 'Ainda nao existem issues suficientes para montar os graficos') }}
+            </h3>
             <p class="mt-3 text-sm leading-7 text-slate-600">
-              O dashboard usa a base cacheada das issues. Se for sua primeira entrada, atualize para preencher as analises.
+              {{ translateDashboard('dashboard.tasks.empty.description', 'O dashboard usa a base cacheada das issues. Se for sua primeira entrada, atualize para preencher as analises.') }}
             </p>
           </div>
         </article>
@@ -1918,14 +1961,14 @@ function toggleAllDashboardContainers() {
 
         <article
           v-if="financeLoading && !financeLoaded"
-          class="grid min-h-[200px] place-items-center rounded-[22px] border border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500"
+          class="dashboard-state-panel grid min-h-[200px] place-items-center rounded-[22px] border border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500"
         >
           Carregando dashboard financeiro...
         </article>
 
         <article
           v-else-if="financeErrorMessage && !financeLoaded"
-          class="grid gap-3 rounded-[22px] border border-rose-200 bg-rose-50/70 p-5"
+          class="dashboard-state-panel dashboard-state-error grid gap-3 rounded-[22px] border border-rose-200 bg-rose-50/70 p-5"
         >
           <p class="text-[11px] font-black uppercase tracking-[0.22em] text-rose-700">Falha no dashboard</p>
           <p class="text-sm leading-7 text-rose-700">{{ financeErrorMessage }}</p>

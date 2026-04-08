@@ -109,6 +109,7 @@ async function submitRecurringType() {
 }
 
 async function deleteRecurringType(rt) {
+  // eslint-disable-next-line no-alert
   if (!confirm(`Excluir tipo recorrente "${rt.name}"?`)) return
   try {
     await deleteFinanceRecurringType(rt.id)

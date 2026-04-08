@@ -56,8 +56,115 @@ body,
   width: 100%;
 }
 
-body {
+body[data-components-app-standalone='true'] {
   background: transparent;
   color: inherit;
   min-width: 320px;
+}
+
+/* ==============================================================
+   Base Components Styles (Extracted from scoped files)
+   ============================================================== */
+
+/* Base Alert */
+.base-alert {
+  border-radius: 18px;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.85rem 1rem;
+}
+.alert-info {
+  background: var(--secondary-soft, color-mix(in srgb, var(--color-secondary) 12%, white));
+  border-color: color-mix(in srgb, var(--color-secondary) 32%, var(--app-panel-border, transparent));
+  color: var(--color-secondary);
+}
+.alert-success {
+  background: var(--success-bg, color-mix(in srgb, var(--success) 14%, white));
+  border-color: color-mix(in srgb, var(--success) 28%, var(--app-panel-border, transparent));
+  color: var(--success);
+}
+.alert-warning {
+  background: var(--warning-bg, color-mix(in srgb, var(--warning) 16%, white));
+  border-color: color-mix(in srgb, var(--warning) 32%, var(--app-panel-border, transparent));
+  color: var(--warning);
+}
+.alert-error {
+  background: var(--danger-bg, color-mix(in srgb, var(--danger) 14%, white));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--app-panel-border, transparent));
+  color: var(--danger);
+}
+
+/* Base Card */
+.base-card {
+  background: var(--app-panel-bg);
+  border: 1px solid var(--app-panel-border);
+  border-radius: 28px;
+  box-shadow: var(--app-panel-shadow);
+  color: var(--ink);
+  padding: 1.25rem;
+}
+
+/* Section Header */
+.section-kicker {
+  color: var(--color-secondary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.section-title {
+  color: var(--ink);
+  font-size: clamp(1.45rem, 2vw, 1.9rem);
+  font-weight: 700;
+  margin: 0.35rem 0 0;
+}
+.section-description {
+  color: var(--muted);
+  line-height: 1.75;
+  margin: 0.75rem 0 0;
+}
+
+/* Empty State */
+.empty-state {
+  background: color-mix(in srgb, var(--surface-muted) 88%, white);
+  border: 1px dashed var(--line);
+  border-radius: 24px;
+  color: var(--muted);
+  padding: 1.25rem;
+}
+
+/* Loading State */
+.loading-state {
+  background: color-mix(in srgb, var(--surface-muted) 88%, white);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  color: var(--muted);
+  display: grid;
+  min-height: 180px;
+  padding: 1.25rem;
+  place-items: center;
+  text-align: center;
+}
+
+/* Preview Home */
+.remote-shell {
+  align-items: center;
+  color: var(--ink);
+  display: grid;
+  gap: 8px;
+  margin: 0 auto;
+  max-width: 760px;
+  min-height: 100vh;
+  padding: 24px;
+  place-content: center;
+  text-align: center;
+}
+.remote-shell h1 {
+  margin: 0;
+}
+.remote-shell p {
+  color: var(--muted);
+  margin: 0;
 }

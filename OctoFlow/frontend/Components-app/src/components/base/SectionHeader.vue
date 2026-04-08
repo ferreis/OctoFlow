@@ -1,4 +1,16 @@
 <script setup>
+import {
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+} from 'vue'
+
 defineProps({
   kicker: {
     type: String,
@@ -13,6 +25,20 @@ defineProps({
     default: '',
   },
 })
+
+onBeforeMount(() => {})
+onMounted(() => {})
+onBeforeUpdate(() => {})
+onUpdated(() => {})
+onBeforeUnmount(() => {})
+onUnmounted(() => {})
+onActivated(() => {})
+onDeactivated(() => {})
+
+onErrorCaptured((error, instance, info) => {
+  console.error('SectionHeader Error:', error, info)
+  return false
+})
 </script>
 
 <template>
@@ -23,27 +49,3 @@ defineProps({
     <slot />
   </div>
 </template>
-
-<style scoped>
-.section-kicker {
-  color: var(--color-secondary);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.22em;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-.section-title {
-  color: var(--ink);
-  font-size: clamp(1.45rem, 2vw, 1.9rem);
-  font-weight: 700;
-  margin: 0.35rem 0 0;
-}
-
-.section-description {
-  color: var(--muted);
-  line-height: 1.75;
-  margin: 0.75rem 0 0;
-}
-</style>

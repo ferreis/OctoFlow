@@ -68,15 +68,8 @@ const pathData = computed(() => {
 <template>
   <div class="finance-trend-chart">
     <svg viewBox="0 0 240 72" preserveAspectRatio="none">
-      <path
-        v-if="pathData"
-        :d="pathData"
-        fill="none"
-        :stroke="strokeColor"
-        stroke-width="2.4"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+      <path v-if="pathData" :d="pathData" fill="none" :stroke="strokeColor" stroke-width="2.4" stroke-linecap="round"
+        stroke-linejoin="round" />
     </svg>
   </div>
 </template>
@@ -87,11 +80,9 @@ const pathData = computed(() => {
   height: 72px;
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--accent, #2563eb) 24%, var(--line, #dbeafe));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent, #2563eb) 12%, transparent) 0%,
-    var(--surface-strong, #ffffff) 100%
-  );
+  background: linear-gradient(180deg,
+      color-mix(in srgb, var(--accent, #2563eb) 12%, transparent) 0%,
+      var(--surface-strong, #ffffff) 100%);
   padding: 6px;
 }
 

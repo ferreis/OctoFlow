@@ -1,6 +1,17 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { onBeforeUnmount, onMounted, watch } from 'vue'
+import {
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+  watch,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppFooter from '../components/layout/AppFooter.vue'
 import MenuSidebar from '../components/layout/MenuSidebar.vue'
@@ -22,7 +33,13 @@ const { isAuthenticated, requiresGooglePasswordSetup, currentUser } = storeToRef
 let viewportMediaQuery = null
 let removeViewportListener = null
 
+// Vue Lifecycle completo (padronizado)
+onBeforeMount(() => {
+  // lógica antes de renderizar (sem DOM ainda)
+})
+
 onMounted(() => {
+  // DOM pronto: API, refs, libs externas
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
   appShellStore.setCompactViewport(viewportMediaQuery.matches)
 
@@ -39,12 +56,40 @@ onMounted(() => {
   }
 })
 
+onBeforeUpdate(() => {
+  // antes de atualizar DOM (estado mudou)
+})
+
+onUpdated(() => {
+  // depois que DOM atualizou
+})
+
 onBeforeUnmount(() => {
+  // preparar limpeza (parar processos)
   removeViewportListener?.()
 })
 
+onUnmounted(() => {
+  // limpar tudo (eventos, timers, sockets)
+  viewportMediaQuery = null
+})
+
+onActivated(() => {
+  // componente reativado (keep-alive)
+})
+
+onDeactivated(() => {
+  // componente pausado (keep-alive)
+})
+
+onErrorCaptured((error) => {
+  // capturar erro de filhos no Layout
+  console.error('Layout Error Blocked:', error)
+  return false
+})
+
 watch(
-  () => `${String(appRoute.name || '')}|${String(appRoute.params?.section || '')}`,
+  () => `${String(appRoute.name || '')}|${String(appRoute.params?.section || '')}|${String(appRoute.query?.tab || '')}`,
   () => {
     appNavigationStore.syncFromRoute(appRoute)
   },

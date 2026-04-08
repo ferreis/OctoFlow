@@ -1,9 +1,46 @@
 <script setup>
 import { storeToRefs } from 'pinia'
+import {
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+} from 'vue'
+import { useRouter } from 'vue-router'
 import { useRemotePreviewStore } from '../stores/remotePreviewStore'
 
 const remotePreviewStore = useRemotePreviewStore()
+
+// Adicionando vue-router conforme padrão apontado
+const router = useRouter()
+
 const { title, description, details } = storeToRefs(remotePreviewStore)
+
+onBeforeMount(() => {})
+onMounted(() => {})
+onBeforeUpdate(() => {})
+onUpdated(() => {})
+
+onBeforeUnmount(() => {
+  // Limpeza explícita para evitar memory leaks antes da destruição
+  if (remotePreviewStore && typeof remotePreviewStore.$reset === 'function') {
+    remotePreviewStore.$reset()
+  }
+})
+onUnmounted(() => {})
+
+onActivated(() => {})
+onDeactivated(() => {})
+
+onErrorCaptured((error, instance, info) => {
+  console.error('PreviewHomeView Error Blocked:', error, info)
+  return false
+})
 </script>
 
 <template>
@@ -14,26 +51,3 @@ const { title, description, details } = storeToRefs(remotePreviewStore)
   </main>
 </template>
 
-<style scoped>
-.remote-shell {
-  align-items: center;
-  color: var(--ink);
-  display: grid;
-  gap: 8px;
-  margin: 0 auto;
-  max-width: 760px;
-  min-height: 100vh;
-  padding: 24px;
-  place-content: center;
-  text-align: center;
-}
-
-.remote-shell h1 {
-  margin: 0;
-}
-
-.remote-shell p {
-  color: var(--muted);
-  margin: 0;
-}
-</style>

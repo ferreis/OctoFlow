@@ -15,6 +15,7 @@ import { removeProfileAvatar, uploadProfileAvatar } from '../../services/account
 import { formatDateTime } from '../../utils/date'
 import { parseGithubRepositoryUrl } from '../../utils/githubRepository'
 import { extractHttpMessage } from '../../utils/httpErrors'
+import { resolveSafeAvatarUrl } from '../../utils/avatarUrl'
 import AccountEmailsPanel from '../AccountEmailsPanel.vue'
 import AccountPasswordChangeModal from '../shared/AccountPasswordChangeModal.vue'
 import AppConfirmDialog from '../shared/AppConfirmDialog.vue'
@@ -124,7 +125,6 @@ const updateUiSettingsHandler = props.updateUiSettings || sessionStore.updateUiS
 const emit = defineEmits(['session-updated'])
 
 const REPOSITORY_PAGE_SIZE = 10
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/OctoFlow/api').replace(/\/$/, '')
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
@@ -196,7 +196,7 @@ const userAvatarUrl = computed(() => {
     return ''
   }
 
-  return resolveAvatarUrl(currentUser.value?.avatarUrl)
+  return resolveSafeAvatarUrl(currentUser.value?.avatarUrl)
 })
 const avatarActionLoading = computed(() => avatarUploading.value || avatarRemoving.value)
 const tokenConfigured = computed(() => Boolean(profile.value?.tokenConfigured))
@@ -721,27 +721,6 @@ async function executeRemoveRepository(repository) {
   } finally {
     deletingRepositoryId.value = 0
   }
-}
-
-function resolveAvatarUrl(rawAvatarUrl) {
-  const normalizedAvatarUrl = typeof rawAvatarUrl === 'string' ? rawAvatarUrl.trim() : ''
-  if (normalizedAvatarUrl === '') {
-    return ''
-  }
-
-  if (/^https?:\/\//i.test(normalizedAvatarUrl) || normalizedAvatarUrl.startsWith('data:')) {
-    return normalizedAvatarUrl
-  }
-
-  if (normalizedAvatarUrl.startsWith(API_BASE_URL)) {
-    return normalizedAvatarUrl
-  }
-
-  if (normalizedAvatarUrl.startsWith('/')) {
-    return `${API_BASE_URL}${normalizedAvatarUrl}`
-  }
-
-  return `${API_BASE_URL}/${normalizedAvatarUrl.replace(/^\/+/, '')}`
 }
 
 function triggerAvatarSelection() {

@@ -1,0 +1,13 @@
+{
+  "base": {
+    "loading": {
+      "defaultText": "Carregando..."
+    },
+    "empty": {
+      "defaultText": "Nenhum dado encontrado."
+    },
+    "alert": {
+      "defaultError": "Aviso"
+    }
+  }
+}

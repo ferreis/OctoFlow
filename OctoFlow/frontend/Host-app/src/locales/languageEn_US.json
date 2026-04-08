@@ -1,0 +1,268 @@
+{
+  "auth": {
+    "login": {
+      "title": "Sign In",
+      "subtitleSession": "Session",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "button": "Sign in",
+      "buttonLoading": "Signing in...",
+      "googleButton": "Sign in with Google"
+    },
+    "register": {
+      "title": "Create Account",
+      "subtitleSession": "Session",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "confirmPasswordLabel": "Confirm Password",
+      "button": "Create Account",
+      "buttonLoading": "Creating...",
+      "helpText": "The account is linked via email and password, signing you in automatically upon completion."
+    },
+    "modeSwitch": {
+      "login": "Sign In",
+      "register": "Create Account"
+    },
+    "bootstrap": {
+      "kicker": "Session",
+      "title": "Restoring session...",
+      "helpText": "Please wait while we validate your access credentials."
+    },
+    "hero": {
+      "kicker": "OctoFlow",
+      "title": "An elegant environment for your GitHub and Tasks",
+      "description": "The frontend now manages sessions cleanly and assembles the remote dashboard flawlessly.",
+      "featureProfile": "Profile",
+      "featureProfileDesc": "Linked emails, default email addressing, and granular user GitHub setup.",
+      "featureTasks": "Tasks",
+      "featureTasksDesc": "Issues assigned directly to you with repo sorting and context synchronization.",
+      "featureDashboard": "Dashboard",
+      "featureDashboardDesc": "Agile overview, issue creation, and fluid project tracking in one streamlined flow."
+    },
+    "passwordSetup": {
+      "kickerSecurity": "Account Security",
+      "kickerMandatory": "Advanced Security Validation",
+      "titleMain": "Activate your local password",
+      "description": "To enable native email and password access, validate the secure code sent to",
+      "andThen": "and then set your account password.",
+      "step1Title": "1. Validate Email",
+      "step1Desc": "Provide the numeric code recently sent to your email inbox.",
+      "step2Title": "2. Create Password",
+      "step2Desc": "Following validation, register a secure local dashboard password.",
+      "expiresIn": "The current code expires at:",
+      "verifyStepTitle": "Validate email code",
+      "verifyCodeLabel": "Validation Code (OTP)",
+      "verifyButton": "Validate Code",
+      "verifyButtonLoading": "Validating...",
+      "resendCode": "Resend Code",
+      "createStepTitle": "Define access password",
+      "passwordLabel": "New Password",
+      "confirmPasswordLabel": "Confirm Password",
+      "createButton": "Set Password",
+      "createButtonLoading": "Saving...",
+      "logoutButton": "Sign Out"
+    }
+  },
+  "navigation": {
+    "items": {
+      "dashboard": {
+        "label": "Dashboard",
+        "eyebrow": "",
+        "title": "Dashboard"
+      },
+      "tasks": {
+        "label": "Tasks",
+        "eyebrow": "GitHub Issues",
+        "title": "OctoFlow operational inbox"
+      },
+      "finance": {
+        "label": "Finance",
+        "eyebrow": "Finance",
+        "title": "Personal finance control"
+      },
+      "financeAccounts": {
+        "label": "Accounts"
+      },
+      "financeBanks": {
+        "label": "Banks"
+      },
+      "financeInvestments": {
+        "label": "Investments"
+      },
+      "financeSettings": {
+        "label": "Settings"
+      },
+      "financeReports": {
+        "label": "Reports"
+      },
+      "profile": {
+        "label": "Profile",
+        "eyebrow": "Profile",
+        "title": "Identity and settings"
+      }
+    }
+  },
+  "sidebar": {
+    "navigationAriaLabel": "Main navigation",
+    "appSubtitle": "Internal panel",
+    "unauthenticatedSession": "Unauthenticated session",
+    "profileAvatarAlt": "User avatar",
+    "expandGroup": "Expand group",
+    "collapseGroup": "Collapse group",
+    "logout": "Sign out",
+    "logoutCompact": "S"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "tabs": {
+      "tasks": "Tasks",
+      "finance": "Finance"
+    },
+    "actions": {
+      "expandContainers": "Expand containers",
+      "collapseContainers": "Collapse containers",
+      "refreshTasks": "Refresh analytics",
+      "refreshFinance": "Refresh finance dashboard"
+    },
+    "common": {
+      "errors": {
+        "childComponent": "An unexpected dashboard error occurred."
+      },
+      "noBase": "no baseline",
+      "monthAbbreviation": "mo"
+    },
+    "tasks": {
+      "loading": "Loading analytics dashboard...",
+      "workspace": {
+        "kicker": "Profile required",
+        "title": "Configure GitHub before enabling analytics",
+        "description": "Save your GitHub token and register at least one repository to unlock dashboard analytics.",
+        "repositoryLabel": "Repositories",
+        "tokenLabel": "Token",
+        "tokenConfigured": "Saved",
+        "tokenMissing": "Missing",
+        "workspaceLabel": "Workspace",
+        "workspaceReady": "Ready",
+        "workspacePending": "Pending",
+        "repositoriesConfigured": "{count} repositories configured",
+        "defaultOwner": "Default owner: {owner}",
+        "repositoriesMissing": "No repository configured"
+      },
+      "empty": {
+        "kicker": "No analytics data",
+        "title": "There are not enough issues yet to build charts",
+        "description": "The dashboard uses cached issues data. If this is your first access, refresh to fill analytics."
+      },
+      "overview": {
+        "totalIssues": {
+          "label": "Total issues",
+          "note": "current analyzed volume"
+        },
+        "openIssues": {
+          "label": "Open",
+          "note": "work in progress backlog"
+        },
+        "closedIssues": {
+          "label": "Closed",
+          "note": "completed tasks"
+        },
+        "repositories": {
+          "label": "Repositories",
+          "note": "tracked sources"
+        }
+      },
+      "series": {
+        "issueStatus": {
+          "open": "Open",
+          "closed": "Closed"
+        },
+        "closureWindow": {
+          "week": "Week",
+          "month": "Month",
+          "year": "Year"
+        },
+        "updateFreshness": {
+          "under24h": "Up to 24h",
+          "days1to7": "1-7 days",
+          "days8to30": "8-30 days",
+          "over30days": "Over 30 days"
+        }
+      },
+      "cycleTime": {
+        "averageToClose": {
+          "label": "Average to close",
+          "noteWithCount": "{count} closed issues analyzed",
+          "noteEmpty": "no closed issues baseline yet"
+        },
+        "averageWithoutUpdate": {
+          "label": "Average without updates",
+          "noteWithCount": "{count} open issues considered",
+          "noteEmpty": "no open issues right now"
+        }
+      },
+      "type": {
+        "support": "Support",
+        "incident": "Incident",
+        "service": "Service",
+        "feature": "Feature",
+        "bug": "Bug",
+        "technical": "Technical",
+        "other": "Other"
+      },
+      "status": {
+        "profileLoadedNeedsSetup": "GitHub profile loaded. Finish setup in Profile to unlock analytics.",
+        "workspaceMissingPermissions": "Workspace still missing required context for analytics.",
+        "loadedFromCache": "Dashboard loaded from local cache.",
+        "syncedFromGithub": "Analytics updated with latest GitHub data.",
+        "usingCacheFallback": "Keeping local cache analytics while GitHub sync is unavailable."
+      },
+      "errors": {
+        "loadDashboard": "Could not load analytics dashboard.",
+        "syncGithub": "Could not sync analytics from GitHub."
+      }
+    },
+    "finance": {
+      "groups": {
+        "accountsPayable": {
+          "label": "Accounts Payable",
+          "description": "Outgoing commitments and due dates"
+        },
+        "accountsReceivable": {
+          "label": "Accounts Receivable",
+          "description": "Expected and open incoming values"
+        }
+      },
+      "groupTitle": {
+        "payable": "Period payment control",
+        "receivable": "Period receivables control"
+      },
+      "groupDescription": {
+        "payable": "Organize pending titles, due dates, and projected outflows to avoid mixing finance with task operations.",
+        "receivable": "Organize expected values, open receivables, and settled receipts to keep cash inflow visibility."
+      },
+      "status": {
+        "updatedByGroup": "Finance dashboard updated for {groupLabel}."
+      },
+      "errors": {
+        "loadDashboard": "Could not load finance dashboard."
+      },
+      "dueStatus": {
+        "noDueDate": "no due date",
+        "overdue": "{days}d overdue",
+        "today": "due today",
+        "upcoming": "due in {days}d"
+      },
+      "statusCatalog": {
+        "pending": "Pending",
+        "partiallySettled": "Partial",
+        "paid": "Paid",
+        "overdue": "Overdue",
+        "canceled": "Canceled",
+        "unknown": "No status"
+      }
+    }
+  },
+  "common": {
+    "retry": "Try again"
+  }
+}

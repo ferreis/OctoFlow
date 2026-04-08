@@ -1,19 +1,37 @@
+<script setup>
+import {
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+} from 'vue'
+import { useI18n } from '../../composables/useI18n'
+
+const { t } = useI18n()
+
+onBeforeMount(() => {})
+onMounted(() => {})
+onBeforeUpdate(() => {})
+onUpdated(() => {})
+onBeforeUnmount(() => {})
+onUnmounted(() => {})
+onActivated(() => {})
+onDeactivated(() => {})
+
+onErrorCaptured((error, instance, info) => {
+  console.error('LoadingState Error:', error, info)
+  return false
+})
+</script>
+
 <template>
-  <div class="loading-state">
-    <slot>Carregando...</slot>
+  <div class="loading-state" aria-busy="true" role="status">
+    <slot>{{ t('base.loading.defaultText') }}</slot>
   </div>
 </template>
 
-<style scoped>
-.loading-state {
-  background: color-mix(in srgb, var(--surface-muted) 88%, white);
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  color: var(--muted);
-  display: grid;
-  min-height: 180px;
-  padding: 1.25rem;
-  place-items: center;
-  text-align: center;
-}
-</style>

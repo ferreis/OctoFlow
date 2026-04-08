@@ -21,12 +21,7 @@ defineEmits(['action'])
   <section class="finance-empty-state">
     <p class="finance-empty-state-title">{{ title }}</p>
     <p class="finance-empty-state-description">{{ description }}</p>
-    <button
-      v-if="actionLabel"
-      type="button"
-      class="finance-empty-state-action"
-      @click="$emit('action')"
-    >
+    <button v-if="actionLabel" type="button" class="finance-empty-state-action" @click="$emit('action')">
       {{ actionLabel }}
     </button>
   </section>

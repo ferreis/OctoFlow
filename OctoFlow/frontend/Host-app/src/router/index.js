@@ -8,11 +8,17 @@ import AuthEntryView from '../views/AuthEntryView.vue'
 import AuthGooglePasswordSetupView from '../views/AuthGooglePasswordSetupView.vue'
 import FinanceLayout from '../views/finance/FinanceLayout.vue'
 import { useSessionStore } from '../stores/sessionStore'
+import { normalizeDashboardTabQuery, sanitizeInternalRedirectPath } from '../utils/navigationSecurity'
 
 const appRoutes = [
   {
     path: '/',
-    redirect: { name: 'dashboard' },
+    redirect: {
+      name: 'dashboard',
+      query: {
+        tab: 'tasks',
+      },
+    },
   },
   {
     path: '/auth/login',
@@ -52,6 +58,23 @@ const appRoutes = [
         path: 'dashboard',
         name: 'dashboard',
         component: DashboardScreen,
+        beforeEnter: (to) => {
+          const normalizedDashboardTab = normalizeDashboardTabQuery(to.query.tab)
+          const currentDashboardTab = typeof to.query.tab === 'string' ? to.query.tab : ''
+
+          if (currentDashboardTab === normalizedDashboardTab) {
+            return true
+          }
+
+          return {
+            name: 'dashboard',
+            query: {
+              ...to.query,
+              tab: normalizedDashboardTab,
+            },
+            replace: true,
+          }
+        },
       },
       {
         path: 'tasks',
@@ -109,7 +132,12 @@ const appRoutes = [
   // ─── Redirects legados ───
   {
     path: '/dashboard',
-    redirect: { name: 'dashboard' },
+    redirect: {
+      name: 'dashboard',
+      query: {
+        tab: 'tasks',
+      },
+    },
   },
   {
     path: '/tasks',
@@ -145,7 +173,12 @@ const appRoutes = [
   },
   {
     path: '/:pathMatch(.*)*',
-    redirect: { name: 'dashboard' },
+    redirect: {
+      name: 'dashboard',
+      query: {
+        tab: 'tasks',
+      },
+    },
   },
 ]
 
@@ -177,12 +210,17 @@ appRouter.beforeEach(async (to) => {
       return { name: 'auth-google-password-setup' }
     }
 
-    const redirectPath = typeof to.query.redirect === 'string' ? to.query.redirect.trim() : ''
+    const redirectPath = sanitizeInternalRedirectPath(to.query.redirect, { fallbackPath: '' })
     if (redirectPath !== '') {
       return redirectPath
     }
 
-    return { name: 'dashboard' }
+    return {
+      name: 'dashboard',
+      query: {
+        tab: 'tasks',
+      },
+    }
   }
 
   if (to.name === 'auth-google-password-setup') {
@@ -191,7 +229,12 @@ appRouter.beforeEach(async (to) => {
     }
 
     if (!sessionStore.requiresGooglePasswordSetup) {
-      return { name: 'dashboard' }
+      return {
+        name: 'dashboard',
+        query: {
+          tab: 'tasks',
+        },
+      }
     }
   }
 
