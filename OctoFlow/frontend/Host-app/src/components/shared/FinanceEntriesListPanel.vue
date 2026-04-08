@@ -1,5 +1,6 @@
 <script setup>
 import { computed, reactive, watch } from 'vue'
+import { useI18n } from '../../composables/useI18n'
 import {
   RemoteFinanceEmptyState,
   RemoteFinanceStatusBadge,
@@ -9,11 +10,11 @@ import { formatDate } from '../../utils/date'
 const props = defineProps({
   panelTitle: {
     type: String,
-    default: 'Lançamentos',
+    default: '',
   },
   totalsLabel: {
     type: String,
-    default: '0 lançamentos',
+    default: '',
   },
   entriesItems: {
     type: Array,
@@ -37,7 +38,7 @@ const props = defineProps({
   },
   currentDirectionLabel: {
     type: String,
-    default: 'Todas as direções',
+    default: '',
   },
   directionOptions: {
     type: Array,
@@ -64,6 +65,9 @@ const emit = defineEmits([
   'delete-entry',
 ])
 
+const FILTER_SEARCH_MAX_LENGTH = 180
+const { translate, currentLocale } = useI18n()
+
 const localFilters = reactive({
   search: '',
   direction: '',
@@ -72,14 +76,99 @@ const localFilters = reactive({
   endDate: '',
 })
 
+const directionOptionsCatalog = computed(() => (
+  Array.isArray(props.directionOptions) ? props.directionOptions : []
+))
+
+const statusOptionsCatalog = computed(() => (
+  Array.isArray(props.statusOptions) ? props.statusOptions : []
+))
+
+const resolvedPanelTitle = computed(() => {
+  const normalizedTitle = String(props.panelTitle || '').trim()
+  return normalizedTitle !== '' ? normalizedTitle : translate('shared.financeEntriesPanel.title')
+})
+
+const resolvedTotalsLabel = computed(() => {
+  const normalizedTotalsLabel = String(props.totalsLabel || '').trim()
+  return normalizedTotalsLabel !== '' ? normalizedTotalsLabel : translate('shared.financeEntriesPanel.pagination.empty')
+})
+
+function replaceControlCharactersWithSpaces(rawValue) {
+  let sanitizedText = ''
+  const inputText = String(rawValue || '')
+
+  for (const currentCharacter of inputText) {
+    const characterCode = currentCharacter.charCodeAt(0)
+    const isControlCharacter = characterCode < 32 || characterCode === 127
+    sanitizedText += isControlCharacter ? ' ' : currentCharacter
+  }
+
+  return sanitizedText
+}
+
+function sanitizeSingleLineText(rawValue, maxLength = FILTER_SEARCH_MAX_LENGTH) {
+  return replaceControlCharactersWithSpaces(rawValue)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function sanitizeDateInput(rawDateInput) {
+  const normalizedDateInput = String(rawDateInput || '').trim()
+  if (normalizedDateInput === '') {
+    return ''
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalizedDateInput) ? normalizedDateInput : ''
+}
+
+function sanitizeFilterOptionByCatalog(rawValue, catalogOptions = []) {
+  const normalizedValue = String(rawValue || '').trim().toUpperCase()
+  if (normalizedValue === '') {
+    return ''
+  }
+
+  const allowedOption = catalogOptions.find((catalogOption) => (
+    String(catalogOption?.value || '').trim().toUpperCase() === normalizedValue
+  ))
+
+  return allowedOption ? String(allowedOption.value || '').trim() : ''
+}
+
+function sanitizeFiltersPayload(rawFilters = {}) {
+  const normalizedFilters = {
+    search: sanitizeSingleLineText(rawFilters.search),
+    direction: props.showDirectionFilter
+      ? sanitizeFilterOptionByCatalog(rawFilters.direction, directionOptionsCatalog.value)
+      : '',
+    status: sanitizeFilterOptionByCatalog(rawFilters.status, statusOptionsCatalog.value),
+    startDate: sanitizeDateInput(rawFilters.startDate),
+    endDate: sanitizeDateInput(rawFilters.endDate),
+  }
+
+  if (
+    normalizedFilters.startDate !== ''
+    && normalizedFilters.endDate !== ''
+    && normalizedFilters.startDate > normalizedFilters.endDate
+  ) {
+    const startDateBackup = normalizedFilters.startDate
+    normalizedFilters.startDate = normalizedFilters.endDate
+    normalizedFilters.endDate = startDateBackup
+  }
+
+  return normalizedFilters
+}
+
 watch(
   () => props.filters,
   (nextFilters) => {
-    localFilters.search = String(nextFilters?.search || '')
-    localFilters.direction = String(nextFilters?.direction || '')
-    localFilters.status = String(nextFilters?.status || '')
-    localFilters.startDate = String(nextFilters?.startDate || '')
-    localFilters.endDate = String(nextFilters?.endDate || '')
+    const normalizedFilters = sanitizeFiltersPayload(nextFilters || {})
+    localFilters.search = normalizedFilters.search
+    localFilters.direction = normalizedFilters.direction
+    localFilters.status = normalizedFilters.status
+    localFilters.startDate = normalizedFilters.startDate
+    localFilters.endDate = normalizedFilters.endDate
   },
   {
     immediate: true,
@@ -106,7 +195,7 @@ const shouldShowEntryActions = computed(() => !isUnifiedEntriesPanel.value)
 function formatCurrency(rawValue) {
   const numericValue = Number(rawValue || 0)
 
-  return new Intl.NumberFormat('pt-BR', {
+  return new Intl.NumberFormat(currentLocale.value === 'en-US' ? 'en-US' : 'pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,
@@ -114,13 +203,13 @@ function formatCurrency(rawValue) {
 }
 
 function submitFilters() {
-  emit('submit-filters', {
-    search: localFilters.search,
-    direction: localFilters.direction,
-    status: localFilters.status,
-    startDate: localFilters.startDate,
-    endDate: localFilters.endDate,
-  })
+  const normalizedFilters = sanitizeFiltersPayload(localFilters)
+  localFilters.search = normalizedFilters.search
+  localFilters.direction = normalizedFilters.direction
+  localFilters.status = normalizedFilters.status
+  localFilters.startDate = normalizedFilters.startDate
+  localFilters.endDate = normalizedFilters.endDate
+  emit('submit-filters', normalizedFilters)
 }
 
 function goToPreviousPage() {
@@ -160,22 +249,26 @@ function deleteEntry(entryItem) {
   <article class="finance-panel" :class="{ 'finance-panel-unified': isUnifiedEntriesPanel }">
     <header>
       <div class="finance-panel-heading">
-        <h3>{{ panelTitle }}</h3>
+        <h3>{{ resolvedPanelTitle }}</h3>
       </div>
-      <small>{{ totalsLabel }}</small>
-      <small v-if="loading">Atualizando...</small>
+      <small>{{ resolvedTotalsLabel }}</small>
+      <small v-if="loading">{{ translate('shared.financeEntriesPanel.loading') }}</small>
     </header>
 
     <form class="finance-filter-grid" @submit.prevent="submitFilters">
       <label>
-        <span>Busca</span>
-        <input v-model="localFilters.search" type="text" placeholder="Título ou descrição">
+        <span>{{ translate('shared.financeEntriesPanel.filters.search') }}</span>
+        <input
+          v-model="localFilters.search"
+          type="text"
+          :placeholder="translate('shared.financeEntriesPanel.filters.searchPlaceholder')"
+        >
       </label>
 
       <label v-if="showDirectionFilter">
-        <span>Direção</span>
+        <span>{{ translate('shared.financeEntriesPanel.filters.direction') }}</span>
         <select v-model="localFilters.direction">
-          <option value="">Todas as direções</option>
+          <option value="">{{ translate('shared.financeEntriesPanel.filters.directionAll') }}</option>
           <option
             v-for="directionOption in directionOptions"
             :key="directionOption.value"
@@ -186,9 +279,9 @@ function deleteEntry(entryItem) {
         </select>
       </label>
       <label>
-        <span>Status</span>
+        <span>{{ translate('shared.financeEntriesPanel.filters.status') }}</span>
         <select v-model="localFilters.status">
-          <option value="">Todos</option>
+          <option value="">{{ translate('shared.financeEntriesPanel.filters.statusAll') }}</option>
           <option
             v-for="statusOption in statusOptions"
             :key="statusOption.value"
@@ -200,36 +293,38 @@ function deleteEntry(entryItem) {
       </label>
 
       <label>
-        <span>Início</span>
+        <span>{{ translate('shared.financeEntriesPanel.filters.startDate') }}</span>
         <input v-model="localFilters.startDate" type="date">
       </label>
 
       <label>
-        <span>Fim</span>
+        <span>{{ translate('shared.financeEntriesPanel.filters.endDate') }}</span>
         <input v-model="localFilters.endDate" type="date">
       </label>
 
-      <button class="finance-action-button" type="submit">Filtrar</button>
+      <button class="finance-action-button" type="submit">{{ translate('shared.financeEntriesPanel.filters.apply') }}</button>
     </form>
 
     <div v-if="entriesItems.length" class="finance-inline-table-wrap">
       <table class="finance-inline-table">
         <thead>
           <tr>
-            <th>Título</th>
-            <th>Tipo</th>
-            <th>Status</th>
-            <th>Vencimento</th>
-            <th>Esperado</th>
-            <th>Restante</th>
-            <th v-if="shouldShowEntryActions" class="finance-actions-header">Ação</th>
+            <th>{{ translate('shared.financeEntriesPanel.table.title') }}</th>
+            <th>{{ translate('shared.financeEntriesPanel.table.type') }}</th>
+            <th>{{ translate('shared.financeEntriesPanel.table.status') }}</th>
+            <th>{{ translate('shared.financeEntriesPanel.table.dueDate') }}</th>
+            <th>{{ translate('shared.financeEntriesPanel.table.expected') }}</th>
+            <th>{{ translate('shared.financeEntriesPanel.table.remaining') }}</th>
+            <th v-if="shouldShowEntryActions" class="finance-actions-header">{{ translate('shared.financeEntriesPanel.table.action') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="entryItem in entriesItems" :key="entryItem.id">
             <td>
               <strong>{{ entryItem.title }}</strong>
-              <small class="finance-muted-block">{{ entryItem.categoryName || 'Sem categoria' }}</small>
+              <small class="finance-muted-block">
+                {{ entryItem.categoryName || translate('shared.financeEntriesPanel.labels.noCategory') }}
+              </small>
             </td>
             <td>{{ resolveFinanceLabel(entryItem.entryType, '-') }}</td>
             <td>
@@ -247,14 +342,14 @@ function deleteEntry(entryItem) {
                 class="finance-inline-action"
                 @click="editEntry(entryItem)"
               >
-                Editar
+                {{ translate('shared.financeEntriesPanel.actions.edit') }}
               </button>
               <button
                 type="button"
                 class="finance-inline-action finance-inline-action-danger"
                 @click="deleteEntry(entryItem)"
               >
-                Excluir
+                {{ translate('shared.financeEntriesPanel.actions.delete') }}
               </button>
             </td>
           </tr>
@@ -263,7 +358,7 @@ function deleteEntry(entryItem) {
     </div>
 
     <div v-if="entriesItems.length" class="finance-pagination">
-      <span class="finance-pagination-summary">{{ totalsLabel }}</span>
+      <span class="finance-pagination-summary">{{ resolvedTotalsLabel }}</span>
       <div v-if="totalEntriesPages > 1" class="finance-pagination-actions">
         <button
           type="button"
@@ -271,10 +366,15 @@ function deleteEntry(entryItem) {
           :disabled="currentEntriesPage <= 1"
           @click="goToPreviousPage"
         >
-          Anterior
+          {{ translate('shared.financeEntriesPanel.pagination.previous') }}
         </button>
         <span class="finance-pagination-page">
-          Página {{ currentEntriesPage }} de {{ totalEntriesPages }}
+          {{
+            translate('shared.financeEntriesPanel.pagination.pageSummary', {
+              page: currentEntriesPage,
+              totalPages: totalEntriesPages,
+            })
+          }}
         </span>
         <button
           type="button"
@@ -282,30 +382,15 @@ function deleteEntry(entryItem) {
           :disabled="currentEntriesPage >= totalEntriesPages"
           @click="goToNextPage"
         >
-          Próxima
+          {{ translate('shared.financeEntriesPanel.pagination.next') }}
         </button>
       </div>
     </div>
 
     <RemoteFinanceEmptyState
       v-if="!entriesItems.length"
-      title="Sem lançamentos"
-      description="Cadastre o primeiro lançamento para começar seu fluxo financeiro."
+      :title="translate('shared.financeEntriesPanel.empty.title')"
+      :description="translate('shared.financeEntriesPanel.empty.description')"
     />
   </article>
 </template>
-
-<style scoped>
-.finance-panel-heading {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.finance-muted-block {
-  display: block;
-  color: var(--muted, #64748b);
-  font-size: 0.74rem;
-}
-</style>

@@ -5,12 +5,10 @@ import {
   onActivated,
   onBeforeMount,
   onBeforeUnmount,
-  onBeforeUpdate,
   onDeactivated,
   onErrorCaptured,
   onMounted,
   onUnmounted,
-  onUpdated,
   ref,
   watch,
 } from 'vue'
@@ -49,7 +47,6 @@ const { dashboardTab } = storeToRefs(appNavigationStore)
 const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
 const activeFinancialGroupKey = ref('accountsPayable')
 const dashboardRuntimeError = ref('')
-const dashboardRenderCycleInProgress = ref(false)
 const dashboardKeepAlivePaused = ref(false)
 
 function translateDashboard(messageKey, fallbackMessage = '') {
@@ -96,6 +93,14 @@ const financialGroupOptions = [
     description: translateDashboard('dashboard.finance.groups.accountsReceivable.description', 'Entradas previstas e em aberto'),
   },
 ]
+const allowedFinancialGroupKeys = new Set(financialGroupOptions.map((groupOption) => groupOption.key))
+
+function sanitizeFinancialGroupKey(rawGroupKey) {
+  const normalizedGroupKey = String(rawGroupKey || '').trim()
+  return allowedFinancialGroupKeys.has(normalizedGroupKey)
+    ? normalizedGroupKey
+    : 'accountsPayable'
+}
 
 const {
   profile,
@@ -128,7 +133,7 @@ const activeFinancialDirection = computed(() => {
 })
 const activeFinancialGroup = computed(() => {
   const selectedFinancialGroup = financialGroupOptions.find((financialGroupOption) => {
-    return financialGroupOption.key === activeFinancialGroupKey.value
+    return financialGroupOption.key === sanitizeFinancialGroupKey(activeFinancialGroupKey.value)
   })
 
   return selectedFinancialGroup || financialGroupOptions[0]
@@ -860,18 +865,6 @@ onMounted(async () => {
   }
 })
 
-onBeforeUpdate(() => {
-  if (!dashboardRenderCycleInProgress.value) {
-    dashboardRenderCycleInProgress.value = true
-  }
-})
-
-onUpdated(() => {
-  if (dashboardRenderCycleInProgress.value) {
-    dashboardRenderCycleInProgress.value = false
-  }
-})
-
 onBeforeUnmount(() => {
   setTasksComponentActive(false)
   setFinanceComponentActive(false)
@@ -880,7 +873,6 @@ onBeforeUnmount(() => {
 
 onUnmounted(() => {
   dashboardRuntimeError.value = ''
-  dashboardRenderCycleInProgress.value = false
 })
 
 onActivated(() => {
@@ -965,7 +957,13 @@ watch(
 watch(
   () => activeFinancialGroupKey.value,
   async (nextGroupKey, previousGroupKey) => {
-    if (nextGroupKey === previousGroupKey) {
+    const normalizedGroupKey = sanitizeFinancialGroupKey(nextGroupKey)
+    if (normalizedGroupKey !== nextGroupKey) {
+      activeFinancialGroupKey.value = normalizedGroupKey
+      return
+    }
+
+    if (normalizedGroupKey === previousGroupKey) {
       return
     }
 

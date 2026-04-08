@@ -1,6 +1,18 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
+import { useI18n } from '../../composables/useI18n'
 import { useNotification } from '../../composables/useNotification'
 import {
   createGithubAccount,
@@ -81,6 +93,7 @@ const props = defineProps({
   },
 })
 const sessionStore = useSessionStore()
+const { translate } = useI18n()
 const {
   currentUser: sessionCurrentUser,
   activeThemeKey: sessionActiveThemeKey,
@@ -127,6 +140,7 @@ const emit = defineEmits(['session-updated'])
 const REPOSITORY_PAGE_SIZE = 10
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const PROFILE_TEXT_INPUT_MAX_LENGTH = 180
 
 const profile = ref(null)
 const profileLoading = ref(false)
@@ -148,7 +162,7 @@ const confirmDialogState = reactive({
   isOpen: false,
   title: '',
   message: '',
-  confirmLabel: 'Confirmar',
+  confirmLabel: '',
   confirmTone: 'danger',
   processing: false,
 })
@@ -188,8 +202,65 @@ const customThemeForm = reactive({
   ...DEFAULT_CUSTOM_THEME_PALETTE,
 })
 const { notifyUser } = useNotification(props.notify)
+const profileKeepAlivePaused = ref(false)
+const profileRuntimeError = ref('')
 
-const displayEmail = computed(() => currentUser.value?.defaultEmail || currentUser.value?.email || 'Nao definido')
+function translateProfile(messageKey, fallbackMessage = '', variables = {}) {
+  const translatedMessage = translate(messageKey, variables)
+  return translatedMessage === messageKey ? fallbackMessage : translatedMessage
+}
+
+function replaceControlCharactersWithSpaces(rawValue) {
+  let sanitizedText = ''
+  const inputText = String(rawValue || '')
+
+  for (const currentCharacter of inputText) {
+    const characterCode = currentCharacter.charCodeAt(0)
+    const isControlCharacter = characterCode < 32 || characterCode === 127
+    sanitizedText += isControlCharacter ? ' ' : currentCharacter
+  }
+
+  return sanitizedText
+}
+
+function sanitizeSingleLineValue(rawValue, maxLength = PROFILE_TEXT_INPUT_MAX_LENGTH) {
+  const normalizedText = replaceControlCharactersWithSpaces(rawValue)
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return normalizedText.slice(0, maxLength)
+}
+
+function sanitizeGithubAccountLogin(rawAccountLogin) {
+  const normalizedAccountLogin = sanitizeSingleLineValue(rawAccountLogin, 60)
+  if (normalizedAccountLogin === '') {
+    return ''
+  }
+
+  return /^[a-zA-Z0-9-]+$/.test(normalizedAccountLogin)
+    ? normalizedAccountLogin
+    : ''
+}
+
+function sanitizeRepositoryFormPayload(repositoryFormPayload = {}) {
+  const ownerLogin = sanitizeGithubAccountLogin(repositoryFormPayload.ownerLogin)
+  const repositoryName = sanitizeSingleLineValue(repositoryFormPayload.name, 100)
+  const repositoryUrl = sanitizeSingleLineValue(repositoryFormPayload.url, 240)
+  const repositoryUrlIsValid = repositoryUrl === '' || /^https:\/\/(www\.)?github\.com\/.+/i.test(repositoryUrl)
+
+  return {
+    ownerLogin,
+    name: repositoryName,
+    url: repositoryUrlIsValid ? repositoryUrl : '',
+    isIgnored: repositoryFormPayload.isIgnored === true,
+  }
+}
+
+const displayEmail = computed(() => {
+  return currentUser.value?.defaultEmail
+    || currentUser.value?.email
+    || translateProfile('profileScreen.labels.notDefined', 'Não definido')
+})
 const linkedEmailCount = computed(() => Array.isArray(currentUser.value?.linkedEmails) ? currentUser.value.linkedEmails.length : 0)
 const userAvatarUrl = computed(() => {
   if (avatarPreviewError.value) {
@@ -209,7 +280,7 @@ const ignoredRepositoryCount = computed(() => repositories.value.filter((reposit
 const activeRepositoryCount = computed(() => repositories.value.filter((repository) => !repository?.isIgnored).length)
 const defaultRepositoryLabel = computed(() => {
   const repositoryKey = typeof profile.value?.defaultRepositoryKey === 'string' ? profile.value.defaultRepositoryKey.trim() : ''
-  return repositoryKey !== '' ? repositoryKey : 'nao definido'
+  return repositoryKey !== '' ? repositoryKey : translateProfile('profileScreen.labels.notDefined', 'não definido')
 })
 const colorVisionModeOptions = COLOR_VISION_MODE_OPTIONS
 const fontScaleOptions = FONT_SCALE_OPTIONS
@@ -239,14 +310,14 @@ const selectedFontScaleDefinition = computed(() => getFontScaleDefinition(access
 const selectedLayoutDensityDefinition = computed(() => getLayoutDensityModeDefinition(accessibilityForm.layoutDensityMode))
 const accessibilityIntensityLabel = computed(() => (
   accessibilityForm.colorVisionMode === DEFAULT_COLOR_VISION_MODE
-    ? 'Desativado'
+    ? translateProfile('profileScreen.accessibility.disabled', 'Desativado')
     : `${accessibilityForm.colorVisionIntensity}%`
 ))
 const layoutDensityScaleLabel = computed(() => (
   accessibilityForm.layoutDensityMode === DEFAULT_LAYOUT_DENSITY_MODE
-    ? 'Padrao'
+    ? translateProfile('profileScreen.accessibility.default', 'Padrão')
     : accessibilityForm.layoutDensityMode === 'compact'
-      ? 'Compacto automatico'
+      ? translateProfile('profileScreen.accessibility.compactAuto', 'Compacto automático')
       : `${accessibilityForm.layoutDensityScale}%`
 ))
 const hasAccessibilityChanges = computed(() => (
@@ -266,20 +337,59 @@ const isDefaultAccessibilityForm = computed(() => (
   && accessibilityForm.layoutDensityScale === DEFAULT_LAYOUT_DENSITY_SCALE
 ))
 
+onBeforeMount(() => {
+  syncAccessibilityForm()
+  syncCustomThemeForm()
+})
+
 onMounted(async () => {
+  if (!currentUser.value?.id) {
+    return
+  }
+
   await loadProfile()
+})
+
+onActivated(async () => {
+  if (!profileKeepAlivePaused.value) {
+    return
+  }
+
+  profileKeepAlivePaused.value = false
+
+  if (!currentUser.value?.id) {
+    return
+  }
+
+  await loadProfile()
+})
+
+onDeactivated(() => {
+  profileKeepAlivePaused.value = true
+})
+
+onBeforeUnmount(() => {
+  profileKeepAlivePaused.value = true
+  profileRuntimeError.value = ''
+})
+
+onErrorCaptured((capturedError) => {
+  profileRuntimeError.value = String(capturedError?.message || capturedError || '')
+  return false
 })
 
 watch(
   () => currentUser.value?.id,
-  async (userId) => {
+  async (userId, previousUserId) => {
     if (!userId) {
       profile.value = null
       clearGithubForms()
       return
     }
 
-    await loadProfile()
+    if (userId !== previousUserId) {
+      await loadProfile()
+    }
   },
 )
 
@@ -308,6 +418,18 @@ watch(profileSuccess, (message) => {
   profileSuccess.value = ''
 })
 
+watch(profileRuntimeError, (runtimeErrorMessage) => {
+  if (!runtimeErrorMessage) {
+    return
+  }
+
+  notifyUser(
+    translateProfile('profileScreen.errors.unexpectedChild', 'Ocorreu um erro inesperado na tela de perfil.'),
+    'error',
+  )
+  profileRuntimeError.value = ''
+})
+
 watch(
   () => effectiveUiSettings.value,
   () => {
@@ -321,6 +443,11 @@ watch(
 )
 
 async function loadProfile() {
+  if (!currentUser.value?.id) {
+    profile.value = null
+    return
+  }
+
   profileLoading.value = true
   profileError.value = ''
 
@@ -329,7 +456,10 @@ async function loadProfile() {
     profile.value = data?.profile || null
     syncGithubForms()
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel carregar a configuracao GitHub do perfil.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.loadProfile', 'Não foi possível carregar a configuração GitHub do perfil.'),
+    )
   } finally {
     profileLoading.value = false
   }
@@ -376,7 +506,7 @@ function getAccountRepositories(account) {
 
 function getAccountDefaultRepositoryLabel(account) {
   const repositoryKey = typeof account?.defaultRepositoryKey === 'string' ? account.defaultRepositoryKey.trim() : ''
-  return repositoryKey !== '' ? repositoryKey : 'nao definido'
+  return repositoryKey !== '' ? repositoryKey : translateProfile('profileScreen.labels.notDefined', 'não definido')
 }
 
 function getAccountActiveRepositoryCount(account) {
@@ -431,7 +561,7 @@ function syncAccountForm(account) {
   }
 
   accountForms[accountId] = {
-    accountLogin: typeof account?.accountLogin === 'string' ? account.accountLogin : '',
+    accountLogin: sanitizeGithubAccountLogin(account?.accountLogin),
     token: '',
     clearToken: false,
   }
@@ -441,7 +571,7 @@ function resetRepositoryForm(accountId) {
   const account = getAccountById(accountId)
 
   repositoryForms[accountId] = {
-    ownerLogin: typeof account?.accountLogin === 'string' ? account.accountLogin : '',
+    ownerLogin: sanitizeGithubAccountLogin(account?.accountLogin),
     name: '',
     url: '',
     isIgnored: false,
@@ -508,16 +638,27 @@ async function createAccount() {
   profileSuccess.value = ''
 
   try {
+    const accountLogin = sanitizeGithubAccountLogin(newAccountForm.accountLogin)
+    const accountToken = sanitizeSingleLineValue(newAccountForm.token, 800)
+
+    if (accountLogin === '') {
+      profileError.value = translateProfile('profileScreen.errors.invalidAccountLogin', 'Informe um login GitHub válido.')
+      return
+    }
+
     const { data } = await createGithubAccount({
-      accountLogin: newAccountForm.accountLogin,
-      token: newAccountForm.token,
+      accountLogin,
+      token: accountToken,
     })
     profile.value = data?.profile || null
     resetNewAccountForm()
     syncGithubForms()
-    profileSuccess.value = 'Conta GitHub adicionada com sucesso.'
+    profileSuccess.value = translateProfile('profileScreen.success.accountAdded', 'Conta GitHub adicionada com sucesso.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel adicionar a conta GitHub.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.addAccount', 'Não foi possível adicionar a conta GitHub.'),
+    )
   } finally {
     creatingAccount.value = false
   }
@@ -534,26 +675,37 @@ async function saveAccount(account) {
   profileSuccess.value = ''
 
   try {
+    const accountLogin = sanitizeGithubAccountLogin(accountForms[accountId].accountLogin)
+    const accountToken = sanitizeSingleLineValue(accountForms[accountId].token, 800)
+
+    if (accountLogin === '') {
+      profileError.value = translateProfile('profileScreen.errors.invalidAccountLogin', 'Informe um login GitHub válido.')
+      return
+    }
+
     const { data } = await updateGithubAccount(accountId, {
-      accountLogin: accountForms[accountId].accountLogin,
-      token: accountForms[accountId].token,
+      accountLogin,
+      token: accountToken,
       clearToken: accountForms[accountId].clearToken,
     })
 
     profile.value = data?.profile || null
     syncGithubForms()
-    profileSuccess.value = 'Conta GitHub atualizada com sucesso.'
+    profileSuccess.value = translateProfile('profileScreen.success.accountUpdated', 'Conta GitHub atualizada com sucesso.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel atualizar a conta GitHub.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.updateAccount', 'Não foi possível atualizar a conta GitHub.'),
+    )
   } finally {
     savingAccountId.value = 0
   }
 }
 
 function openConfirmDialog(options) {
-  confirmDialogState.title = String(options?.title || 'Confirmar ação')
+  confirmDialogState.title = String(options?.title || translateProfile('profileScreen.confirm.title', 'Confirmar ação'))
   confirmDialogState.message = String(options?.message || '')
-  confirmDialogState.confirmLabel = String(options?.confirmLabel || 'Confirmar')
+  confirmDialogState.confirmLabel = String(options?.confirmLabel || translateProfile('profileScreen.confirm.defaultAction', 'Confirmar'))
   confirmDialogState.confirmTone = String(options?.confirmTone || 'danger')
   confirmDialogState.processing = false
   confirmDialogState.isOpen = true
@@ -568,7 +720,7 @@ function closeConfirmDialog() {
   confirmDialogState.isOpen = false
   confirmDialogState.title = ''
   confirmDialogState.message = ''
-  confirmDialogState.confirmLabel = 'Confirmar'
+  confirmDialogState.confirmLabel = translateProfile('profileScreen.confirm.defaultAction', 'Confirmar')
   confirmDialogState.confirmTone = 'danger'
   confirmDialogAction.value = null
 }
@@ -601,9 +753,15 @@ async function removeAccount(account) {
 
   const accountLabel = String(account?.accountLogin || '').trim()
   openConfirmDialog({
-    title: 'Remover conta GitHub',
-    message: `Remover a conta GitHub ${accountLabel || 'selecionada'} e todos os repositorios vinculados?`,
-    confirmLabel: 'Remover',
+    title: translateProfile('profileScreen.confirm.removeAccountTitle', 'Remover conta GitHub'),
+    message: translateProfile(
+      'profileScreen.confirm.removeAccountMessage',
+      `Remover a conta GitHub ${accountLabel || 'selecionada'} e todos os repositórios vinculados?`,
+      {
+        account: accountLabel || translateProfile('profileScreen.labels.selectedItem', 'selecionada'),
+      },
+    ),
+    confirmLabel: translateProfile('profileScreen.confirm.removeAction', 'Remover'),
     confirmTone: 'danger',
     onConfirm: () => executeRemoveAccount(account),
   })
@@ -622,9 +780,12 @@ async function executeRemoveAccount(account) {
   try {
     await deleteGithubAccount(accountId)
     await loadProfile()
-    profileSuccess.value = 'Conta GitHub removida com sucesso.'
+    profileSuccess.value = translateProfile('profileScreen.success.accountRemoved', 'Conta GitHub removida com sucesso.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel remover a conta GitHub.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.removeAccount', 'Não foi possível remover a conta GitHub.'),
+    )
   } finally {
     deletingAccountId.value = 0
   }
@@ -643,20 +804,31 @@ async function createRepository(account) {
 
   try {
     const parsedRepository = parseGithubRepositoryUrl(repositoryForm.url)
+    const sanitizedRepositoryForm = sanitizeRepositoryFormPayload(repositoryForm)
+    const repositoryOwnerLogin = sanitizeGithubAccountLogin(parsedRepository?.ownerLogin || sanitizedRepositoryForm.ownerLogin)
+    const repositoryName = sanitizeSingleLineValue(parsedRepository?.name || sanitizedRepositoryForm.name, 100)
+
+    if (repositoryOwnerLogin === '' || repositoryName === '') {
+      profileError.value = translateProfile('profileScreen.errors.invalidRepositoryData', 'Informe owner e nome válidos para o repositório.')
+      return
+    }
 
     await createGithubRepository({
       accountId,
-      ownerLogin: parsedRepository?.ownerLogin || repositoryForm.ownerLogin,
-      name: parsedRepository?.name || repositoryForm.name,
-      url: repositoryForm.url,
-      isIgnored: repositoryForm.isIgnored,
+      ownerLogin: repositoryOwnerLogin,
+      name: repositoryName,
+      url: sanitizedRepositoryForm.url,
+      isIgnored: sanitizedRepositoryForm.isIgnored,
     })
 
     await loadProfile()
     resetRepositoryForm(accountId)
-    profileSuccess.value = 'Repositorio cadastrado com sucesso.'
+    profileSuccess.value = translateProfile('profileScreen.success.repositoryCreated', 'Repositório cadastrado com sucesso.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel cadastrar o repositorio.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.createRepository', 'Não foi possível cadastrar o repositório.'),
+    )
   } finally {
     savingRepositoryAccountId.value = 0
   }
@@ -678,9 +850,14 @@ async function toggleRepositoryIgnored(repository) {
     })
 
     await loadProfile()
-    profileSuccess.value = repository?.isIgnored ? 'Repositorio reativado.' : 'Repositorio ignorado.'
+    profileSuccess.value = repository?.isIgnored
+      ? translateProfile('profileScreen.success.repositoryReactivated', 'Repositório reativado.')
+      : translateProfile('profileScreen.success.repositoryIgnored', 'Repositório ignorado.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel atualizar o repositorio.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.updateRepository', 'Não foi possível atualizar o repositório.'),
+    )
   } finally {
     savingRepositoryId.value = 0
   }
@@ -694,9 +871,15 @@ async function removeRepository(repository) {
 
   const repositoryName = String(repository?.nameWithOwner || '').trim()
   openConfirmDialog({
-    title: 'Remover repositório',
-    message: `Remover o repositorio ${repositoryName || 'selecionado'} do sistema?`,
-    confirmLabel: 'Remover',
+    title: translateProfile('profileScreen.confirm.removeRepositoryTitle', 'Remover repositório'),
+    message: translateProfile(
+      'profileScreen.confirm.removeRepositoryMessage',
+      `Remover o repositório ${repositoryName || 'selecionado'} do sistema?`,
+      {
+        repository: repositoryName || translateProfile('profileScreen.labels.selectedItem', 'selecionado'),
+      },
+    ),
+    confirmLabel: translateProfile('profileScreen.confirm.removeAction', 'Remover'),
     confirmTone: 'danger',
     onConfirm: () => executeRemoveRepository(repository),
   })
@@ -715,9 +898,12 @@ async function executeRemoveRepository(repository) {
   try {
     await deleteGithubRepository(repositoryId)
     await loadProfile()
-    profileSuccess.value = 'Repositorio removido do sistema.'
+    profileSuccess.value = translateProfile('profileScreen.success.repositoryRemoved', 'Repositório removido do sistema.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel remover o repositorio.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.removeRepository', 'Não foi possível remover o repositório.'),
+    )
   } finally {
     deletingRepositoryId.value = 0
   }
@@ -746,12 +932,18 @@ async function handleAvatarFileChange(event) {
   }
 
   if (!ALLOWED_AVATAR_MIME_TYPES.includes(selectedAvatarFile.type)) {
-    notifyUser('Formato invalido. Use JPG, PNG ou WEBP.', 'error')
+    notifyUser(
+      translateProfile('profileScreen.errors.avatarInvalidType', 'Formato inválido. Use JPG, PNG ou WEBP.'),
+      'error',
+    )
     return
   }
 
   if (selectedAvatarFile.size > MAX_AVATAR_SIZE_BYTES) {
-    notifyUser('A imagem deve ter no maximo 5 MB.', 'error')
+    notifyUser(
+      translateProfile('profileScreen.errors.avatarMaxSize', 'A imagem deve ter no máximo 5 MB.'),
+      'error',
+    )
     return
   }
 
@@ -765,9 +957,12 @@ async function handleAvatarFileChange(event) {
       user: data?.user || null,
       token: data?.token || '',
     })
-    profileSuccess.value = data?.message || 'Imagem de perfil atualizada com sucesso.'
+    profileSuccess.value = data?.message || translateProfile('profileScreen.success.avatarUpdated', 'Imagem de perfil atualizada com sucesso.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel atualizar a imagem de perfil.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.updateAvatar', 'Não foi possível atualizar a imagem de perfil.'),
+    )
   } finally {
     avatarUploading.value = false
   }
@@ -788,9 +983,12 @@ async function removeAvatar() {
       user: data?.user || null,
       token: data?.token || '',
     })
-    profileSuccess.value = data?.message || 'Imagem de perfil removida com sucesso.'
+    profileSuccess.value = data?.message || translateProfile('profileScreen.success.avatarRemoved', 'Imagem de perfil removida com sucesso.')
   } catch (error) {
-    profileError.value = extractHttpMessage(error, 'Nao foi possivel remover a imagem de perfil.')
+    profileError.value = extractHttpMessage(
+      error,
+      translateProfile('profileScreen.errors.removeAvatar', 'Não foi possível remover a imagem de perfil.'),
+    )
   } finally {
     avatarRemoving.value = false
   }
@@ -801,15 +999,15 @@ function forwardSessionUpdate(session) {
 }
 
 function setPasswordChangeCode(nextCodeValue) {
-  passwordChangeModalState.code = String(nextCodeValue || '')
+  passwordChangeModalState.code = sanitizeSingleLineValue(nextCodeValue, 24)
 }
 
 function setPasswordChangePassword(nextPasswordValue) {
-  passwordChangeModalState.password = String(nextPasswordValue || '')
+  passwordChangeModalState.password = String(nextPasswordValue || '').slice(0, 128)
 }
 
 function setPasswordChangeConfirmPassword(nextConfirmPasswordValue) {
-  passwordChangeModalState.confirmPassword = String(nextConfirmPasswordValue || '')
+  passwordChangeModalState.confirmPassword = String(nextConfirmPasswordValue || '').slice(0, 128)
 }
 
 async function requestPasswordChangeCode() {
@@ -840,9 +1038,18 @@ async function requestPasswordChangeCode() {
       ? ''
       : formatDateTime(rawCodeExpiration)
 
-    notifyUser(data?.message || 'Código enviado para seu e-mail principal.', 'success')
+    notifyUser(
+      data?.message || translateProfile('profileScreen.success.passwordCodeSent', 'Código enviado para seu e-mail principal.'),
+      'success',
+    )
   } catch (error) {
-    notifyUser(extractHttpMessage(error, 'Nao foi possivel enviar o codigo para alterar a senha.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        error,
+        translateProfile('profileScreen.errors.sendPasswordCode', 'Não foi possível enviar o código para alterar a senha.'),
+      ),
+      'error',
+    )
   } finally {
     passwordChangeModalState.processing = false
   }
@@ -874,7 +1081,7 @@ async function verifyPasswordChangeCode() {
 
   const normalizedCode = passwordChangeModalState.code.trim()
   if (normalizedCode === '') {
-    notifyUser('Informe o codigo enviado por e-mail.', 'warning')
+    notifyUser(translateProfile('profileScreen.validation.passwordCodeRequired', 'Informe o código enviado por e-mail.'), 'warning')
     return
   }
 
@@ -897,9 +1104,15 @@ async function verifyPasswordChangeCode() {
 
     passwordChangeModalState.step = 'password'
     passwordChangeModalState.code = ''
-    notifyUser(data?.message || 'Codigo validado com sucesso.', 'success')
+    notifyUser(data?.message || translateProfile('profileScreen.success.passwordCodeValidated', 'Código validado com sucesso.'), 'success')
   } catch (error) {
-    notifyUser(extractHttpMessage(error, 'Nao foi possivel validar o codigo informado.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        error,
+        translateProfile('profileScreen.errors.validatePasswordCode', 'Não foi possível validar o código informado.'),
+      ),
+      'error',
+    )
   } finally {
     passwordChangeModalState.processing = false
   }
@@ -914,12 +1127,15 @@ async function updatePasswordFromProfile() {
   const normalizedConfirmPassword = passwordChangeModalState.confirmPassword.trim()
 
   if (normalizedPassword === '') {
-    notifyUser('Informe a nova senha.', 'warning')
+    notifyUser(translateProfile('profileScreen.validation.passwordRequired', 'Informe a nova senha.'), 'warning')
     return
   }
 
   if (normalizedPassword !== normalizedConfirmPassword) {
-    notifyUser('A confirmacao da senha nao confere.', 'warning')
+    notifyUser(
+      translateProfile('profileScreen.validation.passwordConfirmationMismatch', 'A confirmação da senha não confere.'),
+      'warning',
+    )
     return
   }
 
@@ -942,10 +1158,13 @@ async function updatePasswordFromProfile() {
       token: data?.token || '',
     })
 
-    notifyUser(data?.message || 'Senha atualizada com sucesso.', 'success')
+    notifyUser(data?.message || translateProfile('profileScreen.success.passwordUpdated', 'Senha atualizada com sucesso.'), 'success')
     shouldClosePasswordChangeModal = true
   } catch (error) {
-    notifyUser(extractHttpMessage(error, 'Nao foi possivel atualizar a senha.'), 'error')
+    notifyUser(
+      extractHttpMessage(error, translateProfile('profileScreen.errors.updatePassword', 'Não foi possível atualizar a senha.')),
+      'error',
+    )
   } finally {
     passwordChangeModalState.processing = false
 
@@ -1156,9 +1375,15 @@ function setRepositoryPage(accountId, page, repositoryPageCount) {
                 :disabled="passwordChangeModalState.processing"
                 @click="openPasswordChangeModal"
               >
-                {{ passwordChangeModalState.processing ? 'Enviando codigo...' : 'Alterar senha' }}
+                {{
+                  passwordChangeModalState.processing
+                    ? translateProfile('profileScreen.actions.changePasswordLoading', 'Enviando código...')
+                    : translateProfile('profileScreen.actions.changePassword', 'Alterar senha')
+                }}
               </button>
-              <small class="profile-avatar-help">Ao clicar, enviamos um codigo para seu e-mail principal.</small>
+              <small class="profile-avatar-help">
+                {{ translateProfile('profileScreen.actions.changePasswordHint', 'Ao clicar, enviamos um código para seu e-mail principal.') }}
+              </small>
             </div>
           </div>
         </div>

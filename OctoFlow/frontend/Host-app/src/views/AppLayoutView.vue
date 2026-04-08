@@ -1,9 +1,16 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import {
+  onActivated,
+  onBeforeMount,
   onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
   onErrorCaptured,
   onMounted,
+  onUnmounted,
+  onUpdated,
+  ref,
   watch,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -22,70 +29,173 @@ const appRoute = useRoute()
 const appRouter = useRouter()
 const { translate } = useI18n()
 
+const pageStageElement = ref(null)
+const shouldFocusMainStage = ref(false)
+const lastRenderedRoutePath = ref('')
+const navigationRequestInProgress = ref(false)
+
 const { isCompactViewport, effectiveSidebarExpanded } = storeToRefs(appShellStore)
 const { activeViewKey: activeView } = storeToRefs(appNavigationStore)
 const { isAuthenticated, requiresGooglePasswordSetup, currentUser } = storeToRefs(sessionStore)
 
 let viewportMediaQuery = null
 let removeViewportListener = null
+let removeKeyboardShortcutListener = null
 
-onMounted(() => {
+function detachViewportListener() {
+  removeViewportListener?.()
+  removeViewportListener = null
+  viewportMediaQuery = null
+}
+
+function attachViewportListener() {
   if (typeof window === 'undefined') {
     return
   }
 
+  detachViewportListener()
+
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
   appShellStore.setCompactViewport(viewportMediaQuery.matches)
 
-  const handleViewportChange = (event) => {
-    appShellStore.setCompactViewport(event.matches)
+  const handleViewportChange = (viewportEvent) => {
+    appShellStore.setCompactViewport(viewportEvent.matches)
   }
 
   if (typeof viewportMediaQuery.addEventListener === 'function') {
     viewportMediaQuery.addEventListener('change', handleViewportChange)
     removeViewportListener = () => viewportMediaQuery?.removeEventListener('change', handleViewportChange)
-  } else {
-    viewportMediaQuery.addListener(handleViewportChange)
-    removeViewportListener = () => viewportMediaQuery?.removeListener(handleViewportChange)
+    return
+  }
+
+  viewportMediaQuery.addListener(handleViewportChange)
+  removeViewportListener = () => viewportMediaQuery?.removeListener(handleViewportChange)
+}
+
+function collapseSidebarOnEscape(keyboardEvent) {
+  if (keyboardEvent.key !== 'Escape') {
+    return
+  }
+
+  if (!effectiveSidebarExpanded.value) {
+    return
+  }
+
+  collapseSidebar()
+}
+
+function detachKeyboardShortcutListener() {
+  removeKeyboardShortcutListener?.()
+  removeKeyboardShortcutListener = null
+}
+
+function attachKeyboardShortcutListener() {
+  if (typeof window === 'undefined' || removeKeyboardShortcutListener) {
+    return
+  }
+
+  const keyboardShortcutHandler = (keyboardEvent) => collapseSidebarOnEscape(keyboardEvent)
+  window.addEventListener('keydown', keyboardShortcutHandler)
+  removeKeyboardShortcutListener = () => {
+    window.removeEventListener('keydown', keyboardShortcutHandler)
+  }
+}
+
+function syncNavigationFromCurrentRoute() {
+  appNavigationStore.syncFromRoute(appRoute)
+}
+
+onBeforeMount(() => {
+  syncNavigationFromCurrentRoute()
+  shouldFocusMainStage.value = true
+})
+
+onMounted(() => {
+  attachViewportListener()
+  attachKeyboardShortcutListener()
+})
+
+onBeforeUpdate(() => {
+  const currentRoutePath = String(appRoute.fullPath || '')
+  if (currentRoutePath !== lastRenderedRoutePath.value) {
+    shouldFocusMainStage.value = true
   }
 })
 
-onBeforeUnmount(() => {
-  removeViewportListener?.()
-  removeViewportListener = null
-  viewportMediaQuery = null
+onUpdated(() => {
+  lastRenderedRoutePath.value = String(appRoute.fullPath || '')
+
+  if (!shouldFocusMainStage.value) {
+    return
+  }
+
+  const pageStageValue = pageStageElement.value
+  if (pageStageValue instanceof HTMLElement) {
+    pageStageValue.focus({ preventScroll: true })
+  }
+
+  shouldFocusMainStage.value = false
 })
 
-onErrorCaptured((error) => {
-  console.error('Layout Error Blocked:', error)
+onActivated(() => {
+  attachViewportListener()
+  attachKeyboardShortcutListener()
+  syncNavigationFromCurrentRoute()
+})
+
+onDeactivated(() => {
+  detachViewportListener()
+  detachKeyboardShortcutListener()
+})
+
+onBeforeUnmount(() => {
+  detachViewportListener()
+  detachKeyboardShortcutListener()
+})
+
+onUnmounted(() => {
+  lastRenderedRoutePath.value = ''
+  shouldFocusMainStage.value = false
+})
+
+onErrorCaptured((capturedError) => {
+  console.error('Layout Error Blocked:', capturedError)
   sessionStore.showNotification(translate('app.globalInteractiveError'), 'error')
   return false
 })
 
 watch(
   () => appRoute.fullPath,
-  () => {
-    appNavigationStore.syncFromRoute(appRoute)
-  },
-  {
-    immediate: true,
+  (nextFullPath, previousFullPath) => {
+    if (nextFullPath === previousFullPath) {
+      return
+    }
+
+    syncNavigationFromCurrentRoute()
+    shouldFocusMainStage.value = true
   },
 )
 
-async function navigateTo(viewKey) {
-  if (!isAuthenticated.value) {
+async function navigateTo(nextViewKey) {
+  if (!isAuthenticated.value || navigationRequestInProgress.value) {
     return
   }
 
-  const normalizedViewKey = appNavigationStore.normalizeViewKey(viewKey)
+  navigationRequestInProgress.value = true
 
-  const screenAuthIsValid = await sessionStore.verifyAuthenticatedSession()
-  if (!screenAuthIsValid) {
-    await appRouter.replace({ name: 'auth-login' })
-    return
+  try {
+    const normalizedViewKey = appNavigationStore.normalizeViewKey(nextViewKey)
+    const authenticatedSessionIsValid = await sessionStore.verifyAuthenticatedSession()
+
+    if (!authenticatedSessionIsValid) {
+      await appRouter.replace({ name: 'auth-login' })
+      return
+    }
+
+    await appNavigationStore.navigateToView(appRouter, normalizedViewKey)
+  } finally {
+    navigationRequestInProgress.value = false
   }
-
-  await appNavigationStore.navigateToView(appRouter, normalizedViewKey)
 }
 
 function expandSidebar() {
@@ -97,8 +207,18 @@ function collapseSidebar() {
 }
 
 async function logoutSession() {
-  await sessionStore.logout()
-  await appRouter.replace({ name: 'auth-login' })
+  if (navigationRequestInProgress.value) {
+    return
+  }
+
+  navigationRequestInProgress.value = true
+
+  try {
+    await sessionStore.logout()
+    await appRouter.replace({ name: 'auth-login' })
+  } finally {
+    navigationRequestInProgress.value = false
+  }
 }
 </script>
 
@@ -126,7 +246,7 @@ async function logoutSession() {
     />
 
     <div class="app-main">
-      <main class="page-stage">
+      <main ref="pageStageElement" class="page-stage" tabindex="-1">
         <RouterView />
       </main>
 

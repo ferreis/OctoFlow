@@ -1,6 +1,18 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
+import { useI18n } from '../../composables/useI18n'
 import {
   RemoteFinanceEmptyState,
   RemoteFinanceKpiCard,
@@ -99,6 +111,7 @@ const props = defineProps({
   },
 })
 const sessionStore = useSessionStore()
+const { translate } = useI18n()
 const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
 const requestClient = props.request || sessionStore.authRequest
 const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
@@ -115,13 +128,14 @@ const sectionToTabKey = {
   reports: 'reports',
 }
 
-const activeTab = ref(sectionToTabKey[props.initialSection] || 'accounts')
+const activeTab = ref(sanitizeFinanceTab(sectionToTabKey[props.initialSection] || 'accounts'))
 const accountsTabOptions = [
   { key: 'overview', label: 'Visão Geral' },
   { key: 'payable', label: 'Contas a Pagar' },
   { key: 'receivable', label: 'Contas a Receber' },
   { key: 'debts', label: 'Dívidas' },
 ]
+const ALLOWED_ACCOUNT_SUBTABS = Object.freeze(accountsTabOptions.map((tabOption) => tabOption.key))
 const activeAccountsTab = ref('overview')
 const directionOptions = FINANCE_DIRECTION_OPTIONS
 const manualEntryTypeOptions = FINANCE_ENTRY_TYPE_OPTIONS.filter((entryTypeOption) => (
@@ -134,6 +148,8 @@ const exportTypeOptions = FINANCE_EXPORT_TYPE_OPTIONS
 const bankAccountTypeOptions = FINANCE_BANK_ACCOUNT_TYPE_OPTIONS
 const openFinanceConnectionStatusOptions = OPEN_FINANCE_CONNECTION_STATUS_OPTIONS
 const LIST_ITEMS_PER_PAGE = 10
+const FINANCE_SEARCH_MAX_LENGTH = 180
+const ALLOWED_FINANCE_TABS = Object.freeze(['accounts', 'banks', 'investments', 'settings', 'reports'])
 const loadingState = reactive({
   dashboard: false,
   entries: false,
@@ -186,6 +202,68 @@ const localListPages = reactive({
   currencyRates: 1,
   openFinanceConnections: 1,
 })
+const financeKeepAlivePaused = ref(false)
+const financeRuntimeError = ref('')
+
+function translateFinanceScreen(messageKey, fallbackMessage = '', variables = {}) {
+  const translatedMessage = translate(messageKey, variables)
+  return translatedMessage === messageKey ? fallbackMessage : translatedMessage
+}
+
+function replaceControlCharactersWithSpaces(rawValue) {
+  let sanitizedText = ''
+  const inputText = String(rawValue || '')
+
+  for (const currentCharacter of inputText) {
+    const characterCode = currentCharacter.charCodeAt(0)
+    const isControlCharacter = characterCode < 32 || characterCode === 127
+    sanitizedText += isControlCharacter ? ' ' : currentCharacter
+  }
+
+  return sanitizedText
+}
+
+function sanitizeSingleLineText(rawValue, maxLength = FINANCE_SEARCH_MAX_LENGTH) {
+  const normalizedText = replaceControlCharactersWithSpaces(rawValue)
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return normalizedText.slice(0, maxLength)
+}
+
+function sanitizeFinanceTab(rawTabKey) {
+  const normalizedTabKey = String(rawTabKey || '').trim().toLowerCase()
+  return ALLOWED_FINANCE_TABS.includes(normalizedTabKey) ? normalizedTabKey : 'accounts'
+}
+
+function sanitizeAccountSubtab(rawSubtabKey) {
+  const normalizedSubtabKey = String(rawSubtabKey || '').trim().toLowerCase()
+  return ALLOWED_ACCOUNT_SUBTABS.includes(normalizedSubtabKey) ? normalizedSubtabKey : 'overview'
+}
+
+function sanitizeDateInput(rawDateInput) {
+  const normalizedDateInput = String(rawDateInput || '').trim()
+  if (normalizedDateInput === '') {
+    return ''
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalizedDateInput) ? normalizedDateInput : ''
+}
+
+function sanitizeFinanceFilterByCatalog(rawValue, catalogOptions = []) {
+  const normalizedValue = String(rawValue || '').trim().toUpperCase()
+  if (normalizedValue === '') {
+    return ''
+  }
+
+  const allowedValues = Array.isArray(catalogOptions)
+    ? catalogOptions
+      .map((catalogOption) => String(catalogOption?.value || '').trim().toUpperCase())
+      .filter((value) => value !== '')
+    : []
+
+  return allowedValues.includes(normalizedValue) ? normalizedValue : ''
+}
 
 const entryFilters = reactive({
   direction: '',
@@ -1032,8 +1110,43 @@ function autofillSettlementAmountFromSelectedEntry(forceReplace = false) {
   settlementForm.amountBrl = remainingAmountBrl.toFixed(2)
 }
 
+onBeforeMount(() => {
+  activeTab.value = sanitizeFinanceTab(activeTab.value)
+})
+
 onMounted(async () => {
+  if (!effectiveCurrentUser.value?.id) {
+    return
+  }
+
   await loadInitialData()
+})
+
+onActivated(async () => {
+  if (!financeKeepAlivePaused.value) {
+    return
+  }
+
+  financeKeepAlivePaused.value = false
+  if (!effectiveCurrentUser.value?.id) {
+    return
+  }
+
+  await loadInitialData()
+})
+
+onDeactivated(() => {
+  financeKeepAlivePaused.value = true
+})
+
+onBeforeUnmount(() => {
+  financeKeepAlivePaused.value = true
+  financeRuntimeError.value = ''
+})
+
+onErrorCaptured((capturedError) => {
+  financeRuntimeError.value = String(capturedError?.message || capturedError || '')
+  return false
 })
 
 watch(
@@ -1053,7 +1166,7 @@ watch(
 watch(
   () => props.initialSection,
   (nextSection) => {
-    const mappedTabKey = sectionToTabKey[nextSection] || 'accounts'
+    const mappedTabKey = sanitizeFinanceTab(sectionToTabKey[nextSection] || 'accounts')
     if (activeTab.value !== mappedTabKey) {
       activeTab.value = mappedTabKey
     }
@@ -1066,22 +1179,28 @@ watch(
 )
 
 watch(activeTab, async (nextTabKey) => {
-  if (nextTabKey === 'accounts') {
+  const normalizedTabKey = sanitizeFinanceTab(nextTabKey)
+  if (normalizedTabKey !== nextTabKey) {
+    activeTab.value = normalizedTabKey
+    return
+  }
+
+  if (normalizedTabKey === 'accounts') {
     await loadAccountsCurrentTabData()
     return
   }
 
-  if (nextTabKey === 'banks') {
+  if (normalizedTabKey === 'banks') {
     await loadCatalogs()
     return
   }
 
-  if (nextTabKey === 'investments') {
+  if (normalizedTabKey === 'investments') {
     await loadInvestments()
     return
   }
 
-  if (nextTabKey === 'settings') {
+  if (normalizedTabKey === 'settings') {
     await Promise.all([
       loadCatalogs(),
       refreshCurrencyData(),
@@ -1089,7 +1208,7 @@ watch(activeTab, async (nextTabKey) => {
     return
   }
 
-  if (nextTabKey === 'reports') {
+  if (normalizedTabKey === 'reports') {
     await Promise.all([
       loadDashboard(),
       loadExports(),
@@ -1099,6 +1218,12 @@ watch(activeTab, async (nextTabKey) => {
 })
 
 watch(activeAccountsTab, async (nextAccountsTab) => {
+  const normalizedAccountsTab = sanitizeAccountSubtab(nextAccountsTab)
+  if (normalizedAccountsTab !== nextAccountsTab) {
+    activeAccountsTab.value = normalizedAccountsTab
+    return
+  }
+
   if (activeTab.value !== 'accounts') {
     return
   }
@@ -1120,7 +1245,7 @@ watch(activeAccountsTab, async (nextAccountsTab) => {
   localListPages.recurringRules = 1
   localListPages.installmentPlans = 1
 
-  await loadAccountsCurrentTabData(nextAccountsTab)
+  await loadAccountsCurrentTabData(normalizedAccountsTab)
 })
 
 watch(
@@ -1203,20 +1328,37 @@ watch(
   },
 )
 
+watch(financeRuntimeError, (runtimeErrorMessage) => {
+  if (!runtimeErrorMessage) {
+    return
+  }
+
+  notifyUser(
+    translateFinanceScreen('financeScreen.errors.unexpectedChild', 'Ocorreu um erro inesperado na tela financeira.'),
+    'error',
+  )
+  financeRuntimeError.value = ''
+})
+
 async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.value) {
+  const normalizedAccountsTabKey = sanitizeAccountSubtab(accountsTabKey)
+  if (normalizedAccountsTabKey !== activeAccountsTab.value) {
+    activeAccountsTab.value = normalizedAccountsTabKey
+  }
+
   if (activeTab.value !== 'accounts') {
     return
   }
 
   applyAccountsDirectionContext()
 
-  if (accountsTabKey === 'overview') {
+  if (normalizedAccountsTabKey === 'overview') {
     await loadEntries()
     await loadDashboard()
     return
   }
 
-  if (accountsTabKey === 'debts') {
+  if (normalizedAccountsTabKey === 'debts') {
     await Promise.all([
       loadDebtPlans(),
       loadCatalogs(),
@@ -1228,7 +1370,7 @@ async function loadAccountsCurrentTabData(accountsTabKey = activeAccountsTab.val
 
   const accountRequests = [loadEntries()]
 
-  if (accountsTabKey === 'payable' || accountsTabKey === 'receivable') {
+  if (normalizedAccountsTabKey === 'payable' || normalizedAccountsTabKey === 'receivable') {
     accountRequests.push(loadRecurringRules(), loadInstallments())
   }
 
@@ -1239,6 +1381,8 @@ async function loadInitialData() {
   if (!effectiveCurrentUser.value?.id) {
     return
   }
+
+  activeTab.value = sanitizeFinanceTab(activeTab.value)
 
   await Promise.all([
     loadCatalogs(),
@@ -1307,7 +1451,13 @@ async function loadCatalogs() {
 
     bankAccounts.value = Array.isArray(bankAccountsResponse.data?.items) ? bankAccountsResponse.data.items : []
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar catálogo financeiro.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadCatalog', 'Falha ao carregar catálogo financeiro.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.catalogs = false
   }
@@ -1333,7 +1483,13 @@ async function loadDashboard() {
     dashboardCashflow.value = Array.isArray(cashflowResponse.data?.items) ? cashflowResponse.data.items : []
     dashboardCategories.value = Array.isArray(categoriesResponse.data?.items) ? categoriesResponse.data.items : []
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar dashboard financeiro.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadDashboard', 'Falha ao carregar dashboard financeiro.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.dashboard = false
   }
@@ -1358,12 +1514,18 @@ async function loadEntries() {
   loadingState.entries = true
 
   try {
+    const normalizedDirectionFilter = sanitizeFinanceFilterByCatalog(entryFilters.direction, directionOptions)
+    const normalizedStatusFilter = sanitizeFinanceFilterByCatalog(entryFilters.status, entryStatusOptions)
+    const normalizedSearchFilter = sanitizeSingleLineText(entryFilters.search, FINANCE_SEARCH_MAX_LENGTH)
+    const normalizedStartDateFilter = sanitizeDateInput(entryFilters.startDate)
+    const normalizedEndDateFilter = sanitizeDateInput(entryFilters.endDate)
+
     const response = await fetchFinanceEntries({
-      direction: entryFilters.direction || undefined,
-      status: entryFilters.status || undefined,
-      search: entryFilters.search || undefined,
-      startDate: entryFilters.startDate || undefined,
-      endDate: entryFilters.endDate || undefined,
+      direction: normalizedDirectionFilter || undefined,
+      status: normalizedStatusFilter || undefined,
+      search: normalizedSearchFilter || undefined,
+      startDate: normalizedStartDateFilter || undefined,
+      endDate: normalizedEndDateFilter || undefined,
     }, {
       page: entryFilters.page,
       itemsPerPage: entryFilters.itemsPerPage,
@@ -1372,25 +1534,41 @@ async function loadEntries() {
     entriesState.value = Array.isArray(response.data?.items) ? response.data.items : []
     entriesMeta.value = response.data?.meta || { page: 1, itemsPerPage: LIST_ITEMS_PER_PAGE, total: 0 }
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar lançamentos.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadEntries', 'Falha ao carregar lançamentos.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.entries = false
   }
 }
 
 function applyEntryFilters(nextFilters = {}) {
-  entryFilters.search = String(nextFilters.search || '').trim()
-  entryFilters.direction = String(nextFilters.direction || '')
-  entryFilters.status = String(nextFilters.status || '')
-  entryFilters.startDate = String(nextFilters.startDate || '')
-  entryFilters.endDate = String(nextFilters.endDate || '')
+  entryFilters.search = sanitizeSingleLineText(nextFilters.search, FINANCE_SEARCH_MAX_LENGTH)
+  entryFilters.direction = sanitizeFinanceFilterByCatalog(nextFilters.direction, directionOptions)
+  entryFilters.status = sanitizeFinanceFilterByCatalog(nextFilters.status, entryStatusOptions)
+  entryFilters.startDate = sanitizeDateInput(nextFilters.startDate)
+  entryFilters.endDate = sanitizeDateInput(nextFilters.endDate)
+
+  if (entryFilters.startDate !== '' && entryFilters.endDate !== '' && entryFilters.startDate > entryFilters.endDate) {
+    const startDateSnapshot = entryFilters.startDate
+    entryFilters.startDate = entryFilters.endDate
+    entryFilters.endDate = startDateSnapshot
+  }
+
   entryFilters.page = 1
   void loadEntries()
 }
 
 function setEntriesPage(page) {
   const totalPages = Math.max(1, Math.ceil(Number(entriesMeta.value.total || 0) / Math.max(1, Number(entriesMeta.value.itemsPerPage || LIST_ITEMS_PER_PAGE))))
-  const normalizedPage = Math.min(totalPages, Math.max(1, Number(page || 1)))
+  const rawPageValue = Number(page || 1)
+  const normalizedPage = Number.isFinite(rawPageValue)
+    ? Math.min(totalPages, Math.max(1, rawPageValue))
+    : 1
 
   if (normalizedPage === Number(entryFilters.page || 1)) {
     return
@@ -1407,7 +1585,13 @@ async function loadRecurringRules() {
     const response = await fetchFinanceRecurringRules()
     recurringRules.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar recorrências.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadRecurringRules', 'Falha ao carregar recorrências.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.recurring = false
   }
@@ -1420,7 +1604,13 @@ async function loadInstallments() {
     const response = await fetchFinanceInstallmentPlans()
     installmentPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar parcelamentos.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadInstallments', 'Falha ao carregar parcelamentos.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.installments = false
   }
@@ -1433,7 +1623,13 @@ async function loadInvestments() {
     const response = await fetchFinanceInvestmentPlans()
     investmentPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar planos de investimento.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadInvestments', 'Falha ao carregar planos de investimento.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.investments = false
   }
@@ -1446,7 +1642,13 @@ async function loadDebtPlans() {
     const response = await fetchFinanceDebtPlans()
     debtPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Falha ao carregar planos de dívida.'), 'error')
+    notifyUser(
+      extractHttpMessage(
+        requestError,
+        translateFinanceScreen('financeScreen.errors.loadDebtPlans', 'Falha ao carregar planos de dívida.'),
+      ),
+      'error',
+    )
   } finally {
     loadingState.debts = false
   }
@@ -4705,5 +4907,3 @@ function applyAccountsDirectionContext() {
       @cancel="closeConfirmDialog" @confirm="handleConfirmDialogAction" />
   </section>
 </template>
-
-

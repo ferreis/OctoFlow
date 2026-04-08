@@ -7,7 +7,9 @@
       "passwordLabel": "Senha",
       "button": "Entrar",
       "buttonLoading": "Entrando...",
-      "googleButton": "Entrar com Google"
+      "googleButton": "Entrar com Google",
+      "emailPlaceholder": "exemplo@email.com",
+      "passwordPlaceholder": "••••••••"
     },
     "register": {
       "title": "Criar conta",
@@ -17,11 +19,23 @@
       "confirmPasswordLabel": "Confirmar senha",
       "button": "Criar conta",
       "buttonLoading": "Criando...",
-      "helpText": "A conta é criada com e-mail e senha, e a sessão é aberta automaticamente ao concluir."
+      "helpText": "A conta é criada com e-mail e senha, e a sessão é aberta automaticamente ao concluir.",
+      "emailPlaceholder": "exemplo@email.com",
+      "passwordPlaceholder": "Mínimo 8 caracteres",
+      "confirmPasswordPlaceholder": "Confirme sua senha"
     },
     "modeSwitch": {
       "login": "Entrar",
-      "register": "Criar conta"
+      "register": "Criar conta",
+      "ariaLabel": "Alternar modo de autenticação"
+    },
+    "shared": {
+      "separator": "ou"
+    },
+    "errors": {
+      "viewRuntime": "Ocorreu um erro inesperado no fluxo de autenticação.",
+      "invalidGoogleCredential": "Credencial do Google inválida.",
+      "loginSocialFailed": "Falha no login social. Tente novamente."
     },
     "bootstrap": {
       "kicker": "Sessão",
@@ -52,15 +66,22 @@
       "expiresIn": "O código atual expira em:",
       "verifyStepTitle": "Validar código de e-mail",
       "verifyCodeLabel": "Código de validação (OTP)",
+      "verifyCodePlaceholder": "Digite o código recebido",
       "verifyButton": "Validar código",
       "verifyButtonLoading": "Validando...",
       "resendCode": "Reenviar código",
       "createStepTitle": "Definir senha de acesso",
       "passwordLabel": "Nova senha",
       "confirmPasswordLabel": "Confirmar senha",
+      "passwordPlaceholder": "Mínimo 8 caracteres",
+      "confirmPasswordPlaceholder": "Confirme sua senha",
       "createButton": "Criar senha",
       "createButtonLoading": "Salvando...",
-      "logoutButton": "Sair"
+      "logoutButton": "Sair",
+      "errors": {
+        "viewRuntime": "Ocorreu um erro inesperado na definição de senha.",
+        "invalidCode": "Informe um código de validação válido."
+      }
     }
   },
   "navigation": {
@@ -133,6 +154,695 @@
   },
   "app": {
     "globalInteractiveError": "Ocorreu um erro inesperado na interface. Tente novamente."
+  },
+  "shared": {
+    "accountPasswordChangeModal": {
+      "titleCodeStep": "Validar código de segurança",
+      "titlePasswordStep": "Definir nova senha",
+      "descriptionCodeStep": "Enviamos um código para o e-mail principal: {email}.",
+      "descriptionPasswordStep": "Código validado. Agora informe sua nova senha.",
+      "emailNotProvided": "não informado",
+      "codeExpiresAt": "Código expira em: {value}",
+      "labels": {
+        "code": "Código",
+        "newPassword": "Nova senha",
+        "confirmPassword": "Repetir senha"
+      },
+      "actions": {
+        "cancel": "Cancelar",
+        "resendCode": "Reenviar código",
+        "verifyCode": "Validar código",
+        "verifyCodeLoading": "Validando...",
+        "updatePassword": "Atualizar senha",
+        "updatePasswordLoading": "Salvando..."
+      }
+    },
+    "confirmDialog": {
+      "titleDefault": "Confirmar ação",
+      "confirmDefault": "Confirmar",
+      "cancelDefault": "Cancelar",
+      "processing": "Processando..."
+    },
+    "financeEntriesPanel": {
+      "title": "Lançamentos",
+      "loading": "Atualizando...",
+      "labels": {
+        "noCategory": "Sem categoria"
+      },
+      "filters": {
+        "search": "Busca",
+        "searchPlaceholder": "Título ou descrição",
+        "direction": "Direção",
+        "directionAll": "Todas as direções",
+        "status": "Status",
+        "statusAll": "Todos",
+        "startDate": "Início",
+        "endDate": "Fim",
+        "apply": "Filtrar"
+      },
+      "table": {
+        "title": "Título",
+        "type": "Tipo",
+        "status": "Status",
+        "dueDate": "Vencimento",
+        "expected": "Esperado",
+        "remaining": "Restante",
+        "action": "Ação"
+      },
+      "actions": {
+        "edit": "Editar",
+        "delete": "Excluir"
+      },
+      "pagination": {
+        "previous": "Anterior",
+        "next": "Próxima",
+        "pageSummary": "Página {page} de {totalPages}",
+        "empty": "0 de 0 lançamentos"
+      },
+      "empty": {
+        "title": "Sem lançamentos",
+        "description": "Cadastre o primeiro lançamento para começar seu fluxo financeiro."
+      }
+    },
+    "googleLogin": {
+      "separatorLabel": "ou",
+      "unavailableMessage": "Google Sign-In não está disponível. Faça login com e-mail e senha.",
+      "loadingHint": "Validando conta Google...",
+      "buttonLabel": "Continuar com Google",
+      "errors": {
+        "clientIdMissing": "Google Sign-In não está configurado no backend.",
+        "configLoadFailed": "Erro ao carregar configurações: {message}",
+        "browserOnly": "Google Identity Services só pode ser carregado no navegador.",
+        "unexpectedApiShape": "Google Identity Services carregou sem expor a API esperada.",
+        "scriptLoadFailed": "Falha ao carregar o script do Google Identity Services.",
+        "clientIdUnavailable": "Google Client ID não disponível.",
+        "serviceUnavailable": "Google Identity Services não está disponível.",
+        "initializationFailed": "Erro ao inicializar Google Login: {message}",
+        "invalidCredential": "Google não retornou uma credencial válida.",
+        "runtimeError": "Falha no login social: {message}",
+        "unknown": "erro desconhecido"
+      }
+    },
+    "accountEmailsPanel": {
+      "kicker": "Identidade",
+      "title": "E-mails vinculados",
+      "summaryChip": "{count} e-mail(s)",
+      "description": "Defina qual e-mail deve ser o padrão da conta e sincronize os e-mails verificados do Google e GitHub para o mesmo usuário.",
+      "loading": "Carregando e-mails vinculados...",
+      "empty": "Nenhum e-mail vinculado foi encontrado.",
+      "defaultEmail": {
+        "label": "E-mail padrão atual",
+        "notDefined": "Não definido"
+      },
+      "labels": {
+        "default": "Padrão",
+        "verified": "Verificado"
+      },
+      "actions": {
+        "saving": "Salvando...",
+        "defaultEmail": "E-mail padrão",
+        "setAsDefault": "Tornar padrão"
+      },
+      "providers": {
+        "system": "Sistema",
+        "google": "Google",
+        "github": "GitHub",
+        "unknown": "Provedor"
+      },
+      "google": {
+        "description": "Use o fluxo de login social para anexar o e-mail da conta Google ao usuário atual.",
+        "alreadyLinkedTitle": "Usuário já vinculado",
+        "alreadyLinkedEmail": "e-mail: {email}",
+        "unavailable": "Google Sign-In não está disponível para vincular contas.",
+        "loading": "Validando conta Google para vínculo...",
+        "button": "Vincular conta Google"
+      },
+      "github": {
+        "descriptionSync": "Sincronize os e-mails verificados da conta GitHub usando o token salvo no perfil.",
+        "descriptionResync": "Sincronize novamente os e-mails verificados da conta GitHub usando o token salvo no perfil.",
+        "syncing": "Sincronizando...",
+        "updateButton": "Atualizar e-mails do GitHub",
+        "linkButton": "Vincular e-mails do GitHub",
+        "tokenHint": "Configure primeiro o token do GitHub no perfil para habilitar a sincronização."
+      },
+      "success": {
+        "googleLinked": "Conta Google vinculada com sucesso.",
+        "githubSynced": "E-mails do GitHub sincronizados com sucesso.",
+        "githubSyncedWithCount": "GitHub sincronizado: {count} e-mail(s) vinculado(s).",
+        "defaultEmailUpdated": "E-mail padrão atualizado para {email}."
+      },
+      "errors": {
+        "requestClientUnavailable": "Cliente de requisição não disponível para atualizar os e-mails da conta.",
+        "loadEmailsFailed": "Não foi possível carregar os e-mails vinculados.",
+        "invalidGoogleCredential": "Credencial do Google inválida.",
+        "googleLinkFailed": "Não foi possível vincular a conta Google.",
+        "githubSyncFailed": "Não foi possível vincular os e-mails do GitHub.",
+        "invalidEmailSelection": "Selecione um e-mail válido para definir como padrão.",
+        "defaultEmailUpdateFailed": "Não foi possível atualizar o e-mail padrão.",
+        "runtimeError": "Erro inesperado no painel de e-mails vinculados."
+      }
+    }
+  },
+  "tasks": {
+    "shared": {
+      "modalUnexpectedError": "Erro inesperado no modal de tarefa."
+    },
+    "issueCreateModal": {
+      "header": {
+        "kicker": "Nova tarefa",
+        "title": "Criar tarefa por template",
+        "description": "Escolha se a tarefa nasce no GitHub ou localmente, preencha o template e acompanhe o Markdown final antes de enviar."
+      },
+      "actions": {
+        "close": "Fechar",
+        "submitLocal": "Criar tarefa local",
+        "submitGithub": "Criar issue no GitHub",
+        "submittingLocal": "Criando tarefa local...",
+        "submittingGithub": "Criando issue..."
+      },
+      "destination": {
+        "kicker": "Destino",
+        "title": "Onde a tarefa nasce",
+        "description": "Tarefas locais ficam pendentes no sistema e podem ser enviadas ao GitHub depois.",
+        "github": {
+          "title": "Criar no GitHub",
+          "availableDescription": "Usa repositório, labels e colaboradores do GitHub imediatamente.",
+          "unavailableDescription": "Indisponível até existir pelo menos um repositório GitHub configurado."
+        },
+        "local": {
+          "title": "Criar localmente",
+          "description": "A tarefa fica no sistema e entra na fila de sincronização quando o GitHub estiver disponível."
+        }
+      },
+      "repository": {
+        "localLabel": "Repositório para sincronização futura (opcional)",
+        "githubLabel": "Repositório de destino",
+        "localPlaceholder": "Definir depois",
+        "githubPlaceholder": "Repositório padrão do perfil"
+      },
+      "templates": {
+        "kicker": "Templates",
+        "localTitle": "Modelos para tarefa local",
+        "githubTitle": "Modelos disponíveis",
+        "mode": {
+          "select": "Select",
+          "cards": "Cards"
+        },
+        "selectedLabel": "Template selecionado",
+        "selectPlaceholder": "Selecionar template",
+        "emptyLocal": "Nenhum template local foi carregado.",
+        "emptyGithub": "Esse repositório não retornou templates disponíveis."
+      },
+      "loading": {
+        "localTemplates": "Carregando templates do sistema...",
+        "githubTemplates": "Carregando templates e configurações do repositório..."
+      },
+      "preview": {
+        "kicker": "Preview Markdown",
+        "localHeading": "Como a tarefa será salva localmente",
+        "githubHeading": "Como a issue vai subir",
+        "selectTemplate": "Selecione um template para ver o preview.",
+        "requester": "Solicitante",
+        "requestDate": "Data da solicitação",
+        "source": "Origem",
+        "fillFields": "Preencha os campos para gerar o preview."
+      },
+      "assignee": {
+        "loading": "Carregando colaboradores...",
+        "empty": "Nenhum colaborador encontrado",
+        "none": "Sem atribuição inicial"
+      },
+      "labels": {
+        "authenticatedUser": "usuário autenticado",
+        "guest": "guest"
+      },
+      "errors": {
+        "unexpected": "Erro inesperado na criação da tarefa.",
+        "loadTemplatesFailed": "Não foi possível carregar os templates de tarefa.",
+        "loadWorkspaceFailed": "Não foi possível carregar o workspace GitHub para criar a issue.",
+        "selectTemplateForLocal": "Selecione um template antes de criar a tarefa local.",
+        "selectTemplateForGithub": "Selecione um template antes de criar a issue.",
+        "selectRepository": "Selecione um repositório para criar a issue.",
+        "createLocalFailed": "Não foi possível criar a tarefa local.",
+        "createGithubFailed": "Não foi possível criar a issue no GitHub.",
+        "waitOperationToClose": "Aguarde a operação atual finalizar antes de fechar."
+      }
+    },
+    "workItemEditModal": {
+      "labels": {
+        "currentRepository": "Repositório atual",
+        "closed": "Fechada",
+        "open": "Aberta",
+        "select": "Selecione",
+        "commit": "Commit",
+        "guest": "guest"
+      },
+      "assignee": {
+        "loading": "Carregando colaboradores...",
+        "empty": "Nenhum colaborador encontrado",
+        "none": "Não adicionar colaborador"
+      },
+      "history": {
+        "issueCreated": "Issue criada",
+        "issueUpdated": "Issue atualizada",
+        "issueClosed": "Issue fechada",
+        "comment": "Comentário",
+        "recordedUpdate": "Atualização registrada",
+        "noExtraDetails": "Sem detalhes adicionais."
+      },
+      "github": {
+        "header": {
+          "kicker": "Visualização"
+        },
+        "actions": {
+          "openGithub": "Abrir no GitHub",
+          "openGithubShort": "GitHub",
+          "close": "Fechar",
+          "open": "Abrir",
+          "openOctoFlow": "Abrir no OctoFlow",
+          "remove": "Remover",
+          "saveIssue": "Salvar issue",
+          "saving": "Salvando...",
+          "clearForm": "Limpar formulário"
+        },
+        "meta": {
+          "status": "Status",
+          "repository": "Repositório",
+          "author": "Autor",
+          "unknownAuthor": "desconhecido",
+          "updatedAt": "Atualizada",
+          "createdAt": "Criada em",
+          "assignees": "Responsáveis"
+        },
+        "parentIssue": {
+          "prefix": "Esta issue é uma sub-issue de"
+        },
+        "tabs": {
+          "view": "Visualização",
+          "edit": "Atualização",
+          "subIssues": "Subissues"
+        },
+        "viewTabs": {
+          "description": "Descrição",
+          "history": "Histórico"
+        },
+        "description": {
+          "kicker": "Descrição",
+          "title": "Conteúdo formatado",
+          "emptyMarkdown": "Nenhuma descrição em Markdown foi informada para esta issue."
+        },
+        "errors": {
+          "readOnly": "Sua conta consegue visualizar esta issue, mas não tem permissão para atualizá-la."
+        },
+        "history": {
+          "kicker": "Histórico",
+          "title": "Linha do tempo da issue",
+          "systemActor": "Sistema",
+          "empty": "Nenhum histórico adicional foi encontrado para esta issue."
+        },
+        "edit": {
+          "kicker": "Modelos de atualização",
+          "title": "Escolha o template da atualização",
+          "description": "O sistema carrega o template selecionado e monta a atualização no preview ao lado.",
+          "selectedTemplate": "Template selecionado",
+          "selectTemplate": "Selecionar template",
+          "emptyTemplates": "Nenhum template de atualização foi configurado.",
+          "defaultUpdateTitle": "Atualização",
+          "timestampLabel": "Data e hora",
+          "templateFields": "Campos do template",
+          "listPlaceholder": "Um item por linha.",
+          "listHelper": "Use uma linha por item. O preview vira lista automaticamente.",
+          "labels": "Tags",
+          "labelsSearchPlaceholder": "Pesquisar tags padrão",
+          "labelsHelper": "Use a busca para filtrar tags. Também é possível criar novas tags.",
+          "labelsSelectedSuffix": "tag(s) selecionada(s)",
+          "createLabelPrefix": "Criar tag",
+          "createLabelHelper": "A nova tag será criada ao salvar.",
+          "existingLabelHelper": "Tag existente",
+          "emptyLabelIdle": "Digite para buscar tags ou criar uma nova.",
+          "emptyLabelSearch": "Nenhuma tag encontrada para essa busca.",
+          "emptyLabelCreate": "Pressione Enter para criar essa tag.",
+          "assignCollaborator": "Atribuir colaborador"
+        },
+        "preview": {
+          "kicker": "Preview Markdown",
+          "title": "Resultado final da atualização",
+          "description": "O preview abaixo considera a descrição atual da issue e o modelo de atualização preenchido.",
+          "empty": "Preencha os campos do modelo para gerar a atualização."
+        },
+        "subIssues": {
+          "kicker": "Subissues",
+          "title": "Decomposição da issue principal",
+          "description": "As sub-issues herdam o mesmo repositório e os mesmos projetos da issue pai.",
+          "summary": "{total} sub-issue(s) vinculada(s), sendo {open} ainda aberta(s).",
+          "empty": "Nenhuma sub-issue foi criada para esta issue ainda.",
+          "responsible": "Responsável",
+          "cardTitle": "Sub-issue {index}",
+          "cardDescription": "A issue será criada no mesmo repositório da tarefa principal.",
+          "titleLabel": "Título",
+          "titlePlaceholder": "Ex.: Ajustar validação de CPF no cadastro",
+          "templateLabel": "Template de criação",
+          "createWithoutTemplate": "Criar sem template",
+          "descriptionLabel": "Descrição",
+          "descriptionPlaceholder": "Descreva o escopo específico desta sub-issue.",
+          "assigneeLabel": "Responsável",
+          "dueDateLabel": "Data de entrega",
+          "dueDateHint": "Se a issue principal tiver um \"Prazo desejado\", nenhuma sub-issue pode ultrapassar essa data.",
+          "actions": {
+            "new": "Nova sub-issue",
+            "creating": "Criando...",
+            "create": "Criar sub-issues",
+            "clear": "Limpar subtarefas"
+          }
+        }
+      },
+      "local": {
+        "header": {
+          "kicker": "Tarefa local",
+          "title": "Editar tarefa local"
+        },
+        "tabs": {
+          "subTasks": "SubTarefas"
+        },
+        "status": {
+          "label": "Status local",
+          "syncFailed": "Falhou ao sincronizar",
+          "closed": "Fechada",
+          "open": "Aberta"
+        },
+        "repository": {
+          "pendingWithTarget": "{repository} - Pendente de sincronização",
+          "pending": "Pendente de sincronização",
+          "defineLater": "Definir depois"
+        },
+        "author": {
+          "default": "Usuário local"
+        },
+        "responsibles": {
+          "githubIssue": "Issue #{number} (GitHub)",
+          "none": "Sem responsável"
+        },
+        "labels": {
+          "empty": "Sem tags definidas"
+        },
+        "loadingDetails": "Carregando detalhes da tarefa local...",
+        "summary": {
+          "kicker": "Resumo",
+          "title": "Informações da tarefa",
+          "titleLabel": "Título",
+          "contentLabel": "Conteúdo"
+        },
+        "meta": {
+          "updatedAt": "Atualizada em",
+          "template": "Template",
+          "suggestedRepository": "Repositório sugerido",
+          "suggestedRepositoryAfter": "Repositório sugerido para depois"
+        },
+        "template": {
+          "custom": "personalizado"
+        },
+        "edit": {
+          "templateLabel": "Template da atualização",
+          "updateFields": "Campos da atualização"
+        },
+        "actions": {
+          "saveChanges": "Salvar alterações"
+        },
+        "preview": {
+          "kicker": "Conteúdo formatado",
+          "title": "Preview da tarefa local",
+          "defaultTitle": "Título da tarefa local",
+          "emptyBody": "Sem conteúdo para visualizar."
+        },
+        "history": {
+          "title": "Linha do tempo da tarefa local",
+          "empty": "Ainda não existe histórico suficiente para esta tarefa local.",
+          "taskCreated": "Tarefa local criada",
+          "initialTemplate": "Template inicial: {templateKey}",
+          "createdWithoutTemplate": "Criada sem template definido.",
+          "lastLocalEdit": "Última edição local",
+          "localUpdateDescription": "Conteúdo, template, tags ou repositório sugerido foram atualizados.",
+          "syncFailed": "Falha de sincronização",
+          "syncFailedDescription": "O envio ao GitHub falhou.",
+          "pendingSync": "Pendente de sincronização",
+          "pendingTarget": "Repositório alvo: {repository}",
+          "pendingWithoutRepository": "Sem repositório definido para sincronizar.",
+          "synced": "Sincronizada com GitHub",
+          "syncedWithIssue": "Issue #{number} criada no GitHub.",
+          "syncedSuccess": "Enviada ao GitHub com sucesso."
+        },
+        "sync": {
+          "kicker": "Sincronização",
+          "title": "Enviar ao GitHub",
+          "description": "A sincronização manual sempre pede o repositório de destino. Nada é publicado automaticamente.",
+          "repositoryLabel": "Repositório para publicar agora",
+          "repositoryPlaceholder": "Selecionar repositório",
+          "emptyRepositories": "Nenhum repositório GitHub disponível para sincronização no momento.",
+          "sending": "Enviando ao GitHub...",
+          "sendButton": "Enviar ao GitHub"
+        },
+        "subTasks": {
+          "kicker": "SubTarefas",
+          "title": "Organização por subtarefas",
+          "description": "O fluxo de subtarefas para tarefas locais ainda não foi implementado. Esta aba foi preparada para manter a navegação consistente com as issues do GitHub.",
+          "futureInfo": "Quando esse módulo evoluir, as subtarefas locais poderão ser exibidas e gerenciadas aqui."
+        }
+      },
+      "success": {
+        "subIssueCreatedSingle": "Sub-issue criada com sucesso.",
+        "subIssueCreatedMultiple": "Sub-issues criadas com sucesso.",
+        "localUpdated": "Tarefa local atualizada com sucesso.",
+        "localSynced": "Tarefa local enviada ao GitHub com sucesso."
+      },
+      "errors": {
+        "unexpected": "Erro inesperado ao editar a tarefa.",
+        "issueMissing": "Nenhuma issue válida foi selecionada.",
+        "issueTitleRequired": "O título da issue é obrigatório.",
+        "issueUpdateFailed": "Não foi possível atualizar a issue.",
+        "issueDetailsRefreshFailed": "Não foi possível atualizar os detalhes da issue no GitHub. Mantendo o cache local.",
+        "subIssueTemplatesLoadFailed": "Não foi possível carregar os templates de criação para sub-issues.",
+        "subIssueCannotHaveChildren": "Sub-issues não podem receber novas sub-issues.",
+        "subIssuePermissionDenied": "Você não tem permissão para criar sub-issues nesta issue.",
+        "subIssueAtLeastOneRequired": "Preencha pelo menos uma sub-issue antes de salvar.",
+        "subIssueTitleRequiredByIndex": "Informe o título da sub-issue {index}.",
+        "subIssueCreateFailed": "Não foi possível criar as sub-issues.",
+        "localLoadFailed": "Não foi possível carregar os detalhes da tarefa local.",
+        "localTitleRequired": "O título da tarefa local é obrigatório.",
+        "localUpdateFailed": "Não foi possível atualizar a tarefa local.",
+        "syncRepositoryRequired": "Selecione o repositório GitHub antes de sincronizar a tarefa local.",
+        "localSyncFailed": "Não foi possível sincronizar a tarefa local com o GitHub.",
+        "waitOperationToClose": "Aguarde a operação atual finalizar antes de fechar."
+      }
+    }
+  },
+  "tasksScreen": {
+    "kpis": {
+      "total": "Total",
+      "open": "Abertas",
+      "closed": "Fechadas",
+      "repositories": "Repositórios"
+    },
+    "actions": {
+      "newTask": "Nova tarefa",
+      "syncing": "Sincronizando...",
+      "refreshList": "Atualizar lista",
+      "applyFilters": "Filtrar",
+      "resetFilters": "Restaurar padrão"
+    },
+    "scope": {
+      "defaultRepository": "Repositório padrão do perfil",
+      "assigned": "Issues atribuídas a mim",
+      "all": "Todas as issues dos seus repositórios",
+      "repositorySpecific": "Repositório específico"
+    },
+    "scopeDescription": {
+      "repository": "Visualize e atualize itens de um repositório específico com filtros de estado, label e tipo.",
+      "assigned": "Mostra apenas issues atribuídas ao seu usuário para foco operacional.",
+      "all": "Visão consolidada de issues do GitHub e tarefas locais pendentes de sincronização."
+    },
+    "filters": {
+      "title": "Filtros",
+      "show": "Mostrar filtros",
+      "hide": "Ocultar filtros",
+      "scope": "Escopo",
+      "scopeAll": "Todas as issues",
+      "scopeAssigned": "Atribuídas a mim",
+      "search": "Buscar",
+      "searchPlaceholder": "Título, label, autor, repositório...",
+      "source": "Origem",
+      "sourceAll": "Local e GitHub",
+      "state": "Estado",
+      "stateAll": "Todos",
+      "repository": "Repositório",
+      "repositoryAll": "Todos os repositórios",
+      "label": "Label",
+      "labelAll": "Todas as labels",
+      "ticketType": "Tipo de chamado",
+      "ticketTypeAll": "Todos os tipos"
+    },
+    "list": {
+      "title": "Listagem de tarefas",
+      "scopeLabel": "Escopo",
+      "pendingLocal": "Locais pendentes",
+      "lastSync": "Última sync"
+    },
+    "columns": {
+      "number": "Número",
+      "title": "Título",
+      "status": "Status",
+      "origin": "Origem",
+      "createdAt": "Data de abertura",
+      "updatedAt": "Data de atualização",
+      "assignee": "Responsável",
+      "repository": "Repositório",
+      "labels": "Labels",
+      "template": "Template"
+    },
+    "origin": {
+      "github": "GitHub",
+      "local": "Local",
+      "localSystem": "Sistema"
+    },
+    "status": {
+      "open": "Aberta",
+      "closed": "Fechada",
+      "openPlural": "Abertas",
+      "closedPlural": "Fechadas",
+      "localFailed": "Falhou ao sincronizar"
+    },
+    "ticketType": {
+      "support": "Suporte",
+      "incident": "Incidente",
+      "service": "Serviço",
+      "feature": "Melhoria",
+      "bug": "Bug",
+      "technical": "Técnico",
+      "other": "Outros"
+    },
+    "labels": {
+      "unassigned": "Sem responsável",
+      "noLabels": "Sem labels",
+      "localTask": "Tarefa local",
+      "notAssigned": "Não atribuído",
+      "currentRepository": "Repositório atual",
+      "pendingSync": "Pendente de sincronização",
+      "pendingSyncWithRepository": "{repository} - Pendente de sincronização",
+      "repositoryMissing": "Sem repositório definido",
+      "customTemplate": "personalizado"
+    },
+    "pagination": {
+      "empty": "0 de 0 tarefas",
+      "summary": "{start}-{end} de {total} tarefas",
+      "previous": "Anterior",
+      "next": "Próxima"
+    },
+    "lastSync": {
+      "none": "sem sincronização anterior"
+    },
+    "loading": {
+      "list": "Carregando tarefas..."
+    },
+    "empty": {
+      "filtered": "Nenhuma tarefa encontrada para os filtros atuais."
+    },
+    "errors": {
+      "unexpectedChild": "Ocorreu um erro inesperado na tela de tarefas.",
+      "loadCache": "Não foi possível carregar o cache local das issues.",
+      "loadLocalTasks": "Não foi possível carregar as tarefas locais pendentes.",
+      "loadTemplates": "Não foi possível carregar os templates de atualização.",
+      "syncGithub": "Não foi possível sincronizar as issues com o GitHub."
+    },
+    "success": {
+      "localTaskCreated": "Tarefa local criada com sucesso e adicionada na fila de sincronização.",
+      "issueCreated": "Issue criada com sucesso.",
+      "issueCreatedWithNumber": "Issue #{number} criada com sucesso em {repository}.",
+      "issueUpdated": "Issue atualizada com sucesso.",
+      "issueUpdatedWithNumber": "Issue #{number} atualizada com sucesso.",
+      "localTaskUpdated": "Tarefa local atualizada com sucesso.",
+      "localTaskSynced": "Tarefa local enviada ao GitHub com sucesso.",
+      "localTaskSyncedWithIssue": "Tarefa local enviada para a issue #{number} com sucesso."
+    },
+    "info": {
+      "issueUpdated": "A issue aberta foi atualizada no GitHub e no banco local.",
+      "cacheMissingForce": "Ainda não existe cache local. O sistema vai buscar tudo no GitHub.",
+      "cacheMissingAuto": "Cache local vazio. Se necessário, a tela sincroniza com o GitHub.",
+      "syncStarted": "Sincronização iniciada com o GitHub."
+    }
+  },
+  "profileScreen": {
+    "labels": {
+      "notDefined": "não definido",
+      "selectedItem": "selecionado"
+    },
+    "actions": {
+      "changePassword": "Alterar senha",
+      "changePasswordLoading": "Enviando código...",
+      "changePasswordHint": "Ao clicar, enviamos um código para seu e-mail principal."
+    },
+    "accessibility": {
+      "disabled": "Desativado",
+      "default": "Padrão",
+      "compactAuto": "Compacto automático"
+    },
+    "confirm": {
+      "title": "Confirmar ação",
+      "defaultAction": "Confirmar",
+      "removeAction": "Remover",
+      "removeAccountTitle": "Remover conta GitHub",
+      "removeAccountMessage": "Remover a conta GitHub {account} e todos os repositórios vinculados?",
+      "removeRepositoryTitle": "Remover repositório",
+      "removeRepositoryMessage": "Remover o repositório {repository} do sistema?"
+    },
+    "validation": {
+      "passwordCodeRequired": "Informe o código enviado por e-mail.",
+      "passwordRequired": "Informe a nova senha.",
+      "passwordConfirmationMismatch": "A confirmação da senha não confere."
+    },
+    "success": {
+      "accountAdded": "Conta GitHub adicionada com sucesso.",
+      "accountUpdated": "Conta GitHub atualizada com sucesso.",
+      "accountRemoved": "Conta GitHub removida com sucesso.",
+      "repositoryCreated": "Repositório cadastrado com sucesso.",
+      "repositoryReactivated": "Repositório reativado.",
+      "repositoryIgnored": "Repositório ignorado.",
+      "repositoryRemoved": "Repositório removido do sistema.",
+      "avatarUpdated": "Imagem de perfil atualizada com sucesso.",
+      "avatarRemoved": "Imagem de perfil removida com sucesso.",
+      "passwordCodeSent": "Código enviado para seu e-mail principal.",
+      "passwordCodeValidated": "Código validado com sucesso.",
+      "passwordUpdated": "Senha atualizada com sucesso."
+    },
+    "errors": {
+      "unexpectedChild": "Ocorreu um erro inesperado na tela de perfil.",
+      "loadProfile": "Não foi possível carregar a configuração GitHub do perfil.",
+      "invalidAccountLogin": "Informe um login GitHub válido.",
+      "addAccount": "Não foi possível adicionar a conta GitHub.",
+      "updateAccount": "Não foi possível atualizar a conta GitHub.",
+      "removeAccount": "Não foi possível remover a conta GitHub.",
+      "invalidRepositoryData": "Informe owner e nome válidos para o repositório.",
+      "createRepository": "Não foi possível cadastrar o repositório.",
+      "updateRepository": "Não foi possível atualizar o repositório.",
+      "removeRepository": "Não foi possível remover o repositório.",
+      "avatarInvalidType": "Formato inválido. Use JPG, PNG ou WEBP.",
+      "avatarMaxSize": "A imagem deve ter no máximo 5 MB.",
+      "updateAvatar": "Não foi possível atualizar a imagem de perfil.",
+      "removeAvatar": "Não foi possível remover a imagem de perfil.",
+      "sendPasswordCode": "Não foi possível enviar o código para alterar a senha.",
+      "validatePasswordCode": "Não foi possível validar o código informado.",
+      "updatePassword": "Não foi possível atualizar a senha."
+    }
+  },
+  "financeScreen": {
+    "errors": {
+      "unexpectedChild": "Ocorreu um erro inesperado na tela financeira.",
+      "loadCatalog": "Falha ao carregar catálogo financeiro.",
+      "loadDashboard": "Falha ao carregar dashboard financeiro.",
+      "loadEntries": "Falha ao carregar lançamentos.",
+      "loadRecurringRules": "Falha ao carregar recorrências.",
+      "loadInstallments": "Falha ao carregar parcelamentos.",
+      "loadInvestments": "Falha ao carregar planos de investimento.",
+      "loadDebtPlans": "Falha ao carregar planos de dívida."
+    }
   },
   "dashboard": {
     "title": "Dashboard",
@@ -286,5 +996,644 @@
   },
   "common": {
     "retry": "Tentar novamente"
+  },
+  "financeModule": {
+    "layout": {
+      "tabs": {
+        "accounts": "Contas",
+        "banks": "Bancos",
+        "investments": "Investimentos",
+        "settings": "Configurações",
+        "reports": "Relatórios",
+        "navigationAriaLabel": "Navegação do módulo financeiro"
+      },
+      "messages": {
+        "catalogLoadFailed": "Falha ao carregar dados iniciais do módulo financeiro.",
+        "readAccessDenied": "Você não tem permissão para acessar o módulo financeiro.",
+        "childRenderError": "Erro inesperado ao renderizar a tela financeira.",
+        "catalogLoadFailedTitle": "Falha ao carregar catálogo financeiro"
+      },
+      "accessDenied": {
+        "title": "Acesso ao financeiro bloqueado"
+      },
+      "buttons": {
+        "loading": "Atualizando...",
+        "retry": "Tentar novamente"
+      }
+    },
+    "accountsView": {
+      "tabs": {
+        "overview": "Visão geral",
+        "payable": "Contas a pagar",
+        "receivable": "Contas a receber",
+        "navigationAriaLabel": "Abas de contas"
+      },
+      "renegotiation": {
+        "defaultReason": "Renegociação manual"
+      },
+      "confirm": {
+        "defaultAction": "Confirmar",
+        "deleteEntryTitle": "Excluir lançamento",
+        "deleteEntryMessage": "Tem certeza que deseja excluir \"{title}\"?",
+        "deleteRecurringTitle": "Excluir recorrência",
+        "deleteRecurringMessage": "Excluir \"{title}\"?"
+      },
+      "entries": {
+        "titlePayable": "Lançamentos - Contas a pagar",
+        "titleReceivable": "Lançamentos - Contas a receber",
+        "titleUnified": "Lançamentos unificados (pagar e receber)",
+        "totalsEmpty": "0 lançamentos",
+        "totalsRange": "{first}-{last} de {total} lançamentos"
+      },
+      "overview": {
+        "rows": {
+          "receivable": "Contas a receber",
+          "payable": "Contas a pagar",
+          "total": "Total (Receber - Pagar)"
+        },
+        "title": "Resumo rápido: pagar × receber",
+        "subtitle": "Mostrando o previsto de {month}.",
+        "monthLabel": "Mês",
+        "table": {
+          "type": "Tipo",
+          "expected": "Previsto",
+          "realized": "Realizado",
+          "remaining": "Restante",
+          "execution": "Execução"
+        },
+        "empty": {
+          "title": "Sem dados",
+          "description": "Cadastre lançamentos para visualizar o comparativo."
+        }
+      },
+      "actions": {
+        "entry": "Lançamento avulso",
+        "settlement": "Baixa de lançamento",
+        "recurringRule": "Regra recorrente",
+        "installmentPlan": "Plano de parcelamento",
+        "renegotiation": "Renegociar plano",
+        "delete": "Excluir",
+        "updating": "Atualizando...",
+        "refreshValues": "Atualizar valores",
+        "add": "Adicionar",
+        "edit": "Editar",
+        "generate": "Gerar",
+        "cancel": "Cancelar",
+        "saving": "Salvando...",
+        "saveChanges": "Salvar alterações",
+        "saveEntry": "Salvar lançamento",
+        "registerSettlement": "Registrar baixa",
+        "save": "Salvar",
+        "createRecurring": "Criar recorrência",
+        "createInstallment": "Criar parcelamento",
+        "renegotiate": "Renegociar plano"
+      },
+      "modal": {
+        "titles": {
+          "editEntry": "Editar lançamento",
+          "newEntry": "Novo lançamento",
+          "settlement": "Baixa de lançamento",
+          "editRecurring": "Editar recorrência",
+          "newRecurring": "Nova recorrência",
+          "newInstallment": "Novo parcelamento",
+          "renegotiation": "Renegociar plano",
+          "default": "Gerenciar lançamento"
+        },
+        "subtitle": "Os dados serão aplicados nas listagens desta aba.",
+        "entry": {
+          "title": "Título",
+          "type": "Tipo",
+          "amount": "Valor (BRL)",
+          "dueDate": "Vencimento",
+          "category": "Categoria",
+          "bankAccount": "Conta bancária"
+        },
+        "settlement": {
+          "entry": "Lançamento",
+          "amount": "Valor da baixa",
+          "dateTime": "Data/hora da baixa",
+          "bankAccount": "Conta bancária"
+        },
+        "recurring": {
+          "title": "Título",
+          "amount": "Valor mensal",
+          "dayOfMonth": "Dia do mês",
+          "startsAt": "Início",
+          "recurringType": "Tipo recorrente",
+          "category": "Categoria",
+          "bankAccount": "Conta bancária padrão"
+        },
+        "installment": {
+          "title": "Título",
+          "totalAmount": "Valor total",
+          "downPayment": "Entrada",
+          "count": "Parcelas",
+          "firstDueDate": "Primeiro vencimento",
+          "category": "Categoria",
+          "bankAccount": "Conta bancária padrão"
+        },
+        "renegotiation": {
+          "plan": "Plano",
+          "installmentsCount": "Nova quantidade de parcelas",
+          "reason": "Motivo",
+          "category": "Categoria",
+          "bankAccount": "Conta bancária"
+        }
+      },
+      "notifications": {
+        "writeDenied": "Você não possui permissão para alterar dados financeiros.",
+        "loadEntriesError": "Erro ao carregar lançamentos.",
+        "loadOverviewError": "Erro ao carregar resumo de contas.",
+        "loadRecurringError": "Erro ao carregar recorrências.",
+        "loadInstallmentsError": "Erro ao carregar parcelamentos.",
+        "entryInvalid": "Preencha título, valor e vencimento válidos.",
+        "entryUpdated": "Lançamento atualizado com sucesso.",
+        "entryCreated": "Lançamento criado com sucesso.",
+        "entrySaveError": "Erro ao salvar lançamento.",
+        "invalidEntry": "Lançamento inválido para exclusão.",
+        "entryDeleted": "Lançamento removido com sucesso.",
+        "entryDeleteError": "Erro ao excluir lançamento.",
+        "settlementInvalid": "Selecione um lançamento e um valor de baixa válido.",
+        "settlementCreated": "Baixa registrada com sucesso.",
+        "settlementError": "Erro ao registrar baixa.",
+        "recurringInvalid": "Preencha título, valor, início e tipo recorrente válidos.",
+        "recurringUpdated": "Recorrência atualizada com sucesso.",
+        "recurringCreated": "Recorrência criada com sucesso.",
+        "recurringSaveError": "Erro ao salvar recorrência.",
+        "invalidRecurring": "Recorrência inválida.",
+        "recurringDeleted": "Recorrência removida com sucesso.",
+        "recurringDeleteError": "Erro ao excluir recorrência.",
+        "recurringGenerated": "Lançamento gerado com sucesso.",
+        "recurringGenerateError": "Erro ao gerar lançamento manualmente.",
+        "installmentInvalid": "Informe título e valor total válidos para o parcelamento.",
+        "installmentCreated": "Parcelamento criado com sucesso.",
+        "installmentError": "Erro ao criar parcelamento.",
+        "renegotiationInvalid": "Selecione um plano e informe um motivo válido.",
+        "renegotiationSuccess": "Plano renegociado com sucesso.",
+        "renegotiationError": "Erro ao renegociar plano.",
+        "childRenderError": "Erro inesperado ao renderizar contas financeiras."
+      },
+      "settlement": {
+        "remainingSuffix": "restante"
+      },
+      "management": {
+        "title": "Gerenciamento de lançamentos",
+        "actionLabel": "O que deseja adicionar"
+      },
+      "recurring": {
+        "title": "Regras recorrentes",
+        "summary": "{count} regra(s)",
+        "table": {
+          "title": "Título",
+          "amount": "Valor",
+          "day": "Dia",
+          "type": "Tipo",
+          "actions": "Ação"
+        }
+      },
+      "installments": {
+        "title": "Planos de parcelamento",
+        "summary": "{count} plano(s)",
+        "table": {
+          "title": "Título",
+          "total": "Total",
+          "count": "Parcelas",
+          "remaining": "Restante"
+        }
+      },
+      "options": {
+        "noCategory": "Sem categoria",
+        "noAccount": "Sem conta",
+        "select": "Selecione",
+        "keepCurrent": "Manter atual"
+      }
+    },
+    "banksView": {
+      "table": {
+        "summary": "{count} conta(s)",
+        "title": "Contas bancárias cadastradas",
+        "loading": "Carregando contas bancárias...",
+        "columns": {
+          "name": "Nome",
+          "branch": "Agência",
+          "accountNumber": "Conta",
+          "type": "Tipo",
+          "balance": "Saldo",
+          "actions": "Ação"
+        },
+        "empty": {
+          "title": "Sem contas bancárias",
+          "description": "Cadastre sua primeira conta para começar."
+        }
+      },
+      "notifications": {
+        "loadError": "Não foi possível carregar as contas bancárias.",
+        "writeDenied": "Você não possui permissão para alterar dados financeiros.",
+        "nameRequired": "Informe o nome da conta para continuar.",
+        "updated": "Conta bancária atualizada com sucesso.",
+        "created": "Conta bancária criada com sucesso.",
+        "saveError": "Erro ao salvar conta bancária.",
+        "invalidAccount": "Conta bancária inválida para atualizar status.",
+        "activated": "Conta ativada com sucesso.",
+        "deactivated": "Conta desativada com sucesso.",
+        "statusError": "Erro ao alterar o status da conta.",
+        "childRenderError": "Erro inesperado ao renderizar os dados bancários."
+      },
+      "form": {
+        "titleEdit": "Editar conta bancária",
+        "titleCreate": "Nova conta bancária",
+        "fields": {
+          "name": {
+            "label": "Nome da conta",
+            "placeholder": "Ex.: Conta principal"
+          },
+          "branch": {
+            "label": "Agência",
+            "placeholder": "0001"
+          },
+          "accountNumber": {
+            "label": "Número da conta",
+            "placeholder": "12345-6"
+          },
+          "accountType": {
+            "label": "Tipo"
+          },
+          "initialBalance": {
+            "label": "Saldo atual (R$)"
+          }
+        }
+      },
+      "actions": {
+        "saving": "Salvando...",
+        "saveChanges": "Salvar alterações",
+        "save": "Salvar conta",
+        "cancel": "Cancelar",
+        "edit": "Editar",
+        "activate": "Ativar",
+        "deactivate": "Desativar"
+      },
+      "permissions": {
+        "readOnlyHint": "Sua conta está em modo de leitura para dados bancários."
+      },
+      "pagination": {
+        "summary": "Página {page} de {totalPages}",
+        "previous": "Anterior",
+        "next": "Próxima"
+      }
+    },
+    "investmentsView": {
+      "list": {
+        "summary": "{count} plano(s)",
+        "title": "Investimentos cadastrados",
+        "loading": "Carregando investimentos...",
+        "columns": {
+          "label": "Rótulo",
+          "type": "Tipo",
+          "initialAmount": "Aporte inicial",
+          "monthlyContribution": "Aporte mensal",
+          "period": "Período",
+          "estimatedAmount": "Saldo estimado"
+        },
+        "monthsLabel": "meses",
+        "empty": {
+          "title": "Sem investimentos",
+          "description": "Simule e crie seu primeiro plano de investimento."
+        }
+      },
+      "simulation": {
+        "defaultLabel": "Simulação padrão",
+        "title": "Simulação de investimento",
+        "fields": {
+          "investmentType": "Tipo de investimento",
+          "label": "Rótulo",
+          "labelPlaceholder": "Simulação padrão",
+          "initialAmount": "Aporte inicial (R$)",
+          "monthlyContribution": "Aporte mensal (R$)",
+          "periodMonths": "Período (meses)",
+          "rateValue": "Taxa (%)",
+          "rateInputType": "Tipo de taxa"
+        },
+        "rateTypes": {
+          "annual": "Anual",
+          "monthly": "Mensal"
+        }
+      },
+      "convert": {
+        "defaultPlanLabel": "Plano de investimento",
+        "fields": {
+          "label": "Rótulo do plano",
+          "startDate": "Data de início",
+          "contributionDay": "Dia do aporte",
+          "yieldMode": "Modo de rendimento",
+          "category": "Categoria",
+          "bankAccount": "Conta bancária"
+        },
+        "options": {
+          "noCategory": "Sem categoria",
+          "noBankAccount": "Sem conta"
+        }
+      },
+      "notifications": {
+        "loadPlansError": "Não foi possível carregar os investimentos.",
+        "writeDenied": "Você não possui permissão para gerenciar investimentos.",
+        "simulationSuccess": "Simulação gerada com sucesso.",
+        "simulationError": "Erro ao gerar simulação.",
+        "simulationRequired": "Gere uma simulação válida antes de criar o plano.",
+        "convertSuccess": "Plano de investimento criado a partir da simulação.",
+        "convertError": "Erro ao converter simulação.",
+        "childRenderError": "Erro inesperado ao renderizar investimentos."
+      },
+      "actions": {
+        "simulating": "Simulando...",
+        "simulate": "Simular",
+        "converting": "Convertendo...",
+        "convert": "Criar plano a partir da simulação"
+      },
+      "summary": {
+        "invested": "Total investido",
+        "yield": "Rendimento",
+        "finalAmount": "Valor final"
+      },
+      "pagination": {
+        "summary": "Página {page} de {totalPages}",
+        "previous": "Anterior",
+        "next": "Próxima"
+      }
+    },
+    "reportsView": {
+      "kpis": {
+        "expectedNet": {
+          "label": "Saldo previsto",
+          "caption": "Entradas previstas - saídas previstas"
+        },
+        "realizedNet": {
+          "label": "Saldo realizado",
+          "caption": "Entradas recebidas - pagamentos"
+        },
+        "remaining": {
+          "label": "Saldo pendente",
+          "caption": "Valor ainda aberto"
+        },
+        "overdue": {
+          "label": "Atrasos",
+          "caption": "Lançamentos vencidos"
+        },
+        "expectedIncome": {
+          "label": "Receita prevista",
+          "caption": "Total de entradas previstas"
+        },
+        "expectedExpense": {
+          "label": "Despesa prevista",
+          "caption": "Total de saídas previstas"
+        },
+        "accountsBalance": {
+          "label": "Saldo em contas",
+          "caption": "Soma das contas bancárias"
+        },
+        "incomeSettlement": {
+          "label": "Execução de recebimentos",
+          "caption": "Percentual realizado"
+        },
+        "expenseExecution": {
+          "label": "Execução de pagamentos",
+          "caption": "Percentual pago"
+        }
+      },
+      "notifications": {
+        "loadError": "Erro ao carregar relatórios financeiros.",
+        "writeDenied": "Você não possui permissão para exportar ou importar dados financeiros.",
+        "exportSuccess": "Relatório CSV solicitado com sucesso.",
+        "exportError": "Erro ao gerar relatório CSV.",
+        "invalidFileType": "Selecione um arquivo JSON válido.",
+        "fileTooLarge": "Arquivo excede o limite de 5 MB para importação.",
+        "snapshotExportSuccess": "Snapshot exportado com sucesso.",
+        "snapshotExportError": "Erro ao exportar snapshot.",
+        "selectFileFirst": "Selecione um arquivo JSON antes de importar.",
+        "invalidJsonContent": "Conteúdo JSON inválido para importação.",
+        "snapshotImportSuccess": "Dados importados com sucesso.",
+        "snapshotImportError": "Erro ao importar snapshot financeiro.",
+        "childRenderError": "Erro inesperado ao renderizar os relatórios."
+      },
+      "loading": "Carregando relatórios financeiros...",
+      "cashflow": {
+        "title": "Detalhamento do fluxo mensal",
+        "columns": {
+          "month": "Mês",
+          "expectedIncome": "Receita prevista",
+          "expectedExpense": "Despesa prevista",
+          "expectedNet": "Saldo previsto",
+          "realizedIncome": "Receita realizada",
+          "realizedExpense": "Despesa realizada",
+          "realizedNet": "Saldo realizado"
+        },
+        "empty": {
+          "title": "Sem dados de fluxo",
+          "description": "Cadastre lançamentos para visualizar o fluxo de caixa mensal."
+        }
+      },
+      "categories": {
+        "title": "Análise por categoria",
+        "columns": {
+          "name": "Categoria",
+          "entries": "Lançamentos",
+          "expectedIncome": "Receita prevista",
+          "expectedExpense": "Despesa prevista",
+          "expectedNet": "Saldo previsto",
+          "realizedIncome": "Receita realizada",
+          "realizedExpense": "Despesa realizada",
+          "realizedNet": "Saldo realizado"
+        },
+        "empty": {
+          "title": "Sem categorias no período",
+          "description": "Nenhum lançamento encontrado para análise por categoria."
+        }
+      },
+      "exports": {
+        "title": "Exportar relatório (CSV)",
+        "fields": {
+          "exportType": "Tipo de exportação"
+        },
+        "actions": {
+          "generating": "Gerando CSV...",
+          "generate": "Gerar e baixar CSV"
+        }
+      },
+      "migration": {
+        "title": "Migração completa (JSON)",
+        "subtitle": "Exporte ou importe todo o histórico financeiro.",
+        "export": {
+          "title": "Exportar dados",
+          "description": "Gere um snapshot para backup, análises externas ou migrações seguras.",
+          "loading": "Gerando JSON...",
+          "button": "Exportar snapshot JSON"
+        },
+        "import": {
+          "title": "Importar dados",
+          "description": "Restaure um histórico a partir de um arquivo JSON exportado.",
+          "chooseFile": "+ Escolher arquivo .json",
+          "replaceExisting": "Substituir dados atuais da conta",
+          "loading": "Importando...",
+          "button": "Importar snapshot JSON"
+        }
+      },
+      "permissions": {
+        "readOnlyHint": "Sua conta está em modo de leitura para exportação e migração de dados."
+      },
+      "charts": {
+        "expectedNet": {
+          "title": "Saldo previsto por mês",
+          "summary": "Acumulado: {value}",
+          "secondary": "Último mês: {value}"
+        },
+        "realizedNet": {
+          "title": "Saldo realizado por mês",
+          "summary": "Acumulado: {value}",
+          "secondary": "Último mês: {value}"
+        },
+        "expectedIncome": {
+          "title": "Receitas previstas",
+          "summary": "Acumulado: {value}",
+          "secondary": "Média: {value}"
+        },
+        "expectedExpense": {
+          "title": "Despesas previstas",
+          "summary": "Acumulado: {value}",
+          "secondary": "Média: {value}"
+        },
+        "netGap": {
+          "title": "Gap previsto × realizado",
+          "summary": "Média: {value}",
+          "secondary": "Maior desvio: {value}"
+        }
+      }
+    },
+    "settingsView": {
+      "categories": {
+        "kindOptions": {
+          "both": "Ambos (pagar e receber)",
+          "payable": "Somente pagar",
+          "receivable": "Somente receber",
+          "investment": "Investimento"
+        },
+        "summary": "{count} categoria(s)",
+        "form": {
+          "titleEdit": "Editar categoria",
+          "titleCreate": "Nova categoria",
+          "fields": {
+            "name": {
+              "label": "Nome da categoria",
+              "placeholder": "Ex.: Moradia"
+            },
+            "kind": {
+              "label": "Aplicação"
+            }
+          }
+        },
+        "loading": "Carregando categorias...",
+        "columns": {
+          "name": "Nome",
+          "kind": "Tipo",
+          "actions": "Ação"
+        },
+        "empty": {
+          "title": "Sem categorias",
+          "description": "Crie sua primeira categoria."
+        }
+      },
+      "recurringTypes": {
+        "summary": "{count} tipo(s)",
+        "form": {
+          "titleEdit": "Editar tipo recorrente",
+          "titleCreate": "Novo tipo recorrente",
+          "fields": {
+            "name": {
+              "label": "Nome",
+              "placeholder": "Ex.: Quinzenal"
+            },
+            "description": {
+              "label": "Descrição",
+              "placeholder": "Descrição opcional"
+            }
+          }
+        },
+        "columns": {
+          "name": "Nome",
+          "description": "Descrição",
+          "actions": "Ação"
+        },
+        "empty": {
+          "title": "Sem tipos recorrentes",
+          "description": "Crie tipos para organizar suas recorrências."
+        },
+        "confirmDelete": {
+          "title": "Excluir tipo recorrente",
+          "message": "Deseja realmente excluir {name}?"
+        }
+      },
+      "currency": {
+        "summary": "{count} cotação(ões)",
+        "title": "Cotações de moeda",
+        "form": {
+          "fields": {
+            "quoteDate": {
+              "label": "Data"
+            },
+            "currencyCode": {
+              "label": "Moeda (código)",
+              "placeholder": "USD"
+            },
+            "rateBrl": {
+              "label": "Cotação (R$)"
+            }
+          }
+        },
+        "columns": {
+          "quoteDate": "Data",
+          "currencyCode": "Moeda",
+          "rateBrl": "Cotação (R$)"
+        },
+        "empty": {
+          "title": "Sem cotações",
+          "description": "Registre cotações manualmente ou atualize via API do Bacen."
+        }
+      },
+      "notifications": {
+        "invalidRecurringType": "Tipo recorrente inválido para exclusão.",
+        "loadError": "Não foi possível carregar as configurações financeiras.",
+        "writeDenied": "Você não possui permissão para alterar configurações financeiras.",
+        "categoryNameRequired": "Informe o nome da categoria.",
+        "categoryUpdated": "Categoria atualizada com sucesso.",
+        "categoryCreated": "Categoria criada com sucesso.",
+        "categorySaveError": "Erro ao salvar categoria.",
+        "recurringNameRequired": "Informe o nome do tipo recorrente.",
+        "recurringUpdated": "Tipo recorrente atualizado com sucesso.",
+        "recurringCreated": "Tipo recorrente criado com sucesso.",
+        "recurringSaveError": "Erro ao salvar tipo recorrente.",
+        "recurringDeleted": "Tipo recorrente removido com sucesso.",
+        "recurringDeleteError": "Erro ao excluir tipo recorrente.",
+        "currencyRequired": "Preencha data, moeda e cotação válidas.",
+        "currencySaved": "Cotação registrada com sucesso.",
+        "currencySaveError": "Erro ao registrar cotação.",
+        "childRenderError": "Erro inesperado ao renderizar configurações financeiras."
+      },
+      "actions": {
+        "saving": "Salvando...",
+        "saveChanges": "Salvar alterações",
+        "createCategory": "Criar categoria",
+        "cancel": "Cancelar",
+        "edit": "Editar",
+        "createRecurringType": "Criar tipo",
+        "delete": "Excluir",
+        "saveCurrencyRate": "Registrar cotação"
+      },
+      "pagination": {
+        "summary": "Página {page} de {totalPages}",
+        "previous": "Anterior",
+        "next": "Próxima"
+      },
+      "permissions": {
+        "readOnlyHint": "Sua conta está em modo de leitura para configurações financeiras."
+      }
+    }
   }
 }

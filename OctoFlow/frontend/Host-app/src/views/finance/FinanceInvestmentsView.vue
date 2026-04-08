@@ -1,36 +1,66 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useFinanceStore } from '../../stores/financeStore'
-import { useNotification } from '../../composables/useNotification'
-import { RemoteFinanceEmptyState } from '../../federation/remoteComponents'
 import {
-  createFinanceSimulation,
-  convertFinanceSimulationToPlan,
-  fetchFinanceInvestmentPlans,
-  updateFinanceInvestmentPlan,
-} from '../../services/financeInvestments'
+  computed,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
+import { storeToRefs } from 'pinia'
 import {
   FINANCE_INVESTMENT_TYPE_OPTIONS,
   FINANCE_INVESTMENT_YIELD_MODE_OPTIONS,
 } from '../../constants/financeTerms'
+import { useFinancePermissions } from '../../composables/useFinancePermissions'
+import { useNotification } from '../../composables/useNotification'
+import { useScopedI18n } from '../../composables/useScopedI18n'
+import { RemoteFinanceEmptyState } from '../../federation/remoteComponents'
+import {
+  convertFinanceSimulationToPlan,
+  createFinanceSimulation,
+  fetchFinanceInvestmentPlans,
+} from '../../services/financeInvestments'
+import { useFinanceStore } from '../../stores/financeStore'
+import { extractHttpMessage } from '../../utils/httpErrors'
+import {
+  sanitizeDateInput,
+  sanitizeDecimal,
+  sanitizeIdentifier,
+  sanitizeInteger,
+  sanitizeSingleLineText,
+} from '../../utils/financeInputSanitizers'
+
+const LIST_ITEMS_PER_PAGE = 10
 
 const financeStore = useFinanceStore()
 const { categories, bankAccounts } = storeToRefs(financeStore)
 const { notifyUser } = useNotification()
+const { translateScoped, currentLocale } = useScopedI18n('financeModule.investmentsView')
+const { canWriteFinance } = useFinancePermissions()
 
-const LIST_ITEMS_PER_PAGE = 10
 const investmentPlans = ref([])
 const latestSimulation = ref(null)
 const loadingPlans = ref(false)
+const runningSimulation = ref(false)
+const convertingSimulationToPlan = ref(false)
 const currentPage = ref(1)
+const financeViewIsActive = ref(false)
+const investmentPlanCountBeforeDomUpdate = ref(0)
 
 const investmentTypeOptions = FINANCE_INVESTMENT_TYPE_OPTIONS
 const yieldModeOptions = FINANCE_INVESTMENT_YIELD_MODE_OPTIONS
 
 const simulationForm = reactive({
   investmentType: 'SELIC',
-  label: 'Simulação padrão',
+  label: '',
   initialAmountBrl: '1000',
   monthlyContributionBrl: '300',
   periodMonths: 24,
@@ -39,7 +69,7 @@ const simulationForm = reactive({
 })
 
 const convertPlanForm = reactive({
-  label: 'Plano de investimento',
+  label: '',
   startDate: '',
   contributionDay: 5,
   generateYieldEntries: false,
@@ -49,13 +79,20 @@ const convertPlanForm = reactive({
 })
 
 const paginatedPlans = computed(() => {
-  const start = (currentPage.value - 1) * LIST_ITEMS_PER_PAGE
-  return investmentPlans.value.slice(start, start + LIST_ITEMS_PER_PAGE)
+  const startIndex = (currentPage.value - 1) * LIST_ITEMS_PER_PAGE
+  return investmentPlans.value.slice(startIndex, startIndex + LIST_ITEMS_PER_PAGE)
 })
+
 const totalPages = computed(() => Math.max(1, Math.ceil(investmentPlans.value.length / LIST_ITEMS_PER_PAGE)))
+const localeForFormatting = computed(() => (
+  String(currentLocale.value || '').toLowerCase() === 'en-us' ? 'en-US' : 'pt-BR'
+))
 
 const investmentSummary = computed(() => {
-  if (!latestSimulation.value) return null
+  if (!latestSimulation.value) {
+    return null
+  }
+
   return {
     invested: formatCurrency(latestSimulation.value.totalInvestedBrl),
     yield: formatCurrency(latestSimulation.value.totalYieldBrl),
@@ -63,187 +100,414 @@ const investmentSummary = computed(() => {
   }
 })
 
-function formatCurrency(val) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 }).format(Number(val || 0))
+const plansSummaryLabel = computed(() => {
+  return translateScoped('list.summary', '{count} plano(s)', { count: investmentPlans.value.length })
+})
+
+function formatCurrency(rawValue) {
+  return new Intl.NumberFormat(localeForFormatting.value, {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+  }).format(Number(rawValue || 0))
 }
 
-async function loadInvestmentPlans() {
+function resetConvertPlanForm() {
+  convertPlanForm.label = ''
+  convertPlanForm.startDate = ''
+  convertPlanForm.contributionDay = 5
+  convertPlanForm.generateYieldEntries = false
+  convertPlanForm.yieldMode = 'NONE'
+  convertPlanForm.categoryId = ''
+  convertPlanForm.defaultBankAccountId = ''
+}
+
+function buildSimulationPayload() {
+  const normalizedInvestmentType = String(simulationForm.investmentType || '').trim().toUpperCase()
+  const allowedInvestmentType = investmentTypeOptions.some((option) => option.value === normalizedInvestmentType)
+    ? normalizedInvestmentType
+    : 'SELIC'
+
+  const normalizedRateInputType = String(simulationForm.rateInputType || '').trim().toUpperCase()
+  const allowedRateInputType = ['ANNUAL', 'MONTHLY'].includes(normalizedRateInputType)
+    ? normalizedRateInputType
+    : 'ANNUAL'
+
+  const normalizedLabel = sanitizeSingleLineText(
+    simulationForm.label,
+    100,
+  ) || translateScoped('simulation.defaultLabel', 'Simulação padrão')
+
+  return {
+    investmentType: allowedInvestmentType,
+    label: normalizedLabel,
+    initialAmountBrl: sanitizeDecimal(simulationForm.initialAmountBrl, { min: 0, max: 999999999, decimals: 2, defaultValue: 0 }),
+    monthlyContributionBrl: sanitizeDecimal(simulationForm.monthlyContributionBrl, { min: 0, max: 999999999, decimals: 2, defaultValue: 0 }),
+    periodMonths: sanitizeInteger(simulationForm.periodMonths, { min: 1, max: 600, defaultValue: 1 }),
+    rateInputType: allowedRateInputType,
+    rateValue: sanitizeDecimal(simulationForm.rateValue, { min: 0, max: 1000, decimals: 4, defaultValue: 0 }),
+  }
+}
+
+function buildConvertPlanPayload() {
+  const normalizedYieldMode = String(convertPlanForm.yieldMode || '').trim().toUpperCase()
+  const allowedYieldMode = yieldModeOptions.some((option) => option.value === normalizedYieldMode)
+    ? normalizedYieldMode
+    : 'NONE'
+
+  return {
+    label: sanitizeSingleLineText(convertPlanForm.label, 100)
+      || translateScoped('convert.defaultPlanLabel', 'Plano de investimento'),
+    startDate: sanitizeDateInput(convertPlanForm.startDate),
+    contributionDay: sanitizeInteger(convertPlanForm.contributionDay, { min: 1, max: 31, defaultValue: 5 }),
+    generateYieldEntries: convertPlanForm.generateYieldEntries === true,
+    yieldMode: allowedYieldMode,
+    categoryId: sanitizeIdentifier(convertPlanForm.categoryId),
+    defaultBankAccountId: sanitizeIdentifier(convertPlanForm.defaultBankAccountId),
+  }
+}
+
+async function loadInvestmentPlans(showErrorNotification = false) {
   loadingPlans.value = true
+
   try {
-    const res = await fetchFinanceInvestmentPlans()
-    investmentPlans.value = res.data?.items || []
-  } catch (err) {
-    console.error('[FinanceInvestmentsView] loadPlans error:', err)
+    const response = await fetchFinanceInvestmentPlans()
+    if (!financeViewIsActive.value) {
+      return
+    }
+
+    investmentPlans.value = Array.isArray(response.data?.items) ? response.data.items : []
+  } catch (error) {
+    if (showErrorNotification && financeViewIsActive.value) {
+      notifyUser(extractHttpMessage(error, translateScoped('notifications.loadPlansError', 'Não foi possível carregar os investimentos.')), 'error')
+    }
   } finally {
     loadingPlans.value = false
   }
 }
 
 async function submitSimulation() {
+  if (!canWriteFinance.value) {
+    notifyUser(translateScoped('notifications.writeDenied', 'Você não possui permissão para simular investimentos.'), 'warning')
+    return
+  }
+
+  if (runningSimulation.value) {
+    return
+  }
+
+  const payload = buildSimulationPayload()
+
+  runningSimulation.value = true
+
   try {
-    const res = await createFinanceSimulation({
-      investmentType: simulationForm.investmentType,
-      label: simulationForm.label,
-      initialAmountBrl: Number(simulationForm.initialAmountBrl || 0),
-      monthlyContributionBrl: Number(simulationForm.monthlyContributionBrl || 0),
-      periodMonths: Number(simulationForm.periodMonths || 1),
-      rateInputType: simulationForm.rateInputType,
-      rateValue: Number(simulationForm.rateValue || 0),
-    })
-    latestSimulation.value = res.data?.item || null
-    notifyUser('Simulação gerada com sucesso.', 'success')
-  } catch (err) {
-    notifyUser('Erro ao gerar simulação.', 'error')
+    const response = await createFinanceSimulation(payload)
+    if (!financeViewIsActive.value) {
+      return
+    }
+
+    latestSimulation.value = response.data?.item || null
+
+    if (!convertPlanForm.label) {
+      convertPlanForm.label = payload.label
+    }
+
+    notifyUser(translateScoped('notifications.simulationSuccess', 'Simulação gerada com sucesso.'), 'success')
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.simulationError', 'Erro ao gerar simulação.')), 'error')
+  } finally {
+    runningSimulation.value = false
   }
 }
 
 async function convertSimulationToPlan() {
-  if (!latestSimulation.value?.id) return
+  if (!canWriteFinance.value) {
+    notifyUser(translateScoped('notifications.writeDenied', 'Você não possui permissão para criar planos de investimento.'), 'warning')
+    return
+  }
+
+  if (convertingSimulationToPlan.value) {
+    return
+  }
+
+  const simulationId = sanitizeIdentifier(latestSimulation.value?.id)
+  if (simulationId === '') {
+    notifyUser(translateScoped('notifications.simulationRequired', 'Gere uma simulação válida antes de criar o plano.'), 'warning')
+    return
+  }
+
+  const payload = buildConvertPlanPayload()
+  convertingSimulationToPlan.value = true
+
   try {
-    await convertFinanceSimulationToPlan(latestSimulation.value.id, { ...convertPlanForm })
-    notifyUser('Plano de investimento criado a partir da simulação.', 'success')
+    await convertFinanceSimulationToPlan(simulationId, payload)
+    if (!financeViewIsActive.value) {
+      return
+    }
+
+    notifyUser(translateScoped('notifications.convertSuccess', 'Plano de investimento criado a partir da simulação.'), 'success')
     latestSimulation.value = null
-    await loadInvestmentPlans()
-  } catch (err) {
-    notifyUser('Erro ao converter simulação.', 'error')
+    resetConvertPlanForm()
+    await loadInvestmentPlans(false)
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.convertError', 'Erro ao converter simulação.')), 'error')
+  } finally {
+    convertingSimulationToPlan.value = false
   }
 }
 
+watch(totalPages, (nextTotalPages) => {
+  if (currentPage.value > nextTotalPages) {
+    currentPage.value = nextTotalPages
+  }
+})
+
+onBeforeMount(() => {
+  void financeStore.loadCatalogs(false)
+})
+
 onMounted(() => {
-  loadInvestmentPlans()
+  financeViewIsActive.value = true
+
+  if (!simulationForm.label) {
+    simulationForm.label = translateScoped('simulation.defaultLabel', 'Simulação padrão')
+  }
+  if (!convertPlanForm.label) {
+    convertPlanForm.label = translateScoped('convert.defaultPlanLabel', 'Plano de investimento')
+  }
+
+  void loadInvestmentPlans(true)
+})
+
+onBeforeUpdate(() => {
+  investmentPlanCountBeforeDomUpdate.value = investmentPlans.value.length
+})
+
+onUpdated(() => {
+  if (investmentPlanCountBeforeDomUpdate.value !== investmentPlans.value.length && currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
+})
+
+onActivated(() => {
+  financeViewIsActive.value = true
+  void loadInvestmentPlans(false)
+})
+
+onDeactivated(() => {
+  financeViewIsActive.value = false
+  runningSimulation.value = false
+  convertingSimulationToPlan.value = false
+})
+
+onBeforeUnmount(() => {
+  financeViewIsActive.value = false
+  runningSimulation.value = false
+  convertingSimulationToPlan.value = false
+  resetConvertPlanForm()
+})
+
+onUnmounted(() => {
+  investmentPlanCountBeforeDomUpdate.value = 0
+  currentPage.value = 1
+  latestSimulation.value = null
+})
+
+onErrorCaptured((error) => {
+  if (!financeViewIsActive.value) {
+    return false
+  }
+
+  console.error('[FinanceInvestmentsView] child render error:', error)
+  notifyUser(translateScoped('notifications.childRenderError', 'Erro inesperado ao renderizar investimentos.'), 'error')
+  return false
 })
 </script>
 
 <template>
   <section class="finance-section">
-    <!-- Simulação -->
     <article class="finance-panel">
       <header>
-        <h3>Simulação de investimento</h3>
+        <h3>{{ translateScoped('simulation.title', 'Simulação de investimento') }}</h3>
       </header>
 
       <form class="finance-form-grid" @submit.prevent="submitSimulation">
         <label>
-          <span>Tipo de investimento</span>
-          <select v-model="simulationForm.investmentType">
-            <option v-for="opt in investmentTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <span>{{ translateScoped('simulation.fields.investmentType', 'Tipo de investimento') }}</span>
+          <select v-model="simulationForm.investmentType" :disabled="runningSimulation || !canWriteFinance">
+            <option v-for="option in investmentTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
         </label>
 
         <label>
-          <span>Rótulo</span>
-          <input v-model="simulationForm.label" type="text">
+          <span>{{ translateScoped('simulation.fields.label', 'Rótulo') }}</span>
+          <input
+            v-model="simulationForm.label"
+            type="text"
+            :placeholder="translateScoped('simulation.fields.labelPlaceholder', 'Simulação padrão')"
+            :disabled="runningSimulation || !canWriteFinance"
+          >
         </label>
 
         <label>
-          <span>Aporte inicial (R$)</span>
-          <input v-model="simulationForm.initialAmountBrl" type="number" step="0.01" min="0">
+          <span>{{ translateScoped('simulation.fields.initialAmount', 'Aporte inicial (R$)') }}</span>
+          <input
+            v-model="simulationForm.initialAmountBrl"
+            type="number"
+            step="0.01"
+            min="0"
+            :disabled="runningSimulation || !canWriteFinance"
+          >
         </label>
 
         <label>
-          <span>Aporte mensal (R$)</span>
-          <input v-model="simulationForm.monthlyContributionBrl" type="number" step="0.01" min="0">
+          <span>{{ translateScoped('simulation.fields.monthlyContribution', 'Aporte mensal (R$)') }}</span>
+          <input
+            v-model="simulationForm.monthlyContributionBrl"
+            type="number"
+            step="0.01"
+            min="0"
+            :disabled="runningSimulation || !canWriteFinance"
+          >
         </label>
 
         <label>
-          <span>Período (meses)</span>
-          <input v-model="simulationForm.periodMonths" type="number" min="1" required>
+          <span>{{ translateScoped('simulation.fields.periodMonths', 'Período (meses)') }}</span>
+          <input
+            v-model="simulationForm.periodMonths"
+            type="number"
+            min="1"
+            :disabled="runningSimulation || !canWriteFinance"
+            required
+          >
         </label>
 
         <label>
-          <span>Taxa (%)</span>
-          <input v-model="simulationForm.rateValue" type="number" step="0.01" min="0">
+          <span>{{ translateScoped('simulation.fields.rateValue', 'Taxa (%)') }}</span>
+          <input
+            v-model="simulationForm.rateValue"
+            type="number"
+            step="0.01"
+            min="0"
+            :disabled="runningSimulation || !canWriteFinance"
+          >
         </label>
 
         <label>
-          <span>Tipo de taxa</span>
-          <select v-model="simulationForm.rateInputType">
-            <option value="ANNUAL">Anual</option>
-            <option value="MONTHLY">Mensal</option>
+          <span>{{ translateScoped('simulation.fields.rateInputType', 'Tipo de taxa') }}</span>
+          <select v-model="simulationForm.rateInputType" :disabled="runningSimulation || !canWriteFinance">
+            <option value="ANNUAL">{{ translateScoped('simulation.rateTypes.annual', 'Anual') }}</option>
+            <option value="MONTHLY">{{ translateScoped('simulation.rateTypes.monthly', 'Mensal') }}</option>
           </select>
         </label>
 
-        <button class="finance-action-button" type="submit">Simular</button>
+        <button class="finance-action-button" type="submit" :disabled="runningSimulation || !canWriteFinance">
+          {{ runningSimulation
+            ? translateScoped('actions.simulating', 'Simulando...')
+            : translateScoped('actions.simulate', 'Simular') }}
+        </button>
       </form>
 
-      <div v-if="investmentSummary" class="finance-kpi-grid" style="margin-top: 16px;">
-        <div class="finance-panel" style="text-align: center;">
-          <small>Total investido</small>
-          <strong style="font-size: 1.2rem;">{{ investmentSummary.invested }}</strong>
+      <div v-if="investmentSummary" class="finance-kpi-grid finance-kpi-summary-grid">
+        <div class="finance-panel finance-kpi-summary-card">
+          <small>{{ translateScoped('summary.invested', 'Total investido') }}</small>
+          <strong class="finance-kpi-summary-value">{{ investmentSummary.invested }}</strong>
         </div>
-        <div class="finance-panel" style="text-align: center;">
-          <small>Rendimento</small>
-          <strong style="font-size: 1.2rem;">{{ investmentSummary.yield }}</strong>
+        <div class="finance-panel finance-kpi-summary-card">
+          <small>{{ translateScoped('summary.yield', 'Rendimento') }}</small>
+          <strong class="finance-kpi-summary-value">{{ investmentSummary.yield }}</strong>
         </div>
-        <div class="finance-panel" style="text-align: center;">
-          <small>Valor final</small>
-          <strong style="font-size: 1.2rem;">{{ investmentSummary.finalAmount }}</strong>
+        <div class="finance-panel finance-kpi-summary-card">
+          <small>{{ translateScoped('summary.finalAmount', 'Valor final') }}</small>
+          <strong class="finance-kpi-summary-value">{{ investmentSummary.finalAmount }}</strong>
         </div>
       </div>
 
       <template v-if="latestSimulation">
-        <hr style="border: none; border-top: 1px solid var(--line); margin: 16px 0;">
+        <hr class="finance-divider">
         <form class="finance-form-grid" @submit.prevent="convertSimulationToPlan">
           <label>
-            <span>Rótulo do plano</span>
-            <input v-model="convertPlanForm.label" type="text" required>
+            <span>{{ translateScoped('convert.fields.label', 'Rótulo do plano') }}</span>
+            <input
+              v-model="convertPlanForm.label"
+              type="text"
+              :disabled="convertingSimulationToPlan || !canWriteFinance"
+              required
+            >
           </label>
 
           <label>
-            <span>Data de início</span>
-            <input v-model="convertPlanForm.startDate" type="date">
+            <span>{{ translateScoped('convert.fields.startDate', 'Data de início') }}</span>
+            <input
+              v-model="convertPlanForm.startDate"
+              type="date"
+              :disabled="convertingSimulationToPlan || !canWriteFinance"
+            >
           </label>
 
           <label>
-            <span>Dia do aporte</span>
-            <input v-model="convertPlanForm.contributionDay" type="number" min="1" max="31">
+            <span>{{ translateScoped('convert.fields.contributionDay', 'Dia do aporte') }}</span>
+            <input
+              v-model="convertPlanForm.contributionDay"
+              type="number"
+              min="1"
+              max="31"
+              :disabled="convertingSimulationToPlan || !canWriteFinance"
+            >
           </label>
 
           <label>
-            <span>Modo de rendimento</span>
-            <select v-model="convertPlanForm.yieldMode">
-              <option v-for="opt in yieldModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <span>{{ translateScoped('convert.fields.yieldMode', 'Modo de rendimento') }}</span>
+            <select v-model="convertPlanForm.yieldMode" :disabled="convertingSimulationToPlan || !canWriteFinance">
+              <option v-for="option in yieldModeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </label>
 
           <label>
-            <span>Categoria</span>
-            <select v-model="convertPlanForm.categoryId">
-              <option value="">Sem categoria</option>
-              <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+            <span>{{ translateScoped('convert.fields.category', 'Categoria') }}</span>
+            <select v-model="convertPlanForm.categoryId" :disabled="convertingSimulationToPlan || !canWriteFinance">
+              <option value="">{{ translateScoped('convert.options.noCategory', 'Sem categoria') }}</option>
+              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
             </select>
           </label>
 
           <label>
-            <span>Conta bancária</span>
-            <select v-model="convertPlanForm.defaultBankAccountId">
-              <option value="">Sem conta</option>
-              <option v-for="bank in bankAccounts" :key="bank.id" :value="bank.id">{{ bank.name }}</option>
+            <span>{{ translateScoped('convert.fields.bankAccount', 'Conta bancária') }}</span>
+            <select v-model="convertPlanForm.defaultBankAccountId" :disabled="convertingSimulationToPlan || !canWriteFinance">
+              <option value="">{{ translateScoped('convert.options.noBankAccount', 'Sem conta') }}</option>
+              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
             </select>
           </label>
 
-          <button class="finance-action-button" type="submit">Criar plano a partir da simulação</button>
+          <button class="finance-action-button" type="submit" :disabled="convertingSimulationToPlan || !canWriteFinance">
+            {{ convertingSimulationToPlan
+              ? translateScoped('actions.converting', 'Convertendo...')
+              : translateScoped('actions.convert', 'Criar plano a partir da simulação') }}
+          </button>
         </form>
       </template>
     </article>
 
-    <!-- Planos cadastrados -->
     <article class="finance-panel">
       <header>
-        <h3>Investimentos cadastrados</h3>
-        <small>{{ investmentPlans.length }} plano{{ investmentPlans.length !== 1 ? 's' : '' }}</small>
+        <h3>{{ translateScoped('list.title', 'Investimentos cadastrados') }}</h3>
+        <small>{{ plansSummaryLabel }}</small>
       </header>
 
-      <div v-if="paginatedPlans.length" class="finance-inline-table-wrap">
+      <div v-if="loadingPlans && !investmentPlans.length" class="finance-muted-block">
+        {{ translateScoped('list.loading', 'Carregando investimentos...') }}
+      </div>
+
+      <div v-else-if="paginatedPlans.length" class="finance-inline-table-wrap">
         <table class="finance-inline-table">
           <thead>
             <tr>
-              <th>Rótulo</th>
-              <th>Tipo</th>
-              <th>Aporte inicial</th>
-              <th>Aporte mensal</th>
-              <th>Período</th>
-              <th>Saldo estimado</th>
+              <th>{{ translateScoped('list.columns.label', 'Rótulo') }}</th>
+              <th>{{ translateScoped('list.columns.type', 'Tipo') }}</th>
+              <th>{{ translateScoped('list.columns.initialAmount', 'Aporte inicial') }}</th>
+              <th>{{ translateScoped('list.columns.monthlyContribution', 'Aporte mensal') }}</th>
+              <th>{{ translateScoped('list.columns.period', 'Período') }}</th>
+              <th>{{ translateScoped('list.columns.estimatedAmount', 'Saldo estimado') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -252,19 +516,30 @@ onMounted(() => {
               <td>{{ plan.investmentType }}</td>
               <td>{{ formatCurrency(plan.initialAmountBrl) }}</td>
               <td>{{ formatCurrency(plan.monthlyContributionBrl) }}</td>
-              <td>{{ plan.periodMonths }} meses</td>
+              <td>{{ plan.periodMonths }} {{ translateScoped('list.monthsLabel', 'meses') }}</td>
               <td>{{ formatCurrency(plan.estimatedFinalAmountBrl || plan.finalAmountBrl) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <RemoteFinanceEmptyState v-else title="Sem investimentos" description="Simule e crie seu primeiro plano de investimento." />
+
+      <RemoteFinanceEmptyState
+        v-else
+        :title="translateScoped('list.empty.title', 'Sem investimentos')"
+        :description="translateScoped('list.empty.description', 'Simule e crie seu primeiro plano de investimento.')"
+      />
 
       <div v-if="totalPages > 1" class="finance-pagination">
-        <span class="finance-pagination-summary">Página {{ currentPage }} de {{ totalPages }}</span>
+        <span class="finance-pagination-summary">
+          {{ translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: currentPage, totalPages }) }}
+        </span>
         <div class="finance-pagination-actions">
-          <button type="button" class="finance-inline-action" :disabled="currentPage <= 1" @click="currentPage--">Anterior</button>
-          <button type="button" class="finance-inline-action" :disabled="currentPage >= totalPages" @click="currentPage++">Próxima</button>
+          <button type="button" class="finance-inline-action" :disabled="currentPage <= 1" @click="currentPage--">
+            {{ translateScoped('pagination.previous', 'Anterior') }}
+          </button>
+          <button type="button" class="finance-inline-action" :disabled="currentPage >= totalPages" @click="currentPage++">
+            {{ translateScoped('pagination.next', 'Próxima') }}
+          </button>
         </div>
       </div>
     </article>

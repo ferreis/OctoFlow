@@ -1,6 +1,17 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
+import { useI18n } from '../../composables/useI18n'
 import { useNotification } from '../../composables/useNotification'
 import { formatDateTime } from '../../utils/date'
 import { splitRepositoryKey } from '../../utils/githubRepository'
@@ -29,8 +40,15 @@ const sessionStore = useSessionStore()
 const { currentUser: sessionCurrentUser } = storeToRefs(sessionStore)
 const requestClient = props.request || sessionStore.authRequest
 const effectiveCurrentUser = computed(() => props.currentUser || sessionCurrentUser.value)
+const { translate, currentLocale } = useI18n()
 
 const { notifyUser } = useNotification(props.notify)
+
+const ALLOWED_ISSUE_SCOPES = Object.freeze(['all', 'assigned', 'repository'])
+const ALLOWED_SOURCE_FILTERS = Object.freeze(['all', 'github', 'local'])
+const ALLOWED_STATE_FILTERS = Object.freeze(['open', 'closed', 'all'])
+const TASK_SEARCH_MAX_LENGTH = 180
+const TASK_REPOSITORY_KEY_MAX_LENGTH = 160
 
 const issueBoard = ref(null)
 const localTaskBoard = ref(null)
@@ -62,6 +80,78 @@ const draftSelectedTicketType = ref('all')
 const draftSelectedRepositoryKey = ref('all')
 const currentPage = ref(1)
 const ITEMS_PER_PAGE = 10
+const tasksKeepAlivePaused = ref(false)
+const tasksScreenRuntimeError = ref('')
+
+function translateTasks(messageKey, fallbackMessage = '', variables = {}) {
+  const translatedMessage = translate(messageKey, variables)
+  return translatedMessage === messageKey ? fallbackMessage : translatedMessage
+}
+
+function replaceControlCharactersWithSpaces(rawValue) {
+  let sanitizedText = ''
+  const inputText = String(rawValue || '')
+
+  for (const currentCharacter of inputText) {
+    const characterCode = currentCharacter.charCodeAt(0)
+    const isControlCharacter = characterCode < 32 || characterCode === 127
+    sanitizedText += isControlCharacter ? ' ' : currentCharacter
+  }
+
+  return sanitizedText
+}
+
+function sanitizeSingleLineText(rawValue, maxLength = TASK_SEARCH_MAX_LENGTH) {
+  const normalizedValue = replaceControlCharactersWithSpaces(rawValue)
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return normalizedValue.slice(0, maxLength)
+}
+
+function sanitizeSelectionValue(rawValue, allowedValues, fallbackValue) {
+  const normalizedValue = String(rawValue || '').trim().toLowerCase()
+  return allowedValues.includes(normalizedValue) ? normalizedValue : fallbackValue
+}
+
+function sanitizeRepositorySelection(rawRepositoryKey) {
+  const normalizedRepositoryKey = sanitizeSingleLineText(rawRepositoryKey, TASK_REPOSITORY_KEY_MAX_LENGTH)
+  if (normalizedRepositoryKey === '' || normalizedRepositoryKey === 'all') {
+    return 'all'
+  }
+
+  const repositoryKeyIsValid = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(normalizedRepositoryKey)
+  return repositoryKeyIsValid ? normalizedRepositoryKey : 'all'
+}
+
+function resolveSortLocaleCode() {
+  const normalizedLocaleCode = String(currentLocale.value || '').trim()
+  return normalizedLocaleCode !== '' ? normalizedLocaleCode : 'pt-BR'
+}
+
+function notifyTaskError(messageText) {
+  notifyUser(messageText, 'error')
+}
+
+function notifyTaskSuccess(messageText) {
+  notifyUser(messageText, 'success')
+}
+
+function notifyTaskInfo(messageText) {
+  notifyUser(messageText, 'info')
+}
+
+function notifyTaskWarning(messageText) {
+  notifyUser(messageText, 'warning')
+}
+
+function buildSearchableText(valuesList) {
+  if (!Array.isArray(valuesList)) {
+    return ''
+  }
+
+  return sanitizeSingleLineText(valuesList.filter(Boolean).join(' '), 2600).toLowerCase()
+}
 
 const repositories = computed(() => Array.isArray(issueBoard.value?.repositories) ? issueBoard.value.repositories : [])
 const issues = computed(() => Array.isArray(issueBoard.value?.items) ? issueBoard.value.items : [])
@@ -111,7 +201,7 @@ const repositoryFilterOptions = computed(() => {
     }
   }
 
-  return Array.from(catalog.values()).sort((left, right) => left.localeCompare(right, 'pt-BR'))
+  return Array.from(catalog.values()).sort((left, right) => left.localeCompare(right, resolveSortLocaleCode()))
 })
 const availableLabels = computed(() => {
   const labelsMap = new Map()
@@ -126,7 +216,7 @@ const availableLabels = computed(() => {
     }
   }
 
-  return Array.from(labelsMap.values()).sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+  return Array.from(labelsMap.values()).sort((left, right) => left.name.localeCompare(right.name, resolveSortLocaleCode()))
 })
 const availableTicketTypes = computed(() => {
   const types = new Map()
@@ -146,16 +236,13 @@ const taskEntries = computed(() => {
   const githubEntries = issues.value.map((issue) => ({
     entryKey: `github:${issue.id}`,
     entryType: 'github',
-    searchableText: [
+    searchableText: buildSearchableText([
       issue.title,
       issue.body,
       issue.repository?.nameWithOwner,
       issue.authorLogin,
       ...(issue.labels || []).map((label) => label.name),
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase(),
+    ]),
     repositoryKey: issue.repository?.nameWithOwner || '',
     state: issue.state,
     updatedAt: issue.updatedAt,
@@ -167,16 +254,13 @@ const taskEntries = computed(() => {
   const localEntries = localTasks.value.map((task) => ({
     entryKey: `local:${task.id}`,
     entryType: 'local',
-    searchableText: [
+    searchableText: buildSearchableText([
       task.title,
       task.body,
       task.repositoryKey,
       task.templateKey,
       task.syncError,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase(),
+    ]),
     repositoryKey: task.repositoryKey || '',
     state: task.state,
     updatedAt: task.updatedAt,
@@ -190,38 +274,43 @@ const taskEntries = computed(() => {
   })
 })
 const filteredTaskEntries = computed(() => {
-  const normalizedSearch = searchTerm.value.trim().toLowerCase()
+  const normalizedSearch = sanitizeSingleLineText(searchTerm.value, TASK_SEARCH_MAX_LENGTH).toLowerCase()
+  const normalizedSourceFilter = sanitizeSelectionValue(sourceFilter.value, ALLOWED_SOURCE_FILTERS, 'all')
+  const normalizedStateFilter = sanitizeSelectionValue(stateFilter.value, ALLOWED_STATE_FILTERS, 'open')
+  const normalizedRepositoryKey = sanitizeRepositorySelection(selectedRepositoryKey.value)
+  const normalizedSelectedLabel = sanitizeSingleLineText(selectedLabel.value, 120)
+  const normalizedSelectedTicketType = sanitizeSingleLineText(selectedTicketType.value, 60)
 
   return taskEntries.value.filter((entry) => {
-    if (sourceFilter.value !== 'all' && entry.entryType !== sourceFilter.value) {
+    if (normalizedSourceFilter !== 'all' && entry.entryType !== normalizedSourceFilter) {
       return false
     }
 
-    if (stateFilter.value === 'open' && entry.state === 'CLOSED') {
+    if (normalizedStateFilter === 'open' && entry.state === 'CLOSED') {
       return false
     }
 
-    if (stateFilter.value === 'closed' && entry.state !== 'CLOSED') {
+    if (normalizedStateFilter === 'closed' && entry.state !== 'CLOSED') {
       return false
     }
 
-    if (selectedRepositoryKey.value !== 'all' && entry.repositoryKey !== selectedRepositoryKey.value) {
+    if (normalizedRepositoryKey !== 'all' && entry.repositoryKey !== normalizedRepositoryKey) {
       return false
     }
 
     if (
-      selectedLabel.value !== 'all'
+      normalizedSelectedLabel !== 'all'
       && entry.entryType === 'github'
-      && !(entry.issue?.labels || []).some((label) => label.name === selectedLabel.value)
+      && !(entry.issue?.labels || []).some((label) => label.name === normalizedSelectedLabel)
     ) {
       return false
     }
 
-    if (selectedLabel.value !== 'all' && entry.entryType !== 'github') {
+    if (normalizedSelectedLabel !== 'all' && entry.entryType !== 'github') {
       return false
     }
 
-    if (selectedTicketType.value !== 'all' && entry.ticketType.key !== selectedTicketType.value) {
+    if (normalizedSelectedTicketType !== 'all' && entry.ticketType.key !== normalizedSelectedTicketType) {
       return false
     }
 
@@ -239,13 +328,21 @@ const paginatedTaskEntries = computed(() => {
 })
 const paginationSummary = computed(() => {
   if (filteredTaskEntries.value.length === 0) {
-    return '0 de 0 tarefas'
+    return translateTasks('tasksScreen.pagination.empty', '0 de 0 tarefas')
   }
 
   const start = (currentPage.value - 1) * ITEMS_PER_PAGE + 1
   const end = Math.min(currentPage.value * ITEMS_PER_PAGE, filteredTaskEntries.value.length)
 
-  return `${start}-${end} de ${filteredTaskEntries.value.length} tarefas`
+  return translateTasks(
+    'tasksScreen.pagination.summary',
+    `${start}-${end} de ${filteredTaskEntries.value.length} tarefas`,
+    {
+      start,
+      end,
+      total: filteredTaskEntries.value.length,
+    },
+  )
 })
 const visiblePages = computed(() => {
   const pages = []
@@ -278,18 +375,41 @@ const listLoading = computed(() => {
 })
 const scopeTitle = computed(() => {
   if (issueScope.value === 'repository') {
-    return activeRepository.value?.nameWithOwner || selectedRepositoryKey.value || 'Repositorio padrao do perfil'
+    return activeRepository.value?.nameWithOwner
+      || selectedRepositoryKey.value
+      || translateTasks('tasksScreen.scope.defaultRepository', 'Repositório padrão do perfil')
   }
 
   if (issueScope.value === 'assigned') {
-    return 'Issues atribuidas a mim'
+    return translateTasks('tasksScreen.scope.assigned', 'Issues atribuídas a mim')
   }
 
-  return 'Todas as issues dos seus repositorios'
+  return translateTasks('tasksScreen.scope.all', 'Todas as issues dos seus repositórios')
+})
+const scopeDescription = computed(() => {
+  if (issueScope.value === 'repository') {
+    return translateTasks(
+      'tasksScreen.scopeDescription.repository',
+      'Visualize e atualize itens de um repositório específico com filtros de estado, label e tipo.',
+    )
+  }
+
+  if (issueScope.value === 'assigned') {
+    return translateTasks(
+      'tasksScreen.scopeDescription.assigned',
+      'Mostra apenas issues atribuídas ao seu usuário para foco operacional.',
+    )
+  }
+
+  return translateTasks(
+    'tasksScreen.scopeDescription.all',
+    'Visão consolidada de issues do GitHub e tarefas locais pendentes de sincronização.',
+  )
 })
 const createRepositoryKey = computed(() => {
-  if (selectedRepositoryKey.value !== 'all') {
-    return selectedRepositoryKey.value
+  const normalizedRepositoryKey = sanitizeRepositorySelection(selectedRepositoryKey.value)
+  if (normalizedRepositoryKey !== 'all') {
+    return normalizedRepositoryKey
   }
 
   const currentRepositoryKey = String(activeRepository.value?.nameWithOwner || '').trim()
@@ -303,15 +423,46 @@ const lastSyncedLabel = computed(() => {
   const lastSyncedAt = cacheMeta.value?.lastSyncedAt
   return typeof lastSyncedAt === 'string' && lastSyncedAt.trim() !== ''
     ? formatDateTime(lastSyncedAt)
-    : 'sem sincronização anterior'
+    : translateTasks('tasksScreen.lastSync.none', 'sem sincronização anterior')
+})
+
+onBeforeMount(() => {
+  syncDraftFilters()
 })
 
 onMounted(async () => {
-  await Promise.all([
-    loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' }),
-    loadLocalTasks(),
-    loadIssueUpdateTemplates(),
-  ])
+  await loadInitialTasksData()
+})
+
+onActivated(async () => {
+  if (!tasksKeepAlivePaused.value) {
+    return
+  }
+
+  tasksKeepAlivePaused.value = false
+
+  if (!effectiveCurrentUser.value?.id) {
+    return
+  }
+
+  await loadInitialTasksData()
+})
+
+onDeactivated(() => {
+  tasksKeepAlivePaused.value = true
+})
+
+onBeforeUnmount(() => {
+  tasksKeepAlivePaused.value = true
+  selectedIssueId.value = ''
+  editingIssueId.value = ''
+  editingLocalTaskId.value = null
+  tasksScreenRuntimeError.value = ''
+})
+
+onErrorCaptured((capturedError) => {
+  tasksScreenRuntimeError.value = String(capturedError?.message || capturedError || '')
+  return false
 })
 
 watch(
@@ -335,11 +486,7 @@ watch(
     }
 
     if (userId !== previousUserId) {
-      await Promise.all([
-        loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' }),
-        loadLocalTasks(),
-        loadIssueUpdateTemplates(),
-      ])
+      await loadInitialTasksData()
     }
   },
 )
@@ -355,7 +502,7 @@ watch(error, (message) => {
     return
   }
 
-  notifyUser(message, 'error')
+  notifyTaskError(message)
   error.value = ''
 })
 
@@ -364,7 +511,7 @@ watch(success, (message) => {
     return
   }
 
-  notifyUser(message, 'success')
+  notifyTaskSuccess(message)
   success.value = ''
 })
 
@@ -373,11 +520,49 @@ watch(info, (message) => {
     return
   }
 
-  notifyUser(message, 'info')
+  notifyTaskInfo(message)
   info.value = ''
 })
 
+watch(tasksScreenRuntimeError, (runtimeErrorMessage) => {
+  if (!runtimeErrorMessage) {
+    return
+  }
+
+  notifyTaskError(
+    translateTasks(
+      'tasksScreen.errors.unexpectedChild',
+      'Ocorreu um erro inesperado na tela de tarefas.',
+    ),
+  )
+  tasksScreenRuntimeError.value = ''
+})
+
+function applySanitizedFilters() {
+  issueScope.value = sanitizeSelectionValue(issueScope.value, ALLOWED_ISSUE_SCOPES, 'all')
+  sourceFilter.value = sanitizeSelectionValue(sourceFilter.value, ALLOWED_SOURCE_FILTERS, 'all')
+  stateFilter.value = sanitizeSelectionValue(stateFilter.value, ALLOWED_STATE_FILTERS, 'open')
+  searchTerm.value = sanitizeSingleLineText(searchTerm.value, TASK_SEARCH_MAX_LENGTH)
+  selectedRepositoryKey.value = sanitizeRepositorySelection(selectedRepositoryKey.value)
+  selectedLabel.value = sanitizeSingleLineText(selectedLabel.value, 120) || 'all'
+  selectedTicketType.value = sanitizeSingleLineText(selectedTicketType.value, 60) || 'all'
+}
+
+async function loadInitialTasksData() {
+  if (!effectiveCurrentUser.value?.id) {
+    return
+  }
+
+  applySanitizedFilters()
+  await Promise.all([
+    loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' }),
+    loadLocalTasks(),
+    loadIssueUpdateTemplates(),
+  ])
+}
+
 function syncDraftFilters() {
+  applySanitizedFilters()
   draftIssueScope.value = issueScope.value
   draftSourceFilter.value = sourceFilter.value
   draftStateFilter.value = stateFilter.value
@@ -389,10 +574,11 @@ function syncDraftFilters() {
 
 async function loadCachedIssues(options = {}) {
   const resetSelection = Boolean(options.resetSelection)
-  const syncStrategy = options.syncStrategy || 'auto'
+  const syncStrategy = options.syncStrategy === 'force' ? 'force' : 'auto'
 
   loadingCache.value = true
   error.value = ''
+  applySanitizedFilters()
 
   if (resetSelection) {
     selectedIssueId.value = ''
@@ -408,7 +594,7 @@ async function loadCachedIssues(options = {}) {
     issueBoard.value = data || null
 
     if (issueScope.value === 'repository' && selectedRepositoryKey.value === 'all' && data?.repository?.nameWithOwner) {
-      selectedRepositoryKey.value = data.repository.nameWithOwner
+      selectedRepositoryKey.value = sanitizeRepositorySelection(data.repository.nameWithOwner)
     }
 
     alignSelection(resetSelection)
@@ -427,7 +613,10 @@ async function loadCachedIssues(options = {}) {
   } catch (requestError) {
     issueBoard.value = null
     selectedIssueId.value = ''
-    error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar o cache local das issues.')
+    error.value = extractHttpMessage(
+      requestError,
+      translateTasks('tasksScreen.errors.loadCache', 'Não foi possível carregar o cache local das issues.'),
+    )
   } finally {
     loadingCache.value = false
   }
@@ -440,7 +629,10 @@ async function loadLocalTasks() {
     const { data } = await fetchLocalTasks()
     localTaskBoard.value = data || null
   } catch (requestError) {
-    error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar as tarefas locais pendentes.')
+    error.value = extractHttpMessage(
+      requestError,
+      translateTasks('tasksScreen.errors.loadLocalTasks', 'Não foi possível carregar as tarefas locais pendentes.'),
+    )
   } finally {
     loadingLocalTasks.value = false
   }
@@ -452,13 +644,21 @@ async function loadIssueUpdateTemplates() {
     issueUpdateTemplates.value = Array.isArray(data?.items) ? data.items : []
   } catch (requestError) {
     issueUpdateTemplates.value = []
-    error.value = extractHttpMessage(requestError, 'Nao foi possivel carregar os templates de atualizacao.')
+    error.value = extractHttpMessage(
+      requestError,
+      translateTasks('tasksScreen.errors.loadTemplates', 'Não foi possível carregar os templates de atualização.'),
+    )
   }
 }
 
-async function syncIssues() {
+async function syncIssues(options = {}) {
+  const announceRefresh = options.announceRefresh === true
   syncing.value = true
   error.value = ''
+  if (announceRefresh) {
+    info.value = translateTasks('tasksScreen.info.syncStarted', 'Sincronização iniciada com o GitHub.')
+  }
+  applySanitizedFilters()
   try {
     const { data } = await requestClient({
       url: '/github/issues/assigned',
@@ -469,25 +669,30 @@ async function syncIssues() {
     issueBoard.value = data || null
 
     if (issueScope.value === 'repository' && selectedRepositoryKey.value === 'all' && data?.repository?.nameWithOwner) {
-      selectedRepositoryKey.value = data.repository.nameWithOwner
+      selectedRepositoryKey.value = sanitizeRepositorySelection(data.repository.nameWithOwner)
     }
 
     alignSelection(false)
     await loadLocalTasks()
   } catch (requestError) {
-    error.value = extractHttpMessage(requestError, 'Nao foi possivel sincronizar as issues com o GitHub.')
+    error.value = extractHttpMessage(
+      requestError,
+      translateTasks('tasksScreen.errors.syncGithub', 'Não foi possível sincronizar as issues com o GitHub.'),
+    )
   } finally {
     syncing.value = false
   }
 }
 
 function buildIssueParams() {
+  const normalizedScope = sanitizeSelectionValue(issueScope.value, ALLOWED_ISSUE_SCOPES, 'all')
+
   const params = {
-    scope: issueScope.value,
+    scope: normalizedScope,
   }
 
-  if (issueScope.value === 'repository') {
-    const repositorySelection = splitRepositoryKey(selectedRepositoryKey.value)
+  if (normalizedScope === 'repository') {
+    const repositorySelection = splitRepositoryKey(sanitizeRepositorySelection(selectedRepositoryKey.value))
     if (repositorySelection.owner !== '' && repositorySelection.name !== '') {
       params.repositoryOwner = repositorySelection.owner
       params.repositoryName = repositorySelection.name
@@ -511,8 +716,14 @@ function alignSelection(resetSelection) {
 function updateCacheInfo(data, syncStrategy) {
   if (!data?.cache?.available && (!Array.isArray(data?.items) || data.items.length === 0)) {
     info.value = syncStrategy === 'force'
-      ? 'Ainda nao existe cache local. O sistema vai buscar tudo no GitHub.'
-      : 'Cache local vazio. Se necessario, a tela sincroniza com o GitHub.'
+      ? translateTasks(
+        'tasksScreen.info.cacheMissingForce',
+        'Ainda não existe cache local. O sistema vai buscar tudo no GitHub.',
+      )
+      : translateTasks(
+        'tasksScreen.info.cacheMissingAuto',
+        'Cache local vazio. Se necessário, a tela sincroniza com o GitHub.',
+      )
     return
   }
 
@@ -551,15 +762,26 @@ function closeWorkItemModal() {
 async function handleIssueCreated(payload) {
   createModalOpen.value = false
   if (payload?.mode === 'local') {
-    success.value = 'Tarefa local criada com sucesso e adicionada na fila de sincronização.'
+    success.value = translateTasks(
+      'tasksScreen.success.localTaskCreated',
+      'Tarefa local criada com sucesso e adicionada na fila de sincronização.',
+    )
     await loadLocalTasks()
     return
   }
 
   selectedIssueId.value = payload?.issue?.id || selectedIssueId.value
+  const repositoryNameWithOwner = sanitizeSingleLineText(payload?.repository?.nameWithOwner || '', TASK_REPOSITORY_KEY_MAX_LENGTH)
   success.value = typeof payload?.issue?.number === 'number'
-    ? `Issue #${payload.issue.number} criada com sucesso${payload?.repository?.nameWithOwner ? ` em ${payload.repository.nameWithOwner}` : ''}.`
-    : 'Issue criada com sucesso.'
+    ? translateTasks(
+      'tasksScreen.success.issueCreatedWithNumber',
+      `Issue #${payload.issue.number} criada com sucesso${repositoryNameWithOwner ? ` em ${repositoryNameWithOwner}` : ''}.`,
+      {
+        number: payload.issue.number,
+        repository: repositoryNameWithOwner,
+      },
+    )
+    : translateTasks('tasksScreen.success.issueCreated', 'Issue criada com sucesso.')
 
   await loadCachedIssues({ resetSelection: false, syncStrategy: 'force' })
 }
@@ -571,9 +793,14 @@ function handleIssueUpdated(updatedIssue) {
   }
 
   success.value = updatedIssue?.number
-    ? `Issue #${updatedIssue.number} atualizada com sucesso.`
-    : 'Issue atualizada com sucesso.'
-  info.value = 'A issue aberta foi atualizada no GitHub e no banco local.'
+    ? translateTasks('tasksScreen.success.issueUpdatedWithNumber', `Issue #${updatedIssue.number} atualizada com sucesso.`, {
+      number: updatedIssue.number,
+    })
+    : translateTasks('tasksScreen.success.issueUpdated', 'Issue atualizada com sucesso.')
+  info.value = translateTasks(
+    'tasksScreen.info.issueUpdated',
+    'A issue aberta foi atualizada no GitHub e no banco local.',
+  )
 }
 
 async function handleLocalTaskUpdated(payload) {
@@ -581,7 +808,7 @@ async function handleLocalTaskUpdated(payload) {
     editingLocalTaskId.value = payload.item.id
   }
 
-  success.value = 'Tarefa local atualizada com sucesso.'
+  success.value = translateTasks('tasksScreen.success.localTaskUpdated', 'Tarefa local atualizada com sucesso.')
   await loadLocalTasks()
 }
 
@@ -593,8 +820,14 @@ async function handleLocalTaskSynced(payload) {
 
   editingLocalTaskId.value = null
   success.value = payload?.github?.issue?.number
-    ? `Tarefa local enviada para a issue #${payload.github.issue.number} com sucesso.`
-    : 'Tarefa local enviada ao GitHub com sucesso.'
+    ? translateTasks(
+      'tasksScreen.success.localTaskSyncedWithIssue',
+      `Tarefa local enviada para a issue #${payload.github.issue.number} com sucesso.`,
+      {
+        number: payload.github.issue.number,
+      },
+    )
+    : translateTasks('tasksScreen.success.localTaskSynced', 'Tarefa local enviada ao GitHub com sucesso.')
 
   await loadLocalTasks()
   await loadCachedIssues({ resetSelection: false, syncStrategy: 'force' })
@@ -643,6 +876,7 @@ function resetFilters() {
   selectedLabel.value = 'all'
   selectedTicketType.value = 'all'
   selectedRepositoryKey.value = 'all'
+  applySanitizedFilters()
   syncDraftFilters()
   success.value = ''
   error.value = ''
@@ -650,18 +884,19 @@ function resetFilters() {
 }
 
 async function applyFilters() {
-  const nextIssueScope = draftIssueScope.value
+  const nextIssueScope = sanitizeSelectionValue(draftIssueScope.value, ALLOWED_ISSUE_SCOPES, 'all')
   const scopeChanged = issueScope.value !== nextIssueScope
 
   issueScope.value = nextIssueScope
-  sourceFilter.value = draftSourceFilter.value
-  stateFilter.value = draftStateFilter.value
-  searchTerm.value = draftSearchTerm.value
-  selectedLabel.value = draftSelectedLabel.value
-  selectedTicketType.value = draftSelectedTicketType.value
-  selectedRepositoryKey.value = draftSelectedRepositoryKey.value
+  sourceFilter.value = sanitizeSelectionValue(draftSourceFilter.value, ALLOWED_SOURCE_FILTERS, 'all')
+  stateFilter.value = sanitizeSelectionValue(draftStateFilter.value, ALLOWED_STATE_FILTERS, 'open')
+  searchTerm.value = sanitizeSingleLineText(draftSearchTerm.value, TASK_SEARCH_MAX_LENGTH)
+  selectedLabel.value = sanitizeSingleLineText(draftSelectedLabel.value, 120) || 'all'
+  selectedTicketType.value = sanitizeSingleLineText(draftSelectedTicketType.value, 60) || 'all'
+  selectedRepositoryKey.value = sanitizeRepositorySelection(draftSelectedRepositoryKey.value)
   success.value = ''
   error.value = ''
+  applySanitizedFilters()
 
   if (scopeChanged) {
     await loadCachedIssues({ resetSelection: true, syncStrategy: 'auto' })
@@ -681,7 +916,7 @@ function formatAssignees(issue) {
   const assignees = Array.isArray(issue?.assignees) ? issue.assignees : []
 
   if (assignees.length === 0) {
-    return 'Sem responsavel'
+    return translateTasks('tasksScreen.labels.unassigned', 'Sem responsável')
   }
 
   const names = assignees
@@ -689,7 +924,7 @@ function formatAssignees(issue) {
     .filter(Boolean)
 
   if (names.length === 0) {
-    return 'Sem responsavel'
+    return translateTasks('tasksScreen.labels.unassigned', 'Sem responsável')
   }
 
   if (names.length <= 2) {
@@ -703,7 +938,7 @@ function formatLabels(issue) {
   const labels = Array.isArray(issue?.labels) ? issue.labels : []
 
   if (labels.length === 0) {
-    return 'Sem labels'
+    return translateTasks('tasksScreen.labels.noLabels', 'Sem labels')
   }
 
   const names = labels
@@ -722,16 +957,16 @@ function detectTicketType(issue) {
   const rawKey = match?.[1]?.trim().toLowerCase()
 
   const catalog = {
-    support: 'Suporte',
-    incident: 'Incidente',
-    service: 'Servico',
-    feat: 'Melhoria',
-    bug: 'Bug',
-    chore: 'Tecnico',
+    support: translateTasks('tasksScreen.ticketType.support', 'Suporte'),
+    incident: translateTasks('tasksScreen.ticketType.incident', 'Incidente'),
+    service: translateTasks('tasksScreen.ticketType.service', 'Serviço'),
+    feat: translateTasks('tasksScreen.ticketType.feature', 'Melhoria'),
+    bug: translateTasks('tasksScreen.ticketType.bug', 'Bug'),
+    chore: translateTasks('tasksScreen.ticketType.technical', 'Técnico'),
   }
 
   if (!rawKey || !catalog[rawKey]) {
-    return { key: 'other', label: 'Outros' }
+    return { key: 'other', label: translateTasks('tasksScreen.ticketType.other', 'Outros') }
   }
 
   return { key: rawKey, label: catalog[rawKey] }
@@ -739,14 +974,14 @@ function detectTicketType(issue) {
 
 function formatLocalTaskStatus(task) {
   if (task?.syncState === 'FAILED') {
-    return 'Falhou ao sincronizar'
+    return translateTasks('tasksScreen.status.localFailed', 'Falhou ao sincronizar')
   }
 
   if (task?.state === 'CLOSED') {
-    return 'Fechada'
+    return translateTasks('tasksScreen.status.closed', 'Fechada')
   }
 
-  return 'Aberta'
+  return translateTasks('tasksScreen.status.open', 'Aberta')
 }
 
 function isGithubEntry(entry) {
@@ -763,7 +998,9 @@ function openTaskEntry(entry) {
 }
 
 function resolveEntryTitle(entry) {
-  return isGithubEntry(entry) ? entry.issue.title : entry.localTask?.title || 'Tarefa local'
+  return isGithubEntry(entry)
+    ? entry.issue.title
+    : entry.localTask?.title || translateTasks('tasksScreen.labels.localTask', 'Tarefa local')
 }
 
 function resolveEntryNumberLabel(entry) {
@@ -781,7 +1018,9 @@ function resolveEntryNumberLabel(entry) {
 
 function resolveEntryStatusLabel(entry) {
   if (isGithubEntry(entry)) {
-    return entry.issue.state === 'CLOSED' ? 'Fechada' : 'Aberta'
+    return entry.issue.state === 'CLOSED'
+      ? translateTasks('tasksScreen.status.closed', 'Fechada')
+      : translateTasks('tasksScreen.status.open', 'Aberta')
   }
 
   return formatLocalTaskStatus(entry.localTask)
@@ -800,23 +1039,27 @@ function resolveEntryAssignees(entry) {
     return formatAssignees(entry.issue)
   }
 
-  return 'Nao atribuido'
+  return translateTasks('tasksScreen.labels.notAssigned', 'Não atribuído')
 }
 
 function resolveEntryRepository(entry) {
   if (isGithubEntry(entry)) {
-    return entry.issue.repository?.nameWithOwner || 'Repositorio atual'
+    return entry.issue.repository?.nameWithOwner || translateTasks('tasksScreen.labels.currentRepository', 'Repositório atual')
   }
 
   const localRepositoryKey = String(entry?.localTask?.repositoryKey || '').trim()
 
   if (entry?.localTask?.syncState === 'PENDING') {
     return localRepositoryKey !== ''
-      ? `${localRepositoryKey} - Pendente de sincronização`
-      : 'Pendente de sincronização'
+      ? translateTasks(
+        'tasksScreen.labels.pendingSyncWithRepository',
+        `${localRepositoryKey} - Pendente de sincronização`,
+        { repository: localRepositoryKey },
+      )
+      : translateTasks('tasksScreen.labels.pendingSync', 'Pendente de sincronização')
   }
 
-  return localRepositoryKey || 'Sem repositorio definido'
+  return localRepositoryKey || translateTasks('tasksScreen.labels.repositoryMissing', 'Sem repositório definido')
 }
 
 function resolveEntryLabels(entry) {
@@ -824,18 +1067,20 @@ function resolveEntryLabels(entry) {
     return formatLabels(entry.issue)
   }
 
-  return entry.localTask?.templateKey || 'personalizado'
+  return entry.localTask?.templateKey || translateTasks('tasksScreen.labels.customTemplate', 'personalizado')
 }
 
 function resolveEntryOriginLabel(entry) {
-  return isGithubEntry(entry) ? 'GitHub' : 'Local'
+  return isGithubEntry(entry)
+    ? translateTasks('tasksScreen.origin.github', 'GitHub')
+    : translateTasks('tasksScreen.origin.local', 'Local')
 }
 
 </script>
 
 <template>
-  <section class="grid gap-5">
-    <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 app-depth-soft backdrop-blur">
+  <section class="tasks-screen grid gap-5">
+    <article class="tasks-screen-panel rounded-[24px] border border-white/60 bg-white/80 p-4 app-depth-soft backdrop-blur">
       <div class="flex flex-col gap-3">
         <div class="min-w-0">
           <h2 class="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{{ scopeTitle }}</h2>
@@ -845,19 +1090,19 @@ function resolveEntryOriginLabel(entry) {
 
       <div class="mt-4 grid gap-2 sm:grid-cols-4">
         <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Total</span>
+          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{{ translateTasks('tasksScreen.kpis.total', 'Total') }}</span>
           <strong class="mt-1.5 block text-xl font-semibold text-slate-950">{{ issueStats.total }}</strong>
         </div>
         <div class="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
-          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Abertas</span>
+          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">{{ translateTasks('tasksScreen.kpis.open', 'Abertas') }}</span>
           <strong class="mt-1.5 block text-xl font-semibold text-emerald-950">{{ issueStats.open }}</strong>
         </div>
         <div class="rounded-2xl border border-slate-200 bg-slate-100/80 p-3">
-          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Fechadas</span>
+          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{{ translateTasks('tasksScreen.kpis.closed', 'Fechadas') }}</span>
           <strong class="mt-1.5 block text-xl font-semibold text-slate-950">{{ issueStats.closed }}</strong>
         </div>
         <div class="rounded-2xl border border-cyan-200 bg-cyan-50/80 p-3">
-          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Repositorios</span>
+          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">{{ translateTasks('tasksScreen.kpis.repositories', 'Repositórios') }}</span>
           <strong class="mt-1.5 block text-xl font-semibold text-cyan-950">{{ repositoriesCount }}</strong>
         </div>
       </div>
@@ -868,7 +1113,7 @@ function resolveEntryOriginLabel(entry) {
           class="app-btn app-btn-primary"
           @click="openCreateModal"
         >
-          Nova tarefa
+          {{ translateTasks('tasksScreen.actions.newTask', 'Nova tarefa') }}
         </button>
         <button
           type="button"
@@ -876,28 +1121,34 @@ function resolveEntryOriginLabel(entry) {
           :disabled="syncing"
           @click="syncIssues({ announceRefresh: true })"
         >
-          {{ syncing ? 'Sincronizando...' : 'Atualizar lista' }}
+          {{ syncing
+            ? translateTasks('tasksScreen.actions.syncing', 'Sincronizando...')
+            : translateTasks('tasksScreen.actions.refreshList', 'Atualizar lista')
+          }}
         </button>
       </div>
     </article>
 
     <article
-      class="rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
+      class="tasks-screen-panel rounded-[28px] border border-white/60 bg-white/80 p-5 app-depth-soft backdrop-blur">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
-          <h3 class="mt-1 text-2xl font-semibold text-slate-950">Filtros</h3>
+          <h3 class="mt-1 text-2xl font-semibold text-slate-950">{{ translateTasks('tasksScreen.filters.title', 'Filtros') }}</h3>
         </div>
 
         <button type="button"
           class="app-btn app-btn-secondary shrink-0"
           @click="filtersOpen = !filtersOpen">
-          {{ filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros' }}
+          {{ filtersOpen
+            ? translateTasks('tasksScreen.filters.hide', 'Ocultar filtros')
+            : translateTasks('tasksScreen.filters.show', 'Mostrar filtros')
+          }}
         </button>
       </div>
 
       <div v-if="filtersOpen" class="mt-5 grid gap-5">
         <div class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <p class="text-sm font-semibold text-slate-900">Escopo</p>
+          <p class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.scope', 'Escopo') }}</p>
 
           <div class="flex flex-wrap gap-3">
             <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
@@ -907,7 +1158,7 @@ function resolveEntryOriginLabel(entry) {
                 class="h-4 w-4 accent-cyan-600"
                 value="all"
               >
-              <span>Todas as issues</span>
+              <span>{{ translateTasks('tasksScreen.filters.scopeAll', 'Todas as issues') }}</span>
             </label>
 
             <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
@@ -917,43 +1168,43 @@ function resolveEntryOriginLabel(entry) {
                 class="h-4 w-4 accent-cyan-600"
                 value="assigned"
               >
-              <span>Atribuidas a mim</span>
+              <span>{{ translateTasks('tasksScreen.filters.scopeAssigned', 'Atribuídas a mim') }}</span>
             </label>
           </div>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label class="grid min-w-0 gap-2 xl:col-span-2">
-            <span class="text-sm font-semibold text-slate-900">Buscar</span>
-            <input v-model="draftSearchTerm" type="text" placeholder="Titulo, label, autor, repositorio..."
+            <span class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.search', 'Buscar') }}</span>
+            <input v-model="draftSearchTerm" type="text" :placeholder="translateTasks('tasksScreen.filters.searchPlaceholder', 'Título, label, autor, repositório...')"
               class="app-field-control h-11 w-full min-w-0 px-3 text-sm text-slate-900">
           </label>
 
           <label class="grid min-w-0 gap-2">
-            <span class="text-sm font-semibold text-slate-900">Origem</span>
+            <span class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.source', 'Origem') }}</span>
             <select v-model="draftSourceFilter"
               class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
-              <option value="all">Local e GitHub</option>
-              <option value="github">GitHub</option>
-              <option value="local">Sistema</option>
+              <option value="all">{{ translateTasks('tasksScreen.filters.sourceAll', 'Local e GitHub') }}</option>
+              <option value="github">{{ translateTasks('tasksScreen.origin.github', 'GitHub') }}</option>
+              <option value="local">{{ translateTasks('tasksScreen.origin.localSystem', 'Sistema') }}</option>
             </select>
           </label>
 
           <label class="grid min-w-0 gap-2">
-            <span class="text-sm font-semibold text-slate-900">Estado</span>
+            <span class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.state', 'Estado') }}</span>
             <select v-model="draftStateFilter"
               class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
-              <option value="all">Todos</option>
-              <option value="open">Abertas</option>
-              <option value="closed">Fechadas</option>
+              <option value="all">{{ translateTasks('tasksScreen.filters.stateAll', 'Todos') }}</option>
+              <option value="open">{{ translateTasks('tasksScreen.status.openPlural', 'Abertas') }}</option>
+              <option value="closed">{{ translateTasks('tasksScreen.status.closedPlural', 'Fechadas') }}</option>
             </select>
           </label>
 
           <label class="grid min-w-0 gap-2">
-            <span class="text-sm font-semibold text-slate-900">Repositorio</span>
+            <span class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.repository', 'Repositório') }}</span>
             <select v-model="draftSelectedRepositoryKey"
               class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
-              <option value="all">Todos os repositorios</option>
+              <option value="all">{{ translateTasks('tasksScreen.filters.repositoryAll', 'Todos os repositórios') }}</option>
               <option v-for="repositoryKey in repositoryFilterOptions" :key="repositoryKey"
                 :value="repositoryKey">
                 {{ repositoryKey }}
@@ -962,10 +1213,10 @@ function resolveEntryOriginLabel(entry) {
           </label>
 
           <label class="grid min-w-0 gap-2">
-            <span class="text-sm font-semibold text-slate-900">Label</span>
+            <span class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.label', 'Label') }}</span>
             <select v-model="draftSelectedLabel"
               class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
-              <option value="all">Todas as labels</option>
+              <option value="all">{{ translateTasks('tasksScreen.filters.labelAll', 'Todas as labels') }}</option>
               <option v-for="label in availableLabels" :key="label.id" :value="label.name">
                 {{ label.name }}
               </option>
@@ -973,10 +1224,10 @@ function resolveEntryOriginLabel(entry) {
           </label>
 
           <label class="grid min-w-0 gap-2">
-            <span class="text-sm font-semibold text-slate-900">Tipo de chamado</span>
+            <span class="text-sm font-semibold text-slate-900">{{ translateTasks('tasksScreen.filters.ticketType', 'Tipo de chamado') }}</span>
             <select v-model="draftSelectedTicketType"
               class="app-field-control h-11 w-full min-w-0 appearance-none px-3 text-sm text-slate-900">
-              <option value="all">Todos os tipos</option>
+              <option value="all">{{ translateTasks('tasksScreen.filters.ticketTypeAll', 'Todos os tipos') }}</option>
               <option v-for="type in availableTicketTypes" :key="type.key" :value="type.key">
                 {{ type.label }}
               </option>
@@ -991,38 +1242,44 @@ function resolveEntryOriginLabel(entry) {
             :disabled="loadingCache"
             @click="applyFilters"
           >
-            Filtrar
+            {{ translateTasks('tasksScreen.actions.applyFilters', 'Filtrar') }}
           </button>
           <button type="button"
             class="app-btn app-btn-secondary"
             :disabled="loadingCache" @click="resetFilters">
-            Restaurar padrao
+            {{ translateTasks('tasksScreen.actions.resetFilters', 'Restaurar padrão') }}
           </button>
         </div>
       </div>
     </article>
 
-    <article class="rounded-[24px] border border-white/60 bg-white/80 p-4 app-depth-soft backdrop-blur">
+    <article class="tasks-screen-panel rounded-[24px] border border-white/60 bg-white/80 p-4 app-depth-soft backdrop-blur">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 class="text-xl font-semibold text-slate-950">Listagem de tarefas</h3>
+          <h3 class="text-xl font-semibold text-slate-950">{{ translateTasks('tasksScreen.list.title', 'Listagem de tarefas') }}</h3>
         </div>
 
         <div class="flex flex-wrap gap-2">
           <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-            Escopo: {{ issueScope === 'all' ? 'Todos os repositorios' : issueScope === 'assigned' ? 'Atribuidas a mim' : 'Repositorio especifico' }}
+            {{ translateTasks('tasksScreen.list.scopeLabel', 'Escopo') }}:
+            {{ issueScope === 'all'
+              ? translateTasks('tasksScreen.filters.repositoryAll', 'Todos os repositórios')
+              : issueScope === 'assigned'
+                ? translateTasks('tasksScreen.filters.scopeAssigned', 'Atribuídas a mim')
+                : translateTasks('tasksScreen.scope.repositorySpecific', 'Repositório específico')
+            }}
           </span>
           <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
-            Locais pendentes: {{ localTaskStats.pending }}
+            {{ translateTasks('tasksScreen.list.pendingLocal', 'Locais pendentes') }}: {{ localTaskStats.pending }}
           </span>
           <span class="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-800">
-            Ultima sync: {{ lastSyncedLabel }}
+            {{ translateTasks('tasksScreen.list.lastSync', 'Última sync') }}: {{ lastSyncedLabel }}
           </span>
         </div>
       </div>
 
       <div v-if="listLoading && filteredTaskEntries.length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
-        Carregando tarefas...
+        {{ translateTasks('tasksScreen.loading.list', 'Carregando tarefas...') }}
       </div>
 
       <div v-else class="mt-4 grid gap-2">
@@ -1035,7 +1292,7 @@ function resolveEntryOriginLabel(entry) {
             <div class="grid grid-cols-[10%_52%_18%_20%] gap-x-4 items-start">
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Número
+                  {{ translateTasks('tasksScreen.columns.number', 'Número') }}
                 </p>
                 <strong class="mt-1 block text-base font-bold leading-none text-slate-950">
                   {{ resolveEntryNumberLabel(entry) }}
@@ -1044,7 +1301,7 @@ function resolveEntryOriginLabel(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Título
+                  {{ translateTasks('tasksScreen.columns.title', 'Título') }}
                 </p>
                 <strong class="mt-1 block truncate text-base font-bold leading-5 text-slate-950">
                   {{ resolveEntryTitle(entry) }}
@@ -1053,7 +1310,7 @@ function resolveEntryOriginLabel(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Status
+                  {{ translateTasks('tasksScreen.columns.status', 'Status') }}
                 </p>
                 <span class="app-status-badge mt-1" :class="resolveEntryStatusClass(entry)">
                   {{ resolveEntryStatusLabel(entry) }}
@@ -1062,7 +1319,7 @@ function resolveEntryOriginLabel(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Origem
+                  {{ translateTasks('tasksScreen.columns.origin', 'Origem') }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ resolveEntryOriginLabel(entry) }}
@@ -1073,7 +1330,7 @@ function resolveEntryOriginLabel(entry) {
             <div class="grid grid-cols-[35%_35%_30%] gap-x-4 gap-y-2 items-start">
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Data de abertura
+                  {{ translateTasks('tasksScreen.columns.createdAt', 'Data de abertura') }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ formatDateTime(entry.createdAt) }}
@@ -1082,7 +1339,7 @@ function resolveEntryOriginLabel(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Data de atualização
+                  {{ translateTasks('tasksScreen.columns.updatedAt', 'Data de atualização') }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ formatDateTime(entry.updatedAt) }}
@@ -1091,7 +1348,7 @@ function resolveEntryOriginLabel(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Responsável
+                  {{ translateTasks('tasksScreen.columns.assignee', 'Responsável') }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ resolveEntryAssignees(entry) }}
@@ -1102,7 +1359,7 @@ function resolveEntryOriginLabel(entry) {
             <div class="grid grid-cols-[65%_35%] gap-x-4 gap-y-2 items-start">
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Repositório
+                  {{ translateTasks('tasksScreen.columns.repository', 'Repositório') }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ resolveEntryRepository(entry) }}
@@ -1111,7 +1368,10 @@ function resolveEntryOriginLabel(entry) {
 
               <div class="min-w-0">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  {{ isGithubEntry(entry) ? 'Labels' : 'Template' }}
+                  {{ isGithubEntry(entry)
+                    ? translateTasks('tasksScreen.columns.labels', 'Labels')
+                    : translateTasks('tasksScreen.columns.template', 'Template')
+                  }}
                 </p>
                 <strong class="mt-0.5 block truncate text-sm font-semibold text-slate-700">
                   {{ resolveEntryLabels(entry) }}
@@ -1132,7 +1392,7 @@ function resolveEntryOriginLabel(entry) {
           v-if="filteredTaskEntries.length === 0"
           class="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500"
         >
-          Nenhuma tarefa encontrada para os filtros atuais.
+          {{ translateTasks('tasksScreen.empty.filtered', 'Nenhuma tarefa encontrada para os filtros atuais.') }}
         </p>
 
         <div
@@ -1148,7 +1408,7 @@ function resolveEntryOriginLabel(entry) {
               :disabled="currentPage === 1"
               @click.stop="goToPage(currentPage - 1)"
             >
-              Anterior
+              {{ translateTasks('tasksScreen.pagination.previous', 'Anterior') }}
             </button>
 
             <button
@@ -1168,7 +1428,7 @@ function resolveEntryOriginLabel(entry) {
               :disabled="currentPage === totalPages"
               @click.stop="goToPage(currentPage + 1)"
             >
-              Proxima
+              {{ translateTasks('tasksScreen.pagination.next', 'Próxima') }}
             </button>
           </div>
         </div>

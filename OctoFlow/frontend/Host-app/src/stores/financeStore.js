@@ -74,7 +74,7 @@ export const useFinanceStore = defineStore('finance', {
   actions: {
     // ─── Catálogos base (chamado uma vez no FinanceLayout) ───
     async loadCatalogs(force = false) {
-      if (this.catalogsLoaded && !force) return
+      if (this.catalogsLoaded && !force) return true
       this.loading.catalogs = true
       this.error = null
       try {
@@ -87,9 +87,11 @@ export const useFinanceStore = defineStore('finance', {
         this.bankAccounts = bankRes.data?.items || []
         this.recurringTypes = typesRes.data?.items || []
         this.catalogsLoaded = true
+        return true
       } catch (err) {
         this.error = 'Falha ao carregar catálogos financeiros.'
         console.error('[financeStore] loadCatalogs error:', err)
+        return false
       } finally {
         this.loading.catalogs = false
       }
@@ -100,8 +102,10 @@ export const useFinanceStore = defineStore('finance', {
       try {
         const res = await fetchFinanceCategories()
         this.categories = res.data?.items || []
+        return true
       } catch (err) {
         console.error('[financeStore] reloadCategories error:', err)
+        return false
       }
     },
 
@@ -109,8 +113,10 @@ export const useFinanceStore = defineStore('finance', {
       try {
         const res = await fetchFinanceBankAccounts()
         this.bankAccounts = res.data?.items || []
+        return true
       } catch (err) {
         console.error('[financeStore] reloadBankAccounts error:', err)
+        return false
       }
     },
 
@@ -123,8 +129,10 @@ export const useFinanceStore = defineStore('finance', {
         ])
         this.recurringTypes = typesRes.data?.items || []
         this.recurringRules = rulesRes.data?.items || []
+        return true
       } catch (err) {
         console.error('[financeStore] reloadRecurringData error:', err)
+        return false
       } finally {
         this.loading.recurring = false
       }
@@ -135,8 +143,10 @@ export const useFinanceStore = defineStore('finance', {
       try {
         const res = await fetchFinanceInstallmentPlans()
         this.installmentPlans = res.data?.items || []
+        return true
       } catch (err) {
         console.error('[financeStore] reloadInstallmentPlans error:', err)
+        return false
       } finally {
         this.loading.installmentPlans = false
       }
@@ -144,7 +154,7 @@ export const useFinanceStore = defineStore('finance', {
 
     // ─── Dashboard ───
     async loadDashboardData(force = false) {
-      if (this.dashboardLoaded && !force) return
+      if (this.dashboardLoaded && !force) return true
       this.loading.dashboard = true
       try {
         const [sumRes, flowRes, catRes] = await Promise.all([
@@ -156,9 +166,11 @@ export const useFinanceStore = defineStore('finance', {
         this.dashboard.cashflow = flowRes.data?.items || []
         this.dashboard.categories = catRes.data?.items || []
         this.dashboardLoaded = true
+        return true
       } catch (err) {
         this.error = 'Falha ao carregar dashboard.'
         console.error('[financeStore] loadDashboardData error:', err)
+        return false
       } finally {
         this.loading.dashboard = false
       }
@@ -205,7 +217,7 @@ export const useFinanceStore = defineStore('finance', {
 
     // ─── Currency ───
     async loadCurrencyData(force = false) {
-      if (this.currencies.length > 0 && !force) return
+      if (this.currencies.length > 0 && !force) return true
       this.loading.currency = true
       try {
         const [currRes, ratesRes] = await Promise.all([
@@ -214,8 +226,10 @@ export const useFinanceStore = defineStore('finance', {
         ])
         this.currencies = currRes.data?.items || []
         this.currencyRates = ratesRes.data?.items || []
+        return true
       } catch (err) {
         console.error('[financeStore] loadCurrencyData error:', err)
+        return false
       } finally {
         this.loading.currency = false
       }
@@ -225,8 +239,10 @@ export const useFinanceStore = defineStore('finance', {
       try {
         const res = await fetchFinanceCurrencyRates()
         this.currencyRates = res.data?.items || []
+        return true
       } catch (err) {
         console.error('[financeStore] reloadCurrencyRates error:', err)
+        return false
       }
     },
 

@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import DashboardScreen from '../components/screens/DashboardScreen.vue'
 import ProfileScreen from '../components/screens/ProfileScreen.vue'
 import TasksScreen from '../components/screens/TasksScreen.vue'
-import TestScreen from '../components/screens/TestScreen.vue'
 import AppLayoutView from '../views/AppLayoutView.vue'
 import AuthEntryView from '../views/AuthEntryView.vue'
 import AuthGooglePasswordSetupView from '../views/AuthGooglePasswordSetupView.vue'
@@ -82,11 +81,6 @@ const appRoutes = [
         component: TasksScreen,
       },
       {
-        path: 'test',
-        name: 'test',
-        component: TestScreen,
-      },
-      {
         path: 'finance',
         component: FinanceLayout,
         children: [
@@ -145,7 +139,12 @@ const appRoutes = [
   },
   {
     path: '/test',
-    redirect: { name: 'test' },
+    redirect: {
+      name: 'dashboard',
+      query: {
+        tab: 'tasks',
+      },
+    },
   },
   {
     path: '/finance',

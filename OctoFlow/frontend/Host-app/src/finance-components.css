@@ -41,6 +41,15 @@
   .finance-panel small {
     @apply text-muted font-medium text-sm;
   }
+  .finance-panel-heading {
+    @apply inline-flex items-center gap-2 flex-wrap;
+  }
+  .finance-muted-block {
+    @apply block text-[0.74rem] text-muted;
+  }
+  .finance-panel.finance-panel-unified {
+    @apply border-line-strong;
+  }
 
   /* Grid KPIs */
   .finance-kpi-grid {
@@ -68,6 +77,12 @@
   .finance-form-grid label,
   .finance-filter-grid label {
     @apply grid gap-2 min-w-0;
+  }
+  .finance-overview-month-field {
+    @apply grid gap-1;
+  }
+  .finance-overview-month-field span {
+    @apply text-[0.78rem] font-bold text-muted;
   }
   .finance-form-grid label span,
   .finance-filter-grid label span {
@@ -182,6 +197,9 @@
   }
   .finance-modal-header p {
     @apply m-0 text-muted text-sm leading-relaxed;
+  }
+  .finance-modal-actions {
+    @apply flex gap-3 justify-end flex-wrap col-span-full pt-2;
   }
   .finance-total-summary-row td {
     @apply font-extrabold;
