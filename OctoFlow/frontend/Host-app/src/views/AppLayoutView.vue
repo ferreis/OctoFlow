@@ -1,20 +1,15 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import {
-  onActivated,
-  onBeforeMount,
   onBeforeUnmount,
-  onBeforeUpdate,
-  onDeactivated,
   onErrorCaptured,
   onMounted,
-  onUnmounted,
-  onUpdated,
   watch,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppFooter from '../components/layout/AppFooter.vue'
 import MenuSidebar from '../components/layout/MenuSidebar.vue'
+import { useI18n } from '../composables/useI18n'
 import { navigationItems } from '../constants/navigation'
 import { useAppNavigationStore } from '../stores/appNavigationStore'
 import { useAppShellStore } from '../stores/appShellStore'
@@ -25,6 +20,7 @@ const appNavigationStore = useAppNavigationStore()
 const sessionStore = useSessionStore()
 const appRoute = useRoute()
 const appRouter = useRouter()
+const { translate } = useI18n()
 
 const { isCompactViewport, effectiveSidebarExpanded } = storeToRefs(appShellStore)
 const { activeViewKey: activeView } = storeToRefs(appNavigationStore)
@@ -33,13 +29,11 @@ const { isAuthenticated, requiresGooglePasswordSetup, currentUser } = storeToRef
 let viewportMediaQuery = null
 let removeViewportListener = null
 
-// Vue Lifecycle completo (padronizado)
-onBeforeMount(() => {
-  // lógica antes de renderizar (sem DOM ainda)
-})
-
 onMounted(() => {
-  // DOM pronto: API, refs, libs externas
+  if (typeof window === 'undefined') {
+    return
+  }
+
   viewportMediaQuery = window.matchMedia('(max-width: 1180px)')
   appShellStore.setCompactViewport(viewportMediaQuery.matches)
 
@@ -56,40 +50,20 @@ onMounted(() => {
   }
 })
 
-onBeforeUpdate(() => {
-  // antes de atualizar DOM (estado mudou)
-})
-
-onUpdated(() => {
-  // depois que DOM atualizou
-})
-
 onBeforeUnmount(() => {
-  // preparar limpeza (parar processos)
   removeViewportListener?.()
-})
-
-onUnmounted(() => {
-  // limpar tudo (eventos, timers, sockets)
+  removeViewportListener = null
   viewportMediaQuery = null
 })
 
-onActivated(() => {
-  // componente reativado (keep-alive)
-})
-
-onDeactivated(() => {
-  // componente pausado (keep-alive)
-})
-
 onErrorCaptured((error) => {
-  // capturar erro de filhos no Layout
   console.error('Layout Error Blocked:', error)
+  sessionStore.showNotification(translate('app.globalInteractiveError'), 'error')
   return false
 })
 
 watch(
-  () => `${String(appRoute.name || '')}|${String(appRoute.params?.section || '')}|${String(appRoute.query?.tab || '')}`,
+  () => appRoute.fullPath,
   () => {
     appNavigationStore.syncFromRoute(appRoute)
   },
@@ -148,7 +122,6 @@ async function logoutSession() {
       @navigate="navigateTo"
       @expand="expandSidebar"
       @collapse="collapseSidebar"
-      @refresh="sessionStore.refreshToken"
       @logout="logoutSession"
     />
 

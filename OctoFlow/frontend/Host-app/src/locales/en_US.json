@@ -104,13 +104,35 @@
   },
   "sidebar": {
     "navigationAriaLabel": "Main navigation",
-    "appSubtitle": "Internal panel",
+    "appSubtitle": "Main panel",
     "unauthenticatedSession": "Unauthenticated session",
     "profileAvatarAlt": "User avatar",
+    "profileOpenAriaLabel": "Open profile",
     "expandGroup": "Expand group",
+    "expandGroupWithName": "Expand {group} group",
     "collapseGroup": "Collapse group",
+    "collapseGroupWithName": "Collapse {group} group",
     "logout": "Sign out",
-    "logoutCompact": "S"
+    "logoutCompact": "Sign out"
+  },
+  "footer": {
+    "about": "OctoFlow centralizes authentication, organization, and task tracking integrated with GitHub. The panel helps you prioritize work, monitor indicators, and follow the operational flow with clarity.",
+    "copyright": "Copyright © {year} Ferreis",
+    "rightsReserved": "All rights reserved.",
+    "contactLabel": "Contact:"
+  },
+  "notification": {
+    "closeHint": "Click to close",
+    "closeAriaLabel": "Close notification",
+    "toneTitle": {
+      "success": "Success",
+      "error": "Error",
+      "warning": "Warning",
+      "info": "Information"
+    }
+  },
+  "app": {
+    "globalInteractiveError": "An unexpected interface error occurred. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",

@@ -1258,6 +1258,103 @@ select optgroup {
   --tw-gradient-to: var(--color-accent) var(--tw-gradient-to-position) !important;
 }
 
+/* Footer Styles */
+.app-footer {
+  margin-top: auto;
+  border: 1px solid var(--app-panel-border);
+  border-radius: calc(24px * var(--app-layout-density-factor, 1));
+  background: color-mix(in srgb, var(--surface-strong) 84%, transparent);
+  box-shadow: var(--app-panel-shadow);
+  padding: calc(1.25rem * var(--app-layout-density-factor, 1));
+  backdrop-filter: blur(6px);
+}
+
+.app-footer-description {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted) 82%, var(--ink) 18%);
+  font-size: calc(0.86rem * var(--app-layout-density-font-factor, 1));
+  line-height: 1.68;
+  text-align: justify;
+}
+
+.app-footer-meta {
+  margin-top: calc(1rem * var(--app-layout-density-factor, 1));
+  border-top: 1px solid var(--app-panel-border);
+  padding-top: calc(0.75rem * var(--app-layout-density-factor, 1));
+}
+
+.app-footer-copy {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted) 76%, var(--ink) 24%);
+  font-size: calc(0.76rem * var(--app-layout-density-font-factor, 1));
+  font-weight: 600;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.app-footer-contact-link {
+  color: var(--color-secondary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-footer-contact-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* Notification Styles */
+.app-notification-container {
+  pointer-events: none;
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  width: min(94vw, 460px);
+  z-index: 140;
+}
+
+.app-notification-button {
+  pointer-events: auto;
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  border-radius: calc(24px * var(--app-layout-density-factor, 1));
+  padding: calc(0.95rem * var(--app-layout-density-factor, 1));
+  text-align: left;
+  backdrop-filter: blur(10px);
+}
+
+.app-notification-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.app-notification-badge-label {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  padding: 0.25rem 0.65rem;
+  text-transform: uppercase;
+}
+
+.app-notification-close-hint {
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.app-notification-message {
+  margin: 0;
+  font-size: calc(0.86rem * var(--app-layout-density-font-factor, 1));
+  font-weight: 700;
+  line-height: 1.58;
+  white-space: pre-line;
+}
+
 /* Sidebar Styles */
 .menu-sidebar {
   border-right: 1px solid var(--nav-border);
@@ -1395,6 +1492,9 @@ select optgroup {
   border-color: var(--nav-border);
   background: var(--surface);
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1438,6 +1538,11 @@ select optgroup {
 @media (max-width: 720px) {
   .app-main {
     padding: 14px;
+  }
+
+  .app-footer {
+    border-radius: 20px;
+    padding: 1rem;
   }
 
   .surface-card {

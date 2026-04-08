@@ -23,6 +23,8 @@ const DEFAULT_CSRF_ACTION_HEADER_NAME = 'X-CSRF-Action'
 const CLIENT_BROWSER_ID_STORAGE_KEY = 'octoflow.auth.browser-id'
 const CLIENT_TAB_ID_STORAGE_KEY = 'octoflow.auth.tab-id'
 const CLIENT_LOCATION_HINT_STORAGE_KEY = 'octoflow.auth.location-hint'
+const APP_STORAGE_PREFIX = 'octoflow.'
+const ALLOWED_NOTIFICATION_TYPES = new Set(['info', 'success', 'warning', 'error'])
 const PUBLIC_CSRF_ACTIONS = {
   'auth.login': { method: 'POST', path: '/auth/login' },
   'auth.register': { method: 'POST', path: '/auth/register' },
@@ -909,8 +911,12 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  function setAccessToken(token) {
-    accessToken.value = token
+  function setAccessToken(rawToken) {
+    const normalizedToken = typeof rawToken === 'string'
+      ? rawToken.trim()
+      : ''
+
+    accessToken.value = normalizedToken.slice(0, 8192)
   }
 
   function clearAuth() {
@@ -1065,20 +1071,75 @@ export const useSessionStore = defineStore('session', () => {
     return updateUiSettings({ themeKey }, options)
   }
 
+  function clearStorageEntriesByPrefix(storageObject, storageKeyPrefix) {
+    if (!storageObject || typeof storageObject.length !== 'number' || typeof storageObject.removeItem !== 'function') {
+      return
+    }
+
+    for (let storageEntryIndex = storageObject.length - 1; storageEntryIndex >= 0; storageEntryIndex -= 1) {
+      const storageEntryKey = storageObject.key(storageEntryIndex)
+      if (typeof storageEntryKey !== 'string') {
+        continue
+      }
+
+      if (!storageEntryKey.startsWith(storageKeyPrefix)) {
+        continue
+      }
+
+      storageObject.removeItem(storageEntryKey)
+    }
+  }
+
+  function shouldClearCookie(cookieName) {
+    const normalizedCookieName = String(cookieName || '').trim().toLowerCase()
+    if (normalizedCookieName === '') {
+      return false
+    }
+
+    return normalizedCookieName.startsWith('octoflow')
+      || normalizedCookieName.includes('csrf')
+      || normalizedCookieName.includes('xsrf')
+      || normalizedCookieName.includes('refresh')
+      || normalizedCookieName.includes('session')
+      || normalizedCookieName.includes('token')
+  }
+
+  function stripControlCharacters(rawText) {
+    const textValue = String(rawText || '')
+    let sanitizedText = ''
+
+    for (const currentCharacter of textValue) {
+      const characterCode = currentCharacter.charCodeAt(0)
+      if (characterCode < 32 || characterCode === 127) {
+        sanitizedText += ' '
+        continue
+      }
+
+      sanitizedText += currentCharacter
+    }
+
+    return sanitizedText
+  }
+
   function clearBrowserState() {
     if (typeof window !== 'undefined') {
       try {
-        window.localStorage.clear()
+        clearStorageEntriesByPrefix(window.localStorage, APP_STORAGE_PREFIX)
       } catch {
         // noop
       }
 
       try {
-        window.sessionStorage.clear()
+        clearStorageEntriesByPrefix(window.sessionStorage, APP_STORAGE_PREFIX)
       } catch {
         // noop
       }
     }
+
+    clientBrowserId = ''
+    clientTabId = ''
+    clientFingerprintHash = ''
+    clientLocationHint = ''
 
     if (typeof document === 'undefined') {
       return
@@ -1096,7 +1157,7 @@ export const useSessionStore = defineStore('session', () => {
       const [rawName] = entry.split('=')
       const name = rawName?.trim()
 
-      if (!name) {
+      if (!shouldClearCookie(name)) {
         continue
       }
 
@@ -1109,29 +1170,62 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  function showNotification(payload, type = 'info') {
-    const message = typeof payload === 'string'
-      ? payload.trim()
+  function normalizeNotificationMessage(payload) {
+    const rawMessage = typeof payload === 'string'
+      ? payload
       : typeof payload?.message === 'string'
-        ? payload.message.trim()
+        ? payload.message
         : ''
+    const normalizedMessage = stripControlCharacters(rawMessage)
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return normalizedMessage.slice(0, 1400)
+  }
+
+  function normalizeNotificationType(payload, fallbackType) {
+    const payloadType = typeof payload?.type === 'string'
+      ? payload.type.trim().toLowerCase()
+      : ''
+    const normalizedFallbackType = typeof fallbackType === 'string'
+      ? fallbackType.trim().toLowerCase()
+      : 'info'
+
+    if (ALLOWED_NOTIFICATION_TYPES.has(payloadType)) {
+      return payloadType
+    }
+
+    if (ALLOWED_NOTIFICATION_TYPES.has(normalizedFallbackType)) {
+      return normalizedFallbackType
+    }
+
+    return 'info'
+  }
+
+  function normalizeNotificationDuration(payload) {
+    const notificationDuration = Number(payload?.duration)
+    if (!Number.isFinite(notificationDuration) || notificationDuration <= 0) {
+      return null
+    }
+
+    return Math.min(Math.max(notificationDuration, 2800), 18000)
+  }
+
+  function showNotification(payload, type = 'info') {
+    const message = normalizeNotificationMessage(payload)
 
     if (message === '') {
       return
     }
 
-    const notificationType = typeof payload?.type === 'string' && payload.type.trim() !== ''
-      ? payload.type.trim()
-      : type
-    const notificationDuration = Number(payload?.duration)
+    const notificationType = normalizeNotificationType(payload, type)
+    const notificationDuration = normalizeNotificationDuration(payload)
 
     notification.value = {
       id: ++notificationSeed,
       message,
       type: notificationType,
-      duration: Number.isFinite(notificationDuration) && notificationDuration > 0
-        ? notificationDuration
-        : null,
+      duration: notificationDuration,
     }
   }
 

@@ -1,5 +1,13 @@
 <script setup>
-import { computed, onBeforeUnmount, watch } from 'vue'
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  watch,
+} from 'vue'
+import { useI18n } from '../../composables/useI18n'
 import { resolveNotificationToneClasses } from '../../utils/statusTone'
 
 const props = defineProps({
@@ -14,71 +22,145 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+const { translate } = useI18n()
 
-let closeTimer = null
+let closeTimerId = null
 let timerStartedAt = 0
 let remainingDuration = 0
+
+const normalizedNotificationMessage = computed(() => {
+  const rawMessage = typeof props.notification?.message === 'string'
+    ? props.notification.message.trim()
+    : ''
+
+  return rawMessage.slice(0, 1400)
+})
+
+const hasVisibleNotification = computed(() => {
+  return normalizedNotificationMessage.value !== ''
+})
+
+const normalizedNotificationKey = computed(() => {
+  const rawNotificationId = props.notification?.id
+  if (rawNotificationId !== null && rawNotificationId !== undefined) {
+    return String(rawNotificationId)
+  }
+
+  return normalizedNotificationMessage.value
+})
 
 const effectiveDuration = computed(() => {
   const payloadDuration = Number(props.notification?.duration)
   if (Number.isFinite(payloadDuration) && payloadDuration > 0) {
-    return Math.min(Math.max(payloadDuration, 3500), 18000)
+    return Math.min(Math.max(payloadDuration, 2800), 18000)
   }
 
-  const messageLength = String(props.notification?.message || '').trim().length
+  const messageLength = normalizedNotificationMessage.value.length
   const dynamicDuration = props.duration + Math.max(0, messageLength - 90) * 42
 
-  return Math.min(Math.max(dynamicDuration, props.duration), 14000)
+  return Math.min(Math.max(dynamicDuration, 2800), 14000)
 })
 
 const tone = computed(() => {
   return resolveNotificationToneClasses(props.notification?.type)
 })
 
+const toneTitle = computed(() => {
+  const toneLabelByKey = {
+    success: 'Success',
+    error: 'Error',
+    warning: 'Warning',
+    info: 'Information',
+  }
+
+  const toneKey = tone.value.toneKey
+  const fallbackLabel = toneLabelByKey[toneKey] || toneLabelByKey.info
+
+  return translate(`notification.toneTitle.${toneKey}`, {
+    tone: fallbackLabel,
+  })
+})
+
+const closeHintLabel = computed(() => {
+  return translate('notification.closeHint')
+})
+
+const closeAriaLabel = computed(() => {
+  return translate('notification.closeAriaLabel')
+})
+
 watch(
-  () => props.notification?.id,
-  (notificationId) => {
+  () => normalizedNotificationKey.value,
+  (notificationKey) => {
     clearCloseTimer()
 
-    if (!notificationId) {
+    if (!notificationKey || !hasVisibleNotification.value) {
       return
     }
 
     remainingDuration = effectiveDuration.value
     startCloseTimer()
   },
+  {
+    immediate: true,
+  },
 )
+
+onMounted(() => {
+  if (!hasVisibleNotification.value || closeTimerId !== null) {
+    return
+  }
+
+  remainingDuration = effectiveDuration.value
+  startCloseTimer()
+})
+
+onActivated(() => {
+  resumeCloseTimer()
+})
+
+onDeactivated(() => {
+  pauseCloseTimer()
+})
 
 onBeforeUnmount(() => {
   clearCloseTimer()
 })
 
 function clearCloseTimer() {
-  if (closeTimer !== null) {
-    window.clearTimeout(closeTimer)
-    closeTimer = null
+  if (closeTimerId !== null && typeof window !== 'undefined') {
+    window.clearTimeout(closeTimerId)
+    closeTimerId = null
   }
 }
 
 function startCloseTimer() {
+  if (typeof window === 'undefined' || !hasVisibleNotification.value) {
+    return
+  }
+
+  if (remainingDuration <= 0) {
+    remainingDuration = effectiveDuration.value
+  }
+
   timerStartedAt = Date.now()
-  closeTimer = window.setTimeout(() => {
+  closeTimerId = window.setTimeout(() => {
     emit('close')
   }, remainingDuration)
 }
 
 function pauseCloseTimer() {
-  if (closeTimer === null) {
+  if (closeTimerId === null) {
     return
   }
 
   const elapsed = Date.now() - timerStartedAt
-  remainingDuration = Math.max(1200, remainingDuration - elapsed)
+  remainingDuration = Math.max(1100, remainingDuration - elapsed)
   clearCloseTimer()
 }
 
 function resumeCloseTimer() {
-  if (!props.notification?.id || closeTimer !== null) {
+  if (!hasVisibleNotification.value || closeTimerId !== null) {
     return
   }
 
@@ -102,26 +184,27 @@ function closeNotification() {
       leave-to-class="translate-y-1 opacity-0"
     >
       <div
-        v-if="notification?.message"
-        class="pointer-events-none fixed right-4 top-4 z-[140] w-[min(94vw,460px)]"
+        v-if="hasVisibleNotification"
+        class="app-notification-container"
       >
         <button
           type="button"
-          class="pointer-events-auto app-notification-frame grid w-full gap-3 rounded-[24px] p-4 text-left backdrop-blur"
+          class="app-notification-button app-notification-frame"
           :class="tone.frame"
+          :aria-label="closeAriaLabel"
           @mouseenter="pauseCloseTimer"
           @mouseleave="resumeCloseTimer"
           @click="closeNotification"
         >
-          <div class="flex items-start justify-between gap-3">
-            <span class="app-notification-badge inline-flex items-center px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.2em]" :class="tone.badge">
-              {{ tone.title }}
+          <div class="app-notification-header">
+            <span class="app-notification-badge app-notification-badge-label" :class="tone.badge">
+              {{ toneTitle }}
             </span>
-            <span class="text-xs font-semibold opacity-70">Clique para fechar</span>
+            <span class="app-notification-close-hint">{{ closeHintLabel }}</span>
           </div>
 
-          <p class="whitespace-pre-line text-sm font-semibold leading-6">
-            {{ notification.message }}
+          <p class="app-notification-message">
+            {{ normalizedNotificationMessage }}
           </p>
         </button>
       </div>

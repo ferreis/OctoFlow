@@ -64,7 +64,7 @@ export function resolveNotificationToneClasses(notificationType) {
     return {
       frame: 'app-notification-frame--success',
       badge: 'app-notification-badge--success',
-      title: 'Sucesso',
+      toneKey: 'success',
     }
   }
 
@@ -72,7 +72,7 @@ export function resolveNotificationToneClasses(notificationType) {
     return {
       frame: 'app-notification-frame--danger',
       badge: 'app-notification-badge--danger',
-      title: 'Erro',
+      toneKey: 'error',
     }
   }
 
@@ -80,13 +80,13 @@ export function resolveNotificationToneClasses(notificationType) {
     return {
       frame: 'app-notification-frame--warning',
       badge: 'app-notification-badge--warning',
-      title: 'Aviso',
+      toneKey: 'warning',
     }
   }
 
   return {
     frame: 'app-notification-frame--info',
     badge: 'app-notification-badge--info',
-    title: 'Informação',
+    toneKey: 'info',
   }
 }

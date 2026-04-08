@@ -30,8 +30,8 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['navigate', 'refresh', 'logout', 'expand', 'collapse'])
-const { t } = useI18n()
+const emit = defineEmits(['navigate', 'logout', 'expand', 'collapse'])
+const { translate } = useI18n()
 
 const sidebarExpanded = computed(() => Boolean(props.expanded))
 const openedGroupMap = ref({})
@@ -45,7 +45,7 @@ function resolveTranslation(translationKey, fallbackText = '') {
     return normalizedFallback
   }
 
-  const translatedText = t(normalizedKey)
+  const translatedText = translate(normalizedKey)
   if (translatedText === normalizedKey) {
     return normalizedFallback
   }
@@ -73,7 +73,13 @@ function localizeNavigationItem(navigationItem) {
 }
 
 const localizedItems = computed(() => {
-  return props.items.map((navigationItem) => localizeNavigationItem(navigationItem))
+  if (!Array.isArray(props.items)) {
+    return []
+  }
+
+  return props.items
+    .filter((navigationItem) => navigationItem && typeof navigationItem === 'object')
+    .map((navigationItem) => localizeNavigationItem(navigationItem))
 })
 
 const mainItems = computed(() => {
@@ -94,6 +100,32 @@ const profileItem = computed(() => {
 
 const profileSelected = computed(() => props.activeKey === profileItem.value.key)
 
+const allowedNavigationKeys = computed(() => {
+  const navigationKeySet = new Set()
+
+  for (const navigationItem of localizedItems.value) {
+    if (typeof navigationItem?.key === 'string' && navigationItem.key.trim() !== '') {
+      navigationKeySet.add(navigationItem.key.trim())
+    }
+
+    if (!Array.isArray(navigationItem?.children)) {
+      continue
+    }
+
+    for (const childItem of navigationItem.children) {
+      if (typeof childItem?.key === 'string' && childItem.key.trim() !== '') {
+        navigationKeySet.add(childItem.key.trim())
+      }
+    }
+  }
+
+  if (typeof profileItem.value?.key === 'string' && profileItem.value.key.trim() !== '') {
+    navigationKeySet.add(profileItem.value.key.trim())
+  }
+
+  return navigationKeySet
+})
+
 const userLabel = computed(() => {
   const defaultEmail = typeof props.currentUser?.defaultEmail === 'string'
     ? props.currentUser.defaultEmail.trim()
@@ -103,7 +135,8 @@ const userLabel = computed(() => {
     ? props.currentUser.email.trim()
     : ''
 
-  return defaultEmail || userEmail || resolveTranslation('sidebar.unauthenticatedSession', 'Sessao nao autenticada')
+  const userIdentityLabel = defaultEmail || userEmail || resolveTranslation('sidebar.unauthenticatedSession', 'Sessao nao autenticada')
+  return userIdentityLabel.replace(/\s+/g, ' ').slice(0, 180)
 })
 
 const userInitial = computed(() => {
@@ -128,6 +161,10 @@ const sidebarSubtitle = computed(() => {
 
 const profileAvatarAltText = computed(() => {
   return resolveTranslation('sidebar.profileAvatarAlt', 'Avatar do usuário')
+})
+
+const profileOpenAriaLabel = computed(() => {
+  return resolveTranslation('sidebar.profileOpenAriaLabel', 'Abrir perfil')
 })
 
 const logoutExpandedLabel = computed(() => {
@@ -169,7 +206,12 @@ function navigate(menuKey) {
     return
   }
 
-  emit('navigate', menuKey)
+  const normalizedMenuKey = normalizeNavigationKey(menuKey)
+  if (!normalizedMenuKey || !allowedNavigationKeys.value.has(normalizedMenuKey)) {
+    return
+  }
+
+  emit('navigate', normalizedMenuKey)
 }
 
 function isGroupItem(navigationItem) {
@@ -215,10 +257,20 @@ function resolveGroupToggleAriaLabel(navigationItem) {
   const itemLabel = typeof navigationItem?.label === 'string' ? navigationItem.label : ''
 
   if (isGroupOpen(navigationItem)) {
-    return resolveTranslation('sidebar.collapseGroup', `Recolher ${itemLabel}`)
+    const localizedLabel = resolveTranslation('sidebar.collapseGroupWithName', '')
+    if (localizedLabel !== '') {
+      return localizedLabel.replace('{group}', itemLabel)
+    }
+
+    return resolveTranslation('sidebar.collapseGroup', `Recolher grupo ${itemLabel}`)
   }
 
-  return resolveTranslation('sidebar.expandGroup', `Expandir ${itemLabel}`)
+  const localizedLabel = resolveTranslation('sidebar.expandGroupWithName', '')
+  if (localizedLabel !== '') {
+    return localizedLabel.replace('{group}', itemLabel)
+  }
+
+  return resolveTranslation('sidebar.expandGroup', `Expandir grupo ${itemLabel}`)
 }
 
 function openProfile() {
@@ -243,6 +295,23 @@ function handleMouseLeave() {
   }
 
   emit('collapse')
+}
+
+function normalizeNavigationKey(rawNavigationKey) {
+  const normalizedNavigationKey = typeof rawNavigationKey === 'string'
+    ? rawNavigationKey.trim()
+    : ''
+
+  if (normalizedNavigationKey === '') {
+    return ''
+  }
+
+  const hasUnexpectedCharacters = /[^a-zA-Z0-9._-]/.test(normalizedNavigationKey)
+  if (hasUnexpectedCharacters) {
+    return ''
+  }
+
+  return normalizedNavigationKey
 }
 </script>
 
@@ -382,6 +451,7 @@ function handleMouseLeave() {
         type="button"
         :disabled="!props.authenticated"
         :title="profileItem.label"
+        :aria-label="profileOpenAriaLabel"
         :aria-current="profileSelected ? 'page' : undefined"
         @click="openProfile"
         class="menu-profile-button w-full rounded-2xl transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45"
@@ -422,7 +492,7 @@ function handleMouseLeave() {
         type="button"
         :disabled="!props.authenticated"
         :title="sidebarExpanded ? '' : logoutExpandedLabel"
-        @click.stop="$emit('logout')"
+        @click.stop="emit('logout')"
         class="menu-logout mt-2 rounded-2xl border font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
         :class="sidebarExpanded ? 'h-11 w-full px-4' : 'h-12 w-full px-0'"
       >

@@ -1,22 +1,46 @@
 <script setup>
+import { computed } from 'vue'
+import { useI18n } from '../../composables/useI18n'
+
 const currentYear = new Date().getFullYear()
+const supportEmailAddress = 'ferreis@univali.br'
+
+const { translate } = useI18n()
+
+const footerDescription = computed(() => {
+  return translate('footer.about')
+})
+
+const footerCopyright = computed(() => {
+  return translate('footer.copyright', { year: currentYear })
+})
+
+const footerRightsReserved = computed(() => {
+  return translate('footer.rightsReserved')
+})
+
+const footerContactLabel = computed(() => {
+  return translate('footer.contactLabel')
+})
 </script>
 
 <template>
-<footer class="mt-auto rounded-3xl border border-slate-200/80 bg-white/85 px-6 py-6 app-depth-soft backdrop-blur">
-  <div class="text-justify text-sm leading-relaxed text-slate-600">
-    O OctoFlow é uma plataforma desenvolvida para centralizar a autenticação, organização e acompanhamento de tarefas integradas ao GitHub. O sistema permite visualizar issues, aplicar filtros inteligentes, analisar dados em dashboards e acompanhar o fluxo operacional em tempo real, facilitando a tomada de decisao e melhorando a produtividade no dia a dia.
-  </div>
-
-  <div class="mt-6 flex justify-center border-t border-slate-200 pt-4">
-    <p class="text-center text-xs font-medium leading-relaxed text-slate-500">
-      Copyright © {{ currentYear }} Todos os direitos reservados por Ferreis
-      <br />
-      contato por email:
-      <a href="mailto:ferreis@univali.br" class="font-semibold text-cyan-700 hover:underline">
-        ferreis@univali.br
-      </a>
+  <footer class="app-footer">
+    <p class="app-footer-description">
+      {{ footerDescription }}
     </p>
-  </div>
-</footer>
+
+    <div class="app-footer-meta">
+      <p class="app-footer-copy">
+        {{ footerCopyright }}
+        <br>
+        {{ footerRightsReserved }}
+        <br>
+        {{ footerContactLabel }}
+        <a :href="`mailto:${supportEmailAddress}`" class="app-footer-contact-link">
+          {{ supportEmailAddress }}
+        </a>
+      </p>
+    </div>
+  </footer>
 </template>

@@ -1,73 +1,113 @@
 import { computed, ref } from 'vue'
-import enUS from '../locales/en-US.json'
-import ptBR from '../locales/pt-BR.json'
+import enUSLocale from '../locales/en_US.json'
+import ptBRLocale from '../locales/pt_BR.json'
 
-const locales = {
-  'pt-BR': ptBR,
-  'en-US': enUS,
+const LOCALE_STORAGE_KEY = 'octoflow.locale'
+const DEFAULT_LOCALE = 'pt-BR'
+
+const localeDictionaryByCode = {
+  'pt-BR': ptBRLocale,
+  'en-US': enUSLocale,
 }
 
-// Global state for simple translation across components without Pinia
-const currentLocale = ref('pt-BR')
+const currentLocaleCode = ref(DEFAULT_LOCALE)
+let localeWasInitialized = false
+
+function normalizeLocaleCode(rawLocaleCode) {
+  const normalizedLocaleCode = String(rawLocaleCode || '').trim().toLowerCase()
+
+  if (normalizedLocaleCode.startsWith('en')) {
+    return 'en-US'
+  }
+
+  if (normalizedLocaleCode.startsWith('pt')) {
+    return 'pt-BR'
+  }
+
+  return DEFAULT_LOCALE
+}
+
+function getNestedTranslationValue(dictionaryObject, translationPath) {
+  if (!dictionaryObject || typeof translationPath !== 'string') {
+    return null
+  }
+
+  return translationPath
+    .split('.')
+    .reduce((resolvedValue, currentPathChunk) => {
+      if (resolvedValue && resolvedValue[currentPathChunk] !== undefined) {
+        return resolvedValue[currentPathChunk]
+      }
+
+      return null
+    }, dictionaryObject)
+}
+
+function ensureLocaleInitialized() {
+  if (localeWasInitialized || typeof window === 'undefined') {
+    return
+  }
+
+  localeWasInitialized = true
+
+  try {
+    const savedLocaleCode = window.localStorage.getItem(LOCALE_STORAGE_KEY)
+    const localeFromStorage = normalizeLocaleCode(savedLocaleCode)
+
+    if (savedLocaleCode) {
+      currentLocaleCode.value = localeFromStorage
+      return
+    }
+
+    const navigatorLanguage = window.navigator?.language || ''
+    currentLocaleCode.value = normalizeLocaleCode(navigatorLanguage)
+  } catch {
+    currentLocaleCode.value = DEFAULT_LOCALE
+  }
+}
 
 export function useI18n() {
-  function getNestedValue(obj, path) {
-    if (!obj || typeof path !== 'string') return null
-    return path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), obj)
+  ensureLocaleInitialized()
+
+  function translate(translationPath, variables = {}) {
+    const activeDictionary = localeDictionaryByCode[currentLocaleCode.value] || localeDictionaryByCode[DEFAULT_LOCALE]
+    let resolvedText = getNestedTranslationValue(activeDictionary, translationPath)
+
+    if (!resolvedText) {
+      resolvedText = getNestedTranslationValue(localeDictionaryByCode['en-US'], translationPath) || translationPath
+    }
+
+    if (typeof resolvedText !== 'string') {
+      return translationPath
+    }
+
+    let translatedText = resolvedText
+    for (const [variableName, variableValue] of Object.entries(variables)) {
+      translatedText = translatedText.replace(new RegExp(`\\{${variableName}\\}`, 'g'), String(variableValue))
+    }
+
+    return translatedText
   }
 
-  function t(path, variables = {}) {
-    const defaultDict = locales[currentLocale.value] || locales['pt-BR']
-    let text = getNestedValue(defaultDict, path)
+  function setLocale(rawLocaleCode) {
+    const normalizedLocaleCode = normalizeLocaleCode(rawLocaleCode)
+    currentLocaleCode.value = normalizedLocaleCode
 
-    // Fallback to en-US if missing, then to original key string
-    if (!text) {
-      text = getNestedValue(locales['en-US'], path) || path
+    if (typeof window === 'undefined') {
+      return
     }
 
-    if (typeof text !== 'string') {
-      return path
-    }
-
-    // Process named variables {name}
-    for (const [key, value] of Object.entries(variables)) {
-      text = text.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value))
-    }
-
-    return text
-  }
-
-  function setLocale(locale) {
-    if (locales[locale]) {
-      currentLocale.value = locale
-      try {
-        window.localStorage.setItem('octoflow.locale', locale)
-      } catch {
-        // Ignorar em caso de erro localstorage
-      }
-    }
-  }
-
-  // Auto-init only once on client-side
-  if (typeof window !== 'undefined' && currentLocale.value === 'pt-BR') {
     try {
-      const saved = window.localStorage.getItem('octoflow.locale')
-      if (saved && locales[saved]) {
-        currentLocale.value = saved
-      } else {
-        const navigatorLang = window.navigator?.language || ''
-        if (navigatorLang.startsWith('en')) {
-          currentLocale.value = 'en-US'
-        }
-      }
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, normalizedLocaleCode)
     } catch {
-      // safe fallback
+      // Ignora indisponibilidade de storage sem quebrar fluxo.
     }
   }
 
   return {
-    t,
+    t: translate,
+    translate,
     setLocale,
-    currentLocale: computed(() => currentLocale.value),
+    currentLocale: computed(() => currentLocaleCode.value),
   }
 }

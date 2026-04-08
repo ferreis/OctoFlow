@@ -104,13 +104,35 @@
   },
   "sidebar": {
     "navigationAriaLabel": "Navegação principal",
-    "appSubtitle": "Painel interno",
-    "unauthenticatedSession": "Sessao nao autenticada",
+    "appSubtitle": "Painel principal",
+    "unauthenticatedSession": "Sessão não autenticada",
     "profileAvatarAlt": "Avatar do usuário",
+    "profileOpenAriaLabel": "Abrir perfil",
     "expandGroup": "Expandir grupo",
+    "expandGroupWithName": "Expandir grupo {group}",
     "collapseGroup": "Recolher grupo",
+    "collapseGroupWithName": "Recolher grupo {group}",
     "logout": "Sair",
-    "logoutCompact": "S"
+    "logoutCompact": "Sair"
+  },
+  "footer": {
+    "about": "O OctoFlow centraliza autenticação, organização e acompanhamento de tarefas integradas ao GitHub. O painel ajuda você a filtrar prioridades, visualizar indicadores e acompanhar o fluxo operacional com mais clareza.",
+    "copyright": "Copyright © {year} Ferreis",
+    "rightsReserved": "Todos os direitos reservados.",
+    "contactLabel": "Contato:"
+  },
+  "notification": {
+    "closeHint": "Clique para fechar",
+    "closeAriaLabel": "Fechar notificação",
+    "toneTitle": {
+      "success": "Sucesso",
+      "error": "Erro",
+      "warning": "Aviso",
+      "info": "Informação"
+    }
+  },
+  "app": {
+    "globalInteractiveError": "Ocorreu um erro inesperado na interface. Tente novamente."
   },
   "dashboard": {
     "title": "Dashboard",
