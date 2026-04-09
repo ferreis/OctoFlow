@@ -598,13 +598,13 @@ a {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 286px minmax(0, 1fr);
+  grid-template-columns: 272px minmax(0, 1fr);
   min-height: 100vh;
   transition: grid-template-columns 0.24s ease;
 }
 
 .app-shell.collapsed {
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 84px minmax(0, 1fr);
 }
 
 .app-shell.no-sidebar {
@@ -621,6 +621,12 @@ a {
   min-width: 0;
   padding: 22px 26px 22px 18px;
   width: 100%;
+}
+
+.app-main.edge-to-edge {
+  max-width: none;
+  padding: 0;
+  gap: 0;
 }
 
 .page-stage {
@@ -1579,7 +1585,7 @@ select optgroup {
 @media (max-width: 1180px) {
   .app-shell,
   .app-shell.collapsed {
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: 84px minmax(0, 1fr);
   }
 
   .app-shell.no-sidebar {

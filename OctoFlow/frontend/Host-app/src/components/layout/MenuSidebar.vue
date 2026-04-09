@@ -250,7 +250,7 @@ function resolveGroupContainerId(navigationItem) {
 }
 
 function resolveNavigationAriaCurrent(navigationItemKey) {
-  return navigationItemKey === props.activeKey ? 'page' : undefined
+  return isNavigationKeyActive(navigationItemKey) ? 'page' : undefined
 }
 
 function resolveGroupToggleAriaLabel(navigationItem) {
@@ -312,6 +312,28 @@ function normalizeNavigationKey(rawNavigationKey) {
   }
 
   return normalizedNavigationKey
+}
+
+function isFinanceNavigationKey(navigationKey) {
+  const normalizedNavigationKey = normalizeNavigationKey(navigationKey)
+  return normalizedNavigationKey === 'finance'
+}
+
+function isFinanceRouteActive() {
+  return String(props.activeKey || '').startsWith('finance')
+}
+
+function isNavigationKeyActive(navigationItemKey) {
+  const normalizedNavigationKey = normalizeNavigationKey(navigationItemKey)
+  if (normalizedNavigationKey === '') {
+    return false
+  }
+
+  if (isFinanceNavigationKey(normalizedNavigationKey)) {
+    return isFinanceRouteActive()
+  }
+
+  return normalizedNavigationKey === props.activeKey
 }
 </script>
 
@@ -421,14 +443,14 @@ function normalizeNavigationKey(rawNavigationKey) {
               sidebarExpanded
                 ? 'flex w-full items-center gap-3 px-3 py-3 text-left'
                 : 'flex h-14 w-full items-center justify-center px-0 py-0',
-              navigationItem.key === props.activeKey
+              isNavigationKeyActive(navigationItem.key)
                 ? 'menu-nav-item-active'
                 : 'menu-nav-item-idle',
             ]"
           >
             <span
               class="menu-nav-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black"
-              :class="navigationItem.key === props.activeKey ? 'menu-nav-icon-active' : 'menu-nav-icon-idle'"
+              :class="isNavigationKeyActive(navigationItem.key) ? 'menu-nav-icon-active' : 'menu-nav-icon-idle'"
             >
               {{ navigationItem.short }}
             </span>

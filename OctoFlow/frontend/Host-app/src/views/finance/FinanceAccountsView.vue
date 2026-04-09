@@ -1393,14 +1393,14 @@ onErrorCaptured((error) => {
 <template>
   <section class="finance-section">
     <nav
-      class="finance-subtabs"
+      class="finance-nav-tabs"
       :aria-label="translateScoped('tabs.navigationAriaLabel', 'Abas de contas')"
     >
       <button
         v-for="tabOption in accountsTabOptions"
         :key="tabOption.key"
         type="button"
-        class="finance-subtab-button"
+        class="finance-nav-tabs-button"
         :class="{ active: activeAccountsTab === tabOption.key }"
         @click="activeAccountsTab = tabOption.key"
       >

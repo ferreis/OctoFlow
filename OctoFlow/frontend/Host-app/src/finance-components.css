@@ -173,19 +173,110 @@
     @apply flex items-center gap-2 flex-wrap;
   }
 
-  /* Abas Modernas (App-like pills) */
-  .finance-subtabs {
-    @apply flex items-center gap-1 p-1 bg-surface-strong rounded-[14px] w-fit border border-line mb-3 overflow-x-auto max-w-full;
+  /* Layout de Integração (Seamless Dock) */
+  .finance-layout-container {
+    @apply flex flex-col min-h-0 relative overflow-visible w-full;
   }
-  .finance-subtab-button {
-    @apply min-h-[38px] px-5 py-2 rounded-[10px] bg-transparent text-muted text-[0.85rem] font-bold cursor-pointer transition-all duration-300 border border-transparent whitespace-nowrap hover:text-ink;
+
+  .finance-content-stage {
+    @apply grid gap-6 px-8 pt-8 pb-12 w-full max-w-[1440px] mx-auto;
   }
-  .finance-subtab-button:hover:not(.active) {
-    background: color-mix(in srgb, var(--surface) 60%, transparent);
+
+  /* ─── Finance Module Header (Branded Navbar) ─── */
+  .finance-header {
+    @apply sticky top-0 z-50 flex items-center w-full transition-all duration-300;
+    backdrop-filter: blur(22px) saturate(180%);
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%);
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+    box-shadow:
+      0 1px 0 0 color-mix(in srgb, white 3%, transparent),
+      0 4px 16px -4px rgba(0, 0, 0, 0.15);
+    min-height: 60px;
+    padding: 0 24px 0 20px;
+    gap: 0;
   }
-  .finance-subtab-button.active {
-    @apply bg-accent text-white border-transparent relative z-10;
-    box-shadow: 0 3px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+
+  /* Brand section: icon + title + badge */
+  .finance-header-brand {
+    @apply flex items-center gap-3 shrink-0 py-3;
+  }
+
+  .finance-header-icon {
+    @apply text-xl leading-none;
+    filter: grayscale(0.2);
+  }
+
+  .finance-header-title-group {
+    @apply flex items-center gap-2;
+  }
+
+  .finance-header-title {
+    @apply text-ink text-base font-bold tracking-tight leading-none m-0 p-0;
+    font-size: 1.05rem;
+  }
+
+  .finance-header-badge {
+    @apply text-[0.6rem] font-bold uppercase tracking-[0.12em] leading-none px-2 py-1 rounded-md;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+  }
+
+  /* Vertical divider between brand and nav */
+  .finance-header-divider {
+    @apply block self-stretch shrink-0 mx-5;
+    width: 1px;
+    background: linear-gradient(
+      to bottom,
+      transparent 15%,
+      color-mix(in srgb, var(--line) 50%, transparent) 50%,
+      transparent 85%
+    );
+  }
+
+  /* Navigation links area */
+  .finance-header-nav {
+    @apply flex items-center gap-1 flex-1 h-full overflow-x-auto;
+    scrollbar-width: none;
+  }
+  .finance-header-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Individual navigation link */
+  .finance-header-link {
+    @apply relative h-[60px] px-4 py-0 bg-transparent text-muted text-[0.78rem] font-semibold cursor-pointer
+           transition-all duration-200 whitespace-nowrap flex items-center justify-center border-b-2 border-transparent;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .finance-header-link:hover:not(.active) {
+    @apply text-ink;
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
+
+  .finance-header-link.active {
+    @apply text-accent border-accent;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  /* Abas Internas (Secundárias/Content Rail) */
+  .finance-nav-tabs {
+    @apply flex items-center gap-1 p-1 rounded-2xl bg-surface-strong border border-line mb-6 w-fit;
+  }
+  .finance-nav-tabs-button {
+    @apply relative h-11 px-6 rounded-xl bg-transparent text-muted text-[0.78rem] font-bold cursor-pointer transition-all duration-300 whitespace-nowrap flex items-center justify-center;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .finance-nav-tabs-button:hover:not(.active) {
+    @apply text-ink;
+    background: var(--nav-card-hover);
+  }
+  .finance-nav-tabs-button.active {
+    @apply text-white bg-accent shadow-md;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent);
   }
 
   /* Modais e Extras */
@@ -260,7 +351,7 @@
   @media (max-width: 768px) {
     .finance-screen, .finance-dashboard-section { gap: 16px; }
     .finance-panel { @apply p-4 rounded-xl; }
-    .finance-subtabs { @apply w-full flex-nowrap rounded-[12px]; }
+    .finance-subtabs { @apply w-full flex-nowrap rounded-[14px]; }
     .finance-migration-grid { grid-template-columns: 1fr; }
     .finance-dashboard-chart-row-double { grid-template-columns: 1fr; }
   }

@@ -27,8 +27,7 @@ export const navigationItems = [
   //   title: 'POST de teste para backend',
   // },
   {
-    key: 'finance-group',
-    type: 'group',
+    key: 'finance',
     short: 'FN',
     label: 'Financeiro',
     labelKey: 'navigation.items.finance.label',
@@ -36,38 +35,6 @@ export const navigationItems = [
     eyebrowKey: 'navigation.items.finance.eyebrow',
     title: 'Controle financeiro pessoal',
     titleKey: 'navigation.items.finance.title',
-    children: [
-      {
-        key: 'finance.accounts',
-        short: 'CT',
-        label: 'Contas',
-        labelKey: 'navigation.items.financeAccounts.label',
-      },
-      {
-        key: 'finance.banks',
-        short: 'BK',
-        label: 'Bancos',
-        labelKey: 'navigation.items.financeBanks.label',
-      },
-      {
-        key: 'finance.investments',
-        short: 'IV',
-        label: 'Investimentos',
-        labelKey: 'navigation.items.financeInvestments.label',
-      },
-      {
-        key: 'finance.settings',
-        short: 'CF',
-        label: 'Configurações',
-        labelKey: 'navigation.items.financeSettings.label',
-      },
-      {
-        key: 'finance.reports',
-        short: 'RP',
-        label: 'Relatórios',
-        labelKey: 'navigation.items.financeReports.label',
-      },
-    ],
   },
   {
     key: 'profile',

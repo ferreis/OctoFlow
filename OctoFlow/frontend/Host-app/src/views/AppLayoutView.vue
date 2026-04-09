@@ -1,6 +1,7 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import {
+  computed,
   onActivated,
   onBeforeMount,
   onBeforeUnmount,
@@ -37,6 +38,7 @@ const navigationRequestInProgress = ref(false)
 const { isCompactViewport, effectiveSidebarExpanded } = storeToRefs(appShellStore)
 const { activeViewKey: activeView } = storeToRefs(appNavigationStore)
 const { isAuthenticated, requiresGooglePasswordSetup, currentUser } = storeToRefs(sessionStore)
+const isFinanceModule = computed(() => appRoute.path.includes('/finance'))
 
 let viewportMediaQuery = null
 let removeViewportListener = null
@@ -245,7 +247,7 @@ async function logoutSession() {
       @logout="logoutSession"
     />
 
-    <div class="app-main">
+    <div class="app-main" :class="{ 'edge-to-edge': isFinanceModule }">
       <main ref="pageStageElement" class="page-stage" tabindex="-1">
         <RouterView />
       </main>

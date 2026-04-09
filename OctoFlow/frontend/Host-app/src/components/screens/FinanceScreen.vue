@@ -3458,9 +3458,9 @@ function applyAccountsDirectionContext() {
     </section>
 
     <section v-if="activeTab === 'accounts'" class="finance-section">
-      <nav class="finance-subtabs" aria-label="Abas da tela de contas">
+      <nav class="finance-nav-tabs" aria-label="Abas da tela de contas">
         <button v-for="accountsTabOption in accountsTabOptions" :key="accountsTabOption.key" type="button"
-          class="finance-subtab-button" :class="{ active: activeAccountsTab === accountsTabOption.key }"
+          class="finance-nav-tabs-button" :class="{ active: activeAccountsTab === accountsTabOption.key }"
           @click="activeAccountsTab = accountsTabOption.key">
           {{ accountsTabOption.label }}
         </button>
