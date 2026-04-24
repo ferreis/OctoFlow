@@ -435,6 +435,9 @@ final class FinanceRecurringService
         $ruleEndDate = !empty($rule['endsAt']) ? new \DateTimeImmutable((string) $rule['endsAt']) : null;
         $ruleStartCompetenceMonth = $ruleStartDate->format('Y-m-01');
         $today = new \DateTimeImmutable('today');
+        $nextCompetenceFromToday = (new \DateTimeImmutable($today->format('Y-m-01')))
+            ->modify('+1 month')
+            ->format('Y-m-01');
 
         $generatedCount = 0;
 
@@ -454,7 +457,11 @@ final class FinanceRecurringService
             if (!$forceGeneration && $competenceMonth !== $ruleStartCompetenceMonth) {
                 $previousMonth = $month->modify('-1 month');
                 $previousDueDate = $this->buildDateInMonth($previousMonth, $dayOfMonth);
-                if ($previousDueDate > $today) {
+                $isImmediateNextCompetence = $competenceMonth === $nextCompetenceFromToday;
+
+                // Permite antecipar somente a competência do próximo mês para manter
+                // visibilidade na aba de contas sem gerar competências muito distantes.
+                if (!$isImmediateNextCompetence && $previousDueDate > $today) {
                     continue;
                 }
             }

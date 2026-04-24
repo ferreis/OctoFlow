@@ -1402,7 +1402,15 @@
       "notifications": {
         "loadError": "Erro ao carregar relatórios financeiros.",
         "writeDenied": "Você não possui permissão para exportar ou importar dados financeiros.",
+        "refreshSuccess": "Relatórios atualizados com sucesso.",
+        "refreshGenerated": "Relatórios atualizados e {count} lançamento(s) recorrente(s) gerado(s) para o próximo mês.",
+        "refreshNoGenerationNeeded": "Relatórios atualizados. O próximo mês já possui lançamentos.",
+        "refreshCurrentMonthEmpty": "Relatórios atualizados. Não há lançamentos no mês atual para comparar.",
+        "refreshNoActiveRules": "Relatórios atualizados. Nenhuma regra recorrente ativa disponível para gerar lançamentos.",
+        "refreshError": "Erro ao atualizar relatórios.",
         "exportSuccess": "Relatório CSV solicitado com sucesso.",
+        "exportPending": "Exportação solicitada. O arquivo estará disponível assim que o processamento terminar.",
+        "exportDownloadSuccess": "Exportação pronta. Download iniciado com sucesso.",
         "exportError": "Erro ao gerar relatório CSV.",
         "invalidFileType": "Selecione um arquivo JSON válido.",
         "fileTooLarge": "Arquivo excede o limite de 5 MB para importação.",
@@ -1413,6 +1421,11 @@
         "snapshotImportSuccess": "Dados importados com sucesso.",
         "snapshotImportError": "Erro ao importar snapshot financeiro.",
         "childRenderError": "Erro inesperado ao renderizar os relatórios."
+      },
+      "actions": {
+        "refreshing": "Atualizando...",
+        "refreshAndGenerate": "Atualizar e gerar recorrentes",
+        "refreshOnly": "Atualizar relatórios"
       },
       "loading": "Carregando relatórios financeiros...",
       "cashflow": {

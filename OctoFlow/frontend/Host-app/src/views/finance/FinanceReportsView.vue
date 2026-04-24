@@ -27,9 +27,14 @@ import {
   fetchFinanceDashboardCashflow,
   fetchFinanceDashboardCategories,
   fetchFinanceDashboardSummary,
+  fetchFinanceEntries,
+  fetchFinanceExports,
+  fetchFinanceRecurringRules,
   fetchFinanceMigrationSnapshot,
+  generateFinanceRecurringRuleManually,
   importFinanceMigrationSnapshot,
 } from '../../services/finance'
+import { useSessionStore } from '../../stores/sessionStore'
 import { useFinanceStore } from '../../stores/financeStore'
 import { formatDate } from '../../utils/date'
 import { extractHttpMessage } from '../../utils/httpErrors'
@@ -39,8 +44,11 @@ import {
 } from '../../utils/financeInputSanitizers'
 
 const MAX_MIGRATION_FILE_SIZE_BYTES = 5 * 1024 * 1024
+const EXPORT_DOWNLOAD_POLL_ATTEMPTS = 10
+const EXPORT_DOWNLOAD_POLL_INTERVAL_MS = 500
 
 const financeStore = useFinanceStore()
+const sessionStore = useSessionStore()
 const { notifyUser } = useNotification()
 const { translateScoped, currentLocale } = useScopedI18n('financeModule.reportsView')
 const { canWriteFinance } = useFinancePermissions()
@@ -49,6 +57,7 @@ const dashboardSummary = ref(null)
 const dashboardCashflow = ref([])
 const dashboardCategories = ref([])
 const loadingReports = ref(false)
+const refreshingReports = ref(false)
 const financeViewIsActive = ref(false)
 const kpiCountBeforeDomUpdate = ref(0)
 
@@ -325,6 +334,226 @@ function revokeLatestDownloadUrl() {
   }
 }
 
+function waitFor(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, Number(milliseconds || 0)))
+  })
+}
+
+function toMonthDateRange(monthOffset = 0) {
+  const referenceDate = new Date()
+  const monthStartDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + monthOffset, 1)
+  const monthEndDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + monthOffset + 1, 0)
+
+  const monthStartYear = monthStartDate.getFullYear()
+  const monthStartMonth = String(monthStartDate.getMonth() + 1).padStart(2, '0')
+  const monthStartDay = String(monthStartDate.getDate()).padStart(2, '0')
+
+  const monthEndYear = monthEndDate.getFullYear()
+  const monthEndMonth = String(monthEndDate.getMonth() + 1).padStart(2, '0')
+  const monthEndDay = String(monthEndDate.getDate()).padStart(2, '0')
+
+  return {
+    startDate: `${monthStartYear}-${monthStartMonth}-${monthStartDay}`,
+    endDate: `${monthEndYear}-${monthEndMonth}-${monthEndDay}`,
+    competenceMonth: `${monthStartYear}-${monthStartMonth}-01`,
+  }
+}
+
+async function countEntriesInMonthRange(monthDateRange) {
+  const response = await fetchFinanceEntries({
+    startDate: monthDateRange.startDate,
+    endDate: monthDateRange.endDate,
+  }, {
+    page: 1,
+    itemsPerPage: 1,
+  })
+
+  return Number(response.data?.meta?.total || 0)
+}
+
+async function generateRecurringEntriesForNextMonthIfNeeded() {
+  const currentMonthRange = toMonthDateRange(0)
+  const nextMonthRange = toMonthDateRange(1)
+
+  const [currentMonthEntriesCount, nextMonthEntriesCount] = await Promise.all([
+    countEntriesInMonthRange(currentMonthRange),
+    countEntriesInMonthRange(nextMonthRange),
+  ])
+
+  if (currentMonthEntriesCount <= 0) {
+    return { generatedEntriesCount: 0, reason: 'CURRENT_MONTH_EMPTY' }
+  }
+
+  if (nextMonthEntriesCount > 0) {
+    return { generatedEntriesCount: 0, reason: 'NEXT_MONTH_ALREADY_HAS_ENTRIES' }
+  }
+
+  const recurringRulesResponse = await fetchFinanceRecurringRules()
+  const recurringRules = Array.isArray(recurringRulesResponse.data?.items) ? recurringRulesResponse.data.items : []
+  const activeRecurringRules = recurringRules.filter((recurringRule) => Boolean(recurringRule?.isActive))
+
+  if (activeRecurringRules.length <= 0) {
+    return { generatedEntriesCount: 0, reason: 'NO_ACTIVE_RULES' }
+  }
+
+  let generatedEntriesCount = 0
+
+  for (const recurringRule of activeRecurringRules) {
+    const recurringRuleId = Number(recurringRule?.id || 0)
+    if (!Number.isFinite(recurringRuleId) || recurringRuleId <= 0) {
+      continue
+    }
+
+    const response = await generateFinanceRecurringRuleManually(recurringRuleId, {
+      competenceMonth: nextMonthRange.competenceMonth,
+    })
+
+    generatedEntriesCount += Number(response.data?.item?.generatedCount || 0)
+  }
+
+  return { generatedEntriesCount, reason: generatedEntriesCount > 0 ? 'GENERATED' : 'NO_GENERATION_NEEDED' }
+}
+
+async function refreshReportsAndGenerateRecurring() {
+  if (refreshingReports.value) {
+    return
+  }
+
+  refreshingReports.value = true
+
+  try {
+    let generationResult = { generatedEntriesCount: 0, reason: 'READ_ONLY' }
+
+    if (canWriteFinance.value) {
+      generationResult = await generateRecurringEntriesForNextMonthIfNeeded()
+    }
+
+    await loadReportsData(false)
+
+    if (!financeViewIsActive.value) {
+      return
+    }
+
+    if (!canWriteFinance.value) {
+      notifyUser(translateScoped('notifications.refreshSuccess', 'Relatórios atualizados com sucesso.'), 'success')
+      return
+    }
+
+    if (generationResult.generatedEntriesCount > 0) {
+      notifyUser(translateScoped(
+        'notifications.refreshGenerated',
+        'Relatórios atualizados e {count} lançamento(s) recorrente(s) gerado(s) para o próximo mês.',
+        { count: String(generationResult.generatedEntriesCount) },
+      ), 'success')
+      return
+    }
+
+    if (generationResult.reason === 'NEXT_MONTH_ALREADY_HAS_ENTRIES') {
+      notifyUser(translateScoped(
+        'notifications.refreshNoGenerationNeeded',
+        'Relatórios atualizados. O próximo mês já possui lançamentos.',
+      ), 'info')
+      return
+    }
+
+    if (generationResult.reason === 'CURRENT_MONTH_EMPTY') {
+      notifyUser(translateScoped(
+        'notifications.refreshCurrentMonthEmpty',
+        'Relatórios atualizados. Não há lançamentos no mês atual para comparar.',
+      ), 'info')
+      return
+    }
+
+    if (generationResult.reason === 'NO_GENERATION_NEEDED') {
+      notifyUser(translateScoped(
+        'notifications.refreshNoGenerationNeeded',
+        'Relatórios atualizados. O próximo mês já possui lançamentos.',
+      ), 'info')
+      return
+    }
+
+    notifyUser(translateScoped(
+      'notifications.refreshNoActiveRules',
+      'Relatórios atualizados. Nenhuma regra recorrente ativa disponível para gerar lançamentos.',
+    ), 'info')
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.refreshError', 'Erro ao atualizar relatórios.')), 'error')
+  } finally {
+    refreshingReports.value = false
+  }
+}
+
+async function findExportJobById(exportJobId) {
+  const normalizedExportJobId = Number(exportJobId || 0)
+  if (!Number.isFinite(normalizedExportJobId) || normalizedExportJobId <= 0) {
+    return null
+  }
+
+  const response = await fetchFinanceExports({
+    page: 1,
+    itemsPerPage: 20,
+  })
+
+  const exportItems = Array.isArray(response.data?.items) ? response.data.items : []
+  return exportItems.find((exportItem) => Number(exportItem?.id || 0) === normalizedExportJobId) || null
+}
+
+async function downloadExportJobFile(exportJob) {
+  const exportJobId = Number(exportJob?.id || 0)
+  if (!Number.isFinite(exportJobId) || exportJobId <= 0) {
+    return false
+  }
+
+  const response = await sessionStore.authRequest({
+    url: `/finance/exports/${encodeURIComponent(exportJobId)}/download`,
+    method: 'GET',
+    responseType: 'blob',
+  })
+
+  if (typeof document === 'undefined') {
+    return false
+  }
+
+  const downloadBlob = response.data instanceof Blob
+    ? response.data
+    : new Blob([response.data])
+
+  const downloadUrl = URL.createObjectURL(downloadBlob)
+  const downloadAnchor = document.createElement('a')
+  downloadAnchor.href = downloadUrl
+  downloadAnchor.download = String(exportJob?.fileName || `finance-export-${exportJobId}.xlsx`)
+  document.body.appendChild(downloadAnchor)
+  downloadAnchor.click()
+  downloadAnchor.remove()
+  URL.revokeObjectURL(downloadUrl)
+
+  return true
+}
+
+async function tryAutoDownloadCreatedExport(exportJobId) {
+  for (let attemptIndex = 0; attemptIndex < EXPORT_DOWNLOAD_POLL_ATTEMPTS; attemptIndex += 1) {
+    const exportJob = await findExportJobById(exportJobId)
+    const exportStatus = String(exportJob?.status || '').trim().toUpperCase()
+
+    if (exportStatus === 'DONE') {
+      const downloadStarted = await downloadExportJobFile(exportJob)
+      return downloadStarted ? 'DOWNLOADED' : 'DONE'
+    }
+
+    if (exportStatus === 'FAILED') {
+      const exportErrorMessage = String(exportJob?.errorMessage || '').trim()
+      throw new Error(exportErrorMessage || translateScoped('notifications.exportError', 'Erro ao gerar relatório CSV.'))
+    }
+
+    if (attemptIndex < EXPORT_DOWNLOAD_POLL_ATTEMPTS - 1) {
+      await waitFor(EXPORT_DOWNLOAD_POLL_INTERVAL_MS)
+    }
+  }
+
+  return 'PENDING'
+}
+
 async function loadReportsData(showNotificationOnError = false) {
   loadingReports.value = true
 
@@ -364,8 +593,25 @@ async function submitExport() {
   exportingCsv.value = true
 
   try {
-    await createFinanceExport({ exportType: resolveExportType() })
-    notifyUser(translateScoped('notifications.exportSuccess', 'Relatório CSV solicitado com sucesso.'), 'success')
+    const response = await createFinanceExport({ exportType: resolveExportType() })
+    const createdExportJobId = Number(response.data?.item?.id || 0)
+
+    if (!Number.isFinite(createdExportJobId) || createdExportJobId <= 0) {
+      notifyUser(translateScoped('notifications.exportSuccess', 'Relatório CSV solicitado com sucesso.'), 'success')
+      return
+    }
+
+    const autoDownloadResult = await tryAutoDownloadCreatedExport(createdExportJobId)
+    if (!financeViewIsActive.value) {
+      return
+    }
+
+    if (autoDownloadResult === 'DOWNLOADED') {
+      notifyUser(translateScoped('notifications.exportDownloadSuccess', 'Exportação pronta. Download iniciado com sucesso.'), 'success')
+      return
+    }
+
+    notifyUser(translateScoped('notifications.exportPending', 'Exportação solicitada. O arquivo estará disponível assim que o processamento terminar.'), 'info')
   } catch (error) {
     notifyUser(extractHttpMessage(error, translateScoped('notifications.exportError', 'Erro ao gerar relatório CSV.')), 'error')
   } finally {
@@ -431,7 +677,9 @@ async function downloadFinanceMigrationSnapshot() {
     const downloadAnchor = document.createElement('a')
     downloadAnchor.href = latestDownloadObjectUrl.value
     downloadAnchor.download = `octoflow-finance-backup-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(downloadAnchor)
     downloadAnchor.click()
+    downloadAnchor.remove()
 
     notifyUser(translateScoped('notifications.snapshotExportSuccess', 'Snapshot exportado com sucesso.'), 'success')
   } catch (error) {
@@ -513,12 +761,14 @@ onDeactivated(() => {
   financeViewIsActive.value = false
   exportingCsv.value = false
   migrationLoading.value = false
+  refreshingReports.value = false
 })
 
 onBeforeUnmount(() => {
   financeViewIsActive.value = false
   exportingCsv.value = false
   migrationLoading.value = false
+  refreshingReports.value = false
   resetMigrationImport()
   revokeLatestDownloadUrl()
 })
@@ -543,6 +793,16 @@ onErrorCaptured((error) => {
 
 <template>
   <section class="finance-section finance-dashboard-section">
+    <div class="finance-form-actions">
+      <button type="button" class="finance-inline-action" :disabled="refreshingReports" @click="refreshReportsAndGenerateRecurring">
+        {{ refreshingReports
+          ? translateScoped('actions.refreshing', 'Atualizando...')
+          : canWriteFinance
+            ? translateScoped('actions.refreshAndGenerate', 'Atualizar e gerar recorrentes')
+            : translateScoped('actions.refreshOnly', 'Atualizar relatórios') }}
+      </button>
+    </div>
+
     <div v-if="loadingReports && !dashboardCashflow.length && !dashboardCategories.length" class="finance-muted-block">
       {{ translateScoped('loading', 'Carregando relatórios financeiros...') }}
     </div>

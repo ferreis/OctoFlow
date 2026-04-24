@@ -1402,7 +1402,15 @@
       "notifications": {
         "loadError": "Error loading financial reports.",
         "writeDenied": "You do not have permission to export or import financial data.",
+        "refreshSuccess": "Reports updated successfully.",
+        "refreshGenerated": "Reports updated and {count} recurring entry(ies) generated for next month.",
+        "refreshNoGenerationNeeded": "Reports updated. Next month already has entries.",
+        "refreshCurrentMonthEmpty": "Reports updated. There are no entries in the current month to compare.",
+        "refreshNoActiveRules": "Reports updated. No active recurring rules available to generate entries.",
+        "refreshError": "Error updating reports.",
         "exportSuccess": "CSV report requested successfully.",
+        "exportPending": "Export requested. The file will be available as soon as processing finishes.",
+        "exportDownloadSuccess": "Export ready. Download started successfully.",
         "exportError": "Error generating CSV report.",
         "invalidFileType": "Select a valid JSON file.",
         "fileTooLarge": "File exceeds the 5 MB import limit.",
@@ -1413,6 +1421,11 @@
         "snapshotImportSuccess": "Data imported successfully.",
         "snapshotImportError": "Error importing financial snapshot.",
         "childRenderError": "Unexpected error while rendering reports."
+      },
+      "actions": {
+        "refreshing": "Updating...",
+        "refreshAndGenerate": "Refresh and generate recurring",
+        "refreshOnly": "Refresh reports"
       },
       "loading": "Loading financial reports...",
       "cashflow": {

@@ -649,7 +649,7 @@ async function loadEntries(showNotificationOnError = false) {
 
     entriesState.value = Array.isArray(response.data?.items) ? response.data.items : []
 
-    const responseMeta = response.data?.item || {}
+    const responseMeta = response.data?.meta || response.data?.item || {}
     entriesMeta.value = {
       page: sanitizeInteger(responseMeta.page || normalizedFilters.page, {
         min: 1,
