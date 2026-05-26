@@ -23,6 +23,7 @@ import { useNotification } from '../../composables/useNotification'
 import { useScopedI18n } from '../../composables/useScopedI18n'
 import {
   FINANCE_DIRECTION_OPTIONS,
+  FINANCE_ENTRY_MACRO_STATUS_OPTIONS,
   FINANCE_ENTRY_STATUS_OPTIONS,
   FINANCE_ENTRY_TYPE_OPTIONS,
   translateFinanceTerm,
@@ -72,6 +73,7 @@ const { translateScoped, currentLocale } = useScopedI18n('financeModule.accounts
 const { canWriteFinance } = useFinancePermissions()
 
 const directionOptions = FINANCE_DIRECTION_OPTIONS
+const entryMacroStatusOptions = FINANCE_ENTRY_MACRO_STATUS_OPTIONS
 const entryStatusOptions = FINANCE_ENTRY_STATUS_OPTIONS
 const manualEntryTypeOptions = FINANCE_ENTRY_TYPE_OPTIONS.filter((entryTypeOption) => (
   ['ONE_OFF', 'ADJUSTMENT'].includes(entryTypeOption.value)
@@ -95,6 +97,7 @@ const financeViewIsActive = ref(false)
 
 const entryFilters = reactive({
   direction: '',
+  macroStatus: '',
   status: '',
   search: '',
   startDate: '',
@@ -486,6 +489,16 @@ function roundMoney(rawValue) {
   return Math.round(Number(rawValue || 0) * 100) / 100
 }
 
+function formatDateToBrazilianPattern(rawDateValue) {
+  const normalizedDate = sanitizeDateInput(rawDateValue)
+  if (normalizedDate === '') {
+    return '-'
+  }
+
+  const [yearValue, monthValue, dayValue] = normalizedDate.split('-')
+  return `${dayValue}/${monthValue}/${yearValue}`
+}
+
 function getFinanceLabel(termCode, fallbackLabel = '-') {
   return translateFinanceTerm(termCode, fallbackLabel)
 }
@@ -515,6 +528,7 @@ function normalizeEntryFilters(rawFilters = {}) {
 
   return {
     direction: sanitizeFilterByCatalog(rawFilters.direction, directionOptions),
+    macroStatus: sanitizeFilterByCatalog(rawFilters.macroStatus, entryMacroStatusOptions),
     status: sanitizeFilterByCatalog(rawFilters.status, entryStatusOptions),
     search: sanitizeSearchText(rawFilters.search, 180),
     startDate: normalizedStartDate,
@@ -667,6 +681,7 @@ async function loadEntries(showNotificationOnError = false) {
     const response = await fetchFinanceEntries(
       {
         direction: requestFilters.direction,
+        macroStatus: requestFilters.macroStatus,
         status: requestFilters.status,
         search: requestFilters.search,
         startDate: requestFilters.startDate,
@@ -1488,18 +1503,49 @@ async function refreshAccountsOverviewValues() {
 }
 
 function formatSettlementEntryOptionLabel(entryItem) {
-  return `${entryItem.title} — ${formatCurrency(entryItem.remainingAmountBrl)} ${translateScoped('settlement.remainingSuffix', 'restante')}`
+  const installmentNumber = sanitizeInteger(entryItem?.installmentNumber, {
+    min: 1,
+    max: 9999,
+    defaultValue: 0,
+  })
+  const installmentsCount = sanitizeInteger(entryItem?.installmentsCount, {
+    min: 1,
+    max: 9999,
+    defaultValue: 0,
+  })
+  const installmentLabel = installmentNumber > 0 && installmentsCount > 0
+    ? ` - ${installmentNumber}/${installmentsCount}`
+    : ''
+
+  return `${entryItem.title}${installmentLabel} - ${formatDateToBrazilianPattern(entryItem?.dueDate)} - ${formatCurrency(entryItem.remainingAmountBrl)}`
+}
+
+function normalizeSettlementSearchText(rawSearchText) {
+  return String(rawSearchText || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
 }
 
 function findSettlementEntryBySearchText(searchText) {
-  const normalizedSearchText = sanitizeSearchText(searchText, MAX_TITLE_LENGTH)
+  const normalizedSearchText = normalizeSettlementSearchText(sanitizeSearchText(searchText, 220))
   if (normalizedSearchText === '') {
     return null
   }
 
-  return availableSettlementEntries.value.find((entryItem) => (
-    formatSettlementEntryOptionLabel(entryItem) === normalizedSearchText
-  )) || null
+  const exactMatch = availableSettlementEntries.value.find((entryItem) => (
+    normalizeSettlementSearchText(formatSettlementEntryOptionLabel(entryItem)) === normalizedSearchText
+  ))
+  if (exactMatch) {
+    return exactMatch
+  }
+
+  const startsWithMatches = availableSettlementEntries.value.filter((entryItem) => (
+    normalizeSettlementSearchText(formatSettlementEntryOptionLabel(entryItem)).startsWith(normalizedSearchText)
+  ))
+
+  return startsWithMatches.length === 1 ? startsWithMatches[0] : null
 }
 
 watch(activeAccountsTab, () => {
@@ -1520,19 +1566,18 @@ watch(activeAccountsTab, () => {
   void loadTabData(false)
 })
 
-watch(
-  () => settlementForm.entryId,
-  () => {
-    if (settlementForm.settlementType !== 'PAYMENT') {
-      return
-    }
+watch(selectedSettlementEntry, (entryItem) => {
+  if (settlementForm.settlementType !== 'PAYMENT') {
+    return
+  }
 
-    const remainingAmount = Number(selectedSettlementEntry.value?.remainingAmountBrl || 0)
-    if (remainingAmount > 0) {
-      settlementForm.amountBrl = remainingAmount.toFixed(2)
-    }
-  },
-)
+  if (!entryItem) {
+    return
+  }
+
+  const expectedAmount = Number(entryItem?.expectedAmountBrl || 0)
+  settlementForm.amountBrl = expectedAmount > 0 ? expectedAmount.toFixed(2) : ''
+})
 
 watch(
   () => settlementForm.settlementType,
@@ -1559,8 +1604,16 @@ watch(
       return
     }
 
+    if (String(searchText || '').trim() === '') {
+      settlementForm.entryId = ''
+      settlementForm.amountBrl = ''
+      return
+    }
+
     const matchedEntry = findSettlementEntryBySearchText(searchText)
-    settlementForm.entryId = matchedEntry ? sanitizeIdentifier(matchedEntry.id) : ''
+    if (matchedEntry) {
+      settlementForm.entryId = sanitizeIdentifier(matchedEntry.id)
+    }
 
     if (settlementEntrySearchDebounceId.value) {
       window.clearTimeout(settlementEntrySearchDebounceId.value)
@@ -1776,6 +1829,7 @@ onErrorCaptured((error) => {
       :filters="entryFilters"
       :show-direction-filter="isOverview"
       :direction-options="directionOptions"
+      :macro-status-options="entryMacroStatusOptions"
       :status-options="entryStatusOptions"
       :resolve-finance-label="getFinanceLabel"
       :loading="loadingEntries"

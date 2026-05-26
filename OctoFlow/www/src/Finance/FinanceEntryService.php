@@ -42,6 +42,23 @@ final class FinanceEntryService
             $parameters['status'] = $status;
         }
 
+        $macroStatus = strtoupper(trim((string) ($filters['macroStatus'] ?? '')));
+        if ($macroStatus !== '') {
+            $statusListByMacroStatus = $this->resolveStatusListByMacroStatus($macroStatus);
+            if ($statusListByMacroStatus !== []) {
+                $macroStatusSqlParts = [];
+                foreach ($statusListByMacroStatus as $statusIndex => $statusCode) {
+                    $statusParameterName = sprintf('macroStatus%d', $statusIndex);
+                    $macroStatusSqlParts[] = sprintf('entry.status = :%s', $statusParameterName);
+                    $parameters[$statusParameterName] = $statusCode;
+                }
+
+                if ($macroStatusSqlParts !== []) {
+                    $whereParts[] = '(' . implode(' OR ', $macroStatusSqlParts) . ')';
+                }
+            }
+        }
+
         $categoryId = (int) ($filters['categoryId'] ?? 0);
         if ($categoryId > 0) {
             $whereParts[] = 'entry.category_id = :categoryId';
@@ -98,6 +115,8 @@ final class FinanceEntryService
                 entry.remaining_amount_brl AS "remainingAmountBrl",
                 entry.source_origin AS "sourceOrigin",
                 entry.source_system AS "sourceSystem",
+                installment_item.installment_number AS "installmentNumber",
+                installment_plan.installments_count AS "installmentsCount",
                 entry.fully_settled_at AS "fullySettledAt",
                 entry.created_at AS "createdAt",
                 entry.updated_at AS "updatedAt",
@@ -108,6 +127,8 @@ final class FinanceEntryService
             FROM finance_entry entry
             LEFT JOIN finance_category category ON category.id = entry.category_id
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = entry.bank_account_id
+            LEFT JOIN finance_installment_item installment_item ON installment_item.entry_id = entry.id
+            LEFT JOIN finance_installment_plan installment_plan ON installment_plan.id = installment_item.plan_id
             WHERE ' . $whereSql . '
             ORDER BY entry.due_date ASC NULLS LAST, entry.id DESC
             LIMIT :limit OFFSET :offset',
@@ -912,6 +933,8 @@ final class FinanceEntryService
                 entry.fx_rate_date AS "fxRateDate",
                 entry.source_origin AS "sourceOrigin",
                 entry.source_system AS "sourceSystem",
+                installment_item.installment_number AS "installmentNumber",
+                installment_plan.installments_count AS "installmentsCount",
                 entry.recurring_rule_id AS "recurringRuleId",
                 entry.fully_settled_at AS "fullySettledAt",
                 entry.created_at AS "createdAt",
@@ -923,6 +946,8 @@ final class FinanceEntryService
             FROM finance_entry entry
             LEFT JOIN finance_category category ON category.id = entry.category_id
             LEFT JOIN finance_bank_account bank_account ON bank_account.id = entry.bank_account_id
+            LEFT JOIN finance_installment_item installment_item ON installment_item.entry_id = entry.id
+            LEFT JOIN finance_installment_plan installment_plan ON installment_plan.id = installment_item.plan_id
             WHERE entry.owner_id = :ownerId
               AND entry.id = :entryId
               AND entry.deleted_at IS NULL
@@ -1059,6 +1084,19 @@ final class FinanceEntryService
             'PAID', 'RECEIVED', 'CANCELED', 'NEGOTIATED' => 'FINISHED',
             'FORECAST' => 'PROJECTION',
             default => 'OPEN',
+        };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveStatusListByMacroStatus(string $macroStatus): array
+    {
+        return match ($macroStatus) {
+            'OPEN' => ['PENDING', 'PARTIAL', 'OVERDUE', 'SCHEDULED'],
+            'FINISHED' => ['PAID', 'RECEIVED', 'CANCELED', 'NEGOTIATED'],
+            'PROJECTION' => ['FORECAST'],
+            default => [],
         };
     }
 

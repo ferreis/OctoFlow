@@ -25,9 +25,9 @@ const FINANCE_RECEIVABLE_STATUS_LABEL_BY_CODE = Object.freeze({
 })
 
 const FINANCE_ENTRY_MACRO_STATUS_LABEL_BY_CODE = Object.freeze({
-  OPEN: 'Em Aberto',
-  FINISHED: 'Finalizado',
-  PROJECTION: 'Projeção',
+  OPEN: 'Abertos',
+  FINISHED: 'Concluídos',
+  PROJECTION: 'Previstos',
 })
 
 const FINANCE_ENTRY_TYPE_LABEL_BY_CODE = Object.freeze({

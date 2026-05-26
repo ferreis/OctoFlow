@@ -44,6 +44,10 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  macroStatusOptions: {
+    type: Array,
+    default: () => [],
+  },
   statusOptions: {
     type: Array,
     default: () => [],
@@ -71,6 +75,7 @@ const { translate, currentLocale } = useI18n()
 const localFilters = reactive({
   search: '',
   direction: '',
+  macroStatus: '',
   status: '',
   startDate: '',
   endDate: '',
@@ -80,9 +85,35 @@ const directionOptionsCatalog = computed(() => (
   Array.isArray(props.directionOptions) ? props.directionOptions : []
 ))
 
+const macroStatusOptionsCatalog = computed(() => (
+  Array.isArray(props.macroStatusOptions) ? props.macroStatusOptions : []
+))
+
 const statusOptionsCatalog = computed(() => (
   Array.isArray(props.statusOptions) ? props.statusOptions : []
 ))
+
+const statusOptionsByMacroStatus = Object.freeze({
+  OPEN: ['PENDING', 'PARTIAL', 'OVERDUE', 'SCHEDULED'],
+  FINISHED: ['PAID', 'RECEIVED', 'CANCELED', 'NEGOTIATED'],
+  PROJECTION: ['FORECAST'],
+})
+
+const filteredStatusOptions = computed(() => {
+  const selectedMacroStatus = String(localFilters.macroStatus || '').trim().toUpperCase()
+  if (selectedMacroStatus === '') {
+    return []
+  }
+
+  const allowedStatuses = statusOptionsByMacroStatus[selectedMacroStatus] || []
+  if (allowedStatuses.length === 0) {
+    return []
+  }
+
+  return statusOptionsCatalog.value.filter((statusOption) => (
+    allowedStatuses.includes(String(statusOption?.value || '').trim().toUpperCase())
+  ))
+})
 
 const resolvedPanelTitle = computed(() => {
   const normalizedTitle = String(props.panelTitle || '').trim()
@@ -142,10 +173,15 @@ function sanitizeFiltersPayload(rawFilters = {}) {
     direction: props.showDirectionFilter
       ? sanitizeFilterOptionByCatalog(rawFilters.direction, directionOptionsCatalog.value)
       : '',
-    status: sanitizeFilterOptionByCatalog(rawFilters.status, statusOptionsCatalog.value),
+    macroStatus: sanitizeFilterOptionByCatalog(rawFilters.macroStatus, macroStatusOptionsCatalog.value),
+    status: '',
     startDate: sanitizeDateInput(rawFilters.startDate),
     endDate: sanitizeDateInput(rawFilters.endDate),
   }
+
+  normalizedFilters.status = normalizedFilters.macroStatus === ''
+    ? ''
+    : sanitizeFilterOptionByCatalog(rawFilters.status, filteredStatusOptions.value)
 
   if (
     normalizedFilters.startDate !== ''
@@ -166,6 +202,7 @@ watch(
     const normalizedFilters = sanitizeFiltersPayload(nextFilters || {})
     localFilters.search = normalizedFilters.search
     localFilters.direction = normalizedFilters.direction
+    localFilters.macroStatus = normalizedFilters.macroStatus
     localFilters.status = normalizedFilters.status
     localFilters.startDate = normalizedFilters.startDate
     localFilters.endDate = normalizedFilters.endDate
@@ -173,6 +210,17 @@ watch(
   {
     immediate: true,
     deep: true,
+  },
+)
+
+watch(
+  () => localFilters.macroStatus,
+  (macroStatusValue, previousMacroStatusValue) => {
+    if (macroStatusValue === previousMacroStatusValue) {
+      return
+    }
+
+    localFilters.status = ''
   },
 )
 
@@ -206,6 +254,7 @@ function submitFilters() {
   const normalizedFilters = sanitizeFiltersPayload(localFilters)
   localFilters.search = normalizedFilters.search
   localFilters.direction = normalizedFilters.direction
+  localFilters.macroStatus = normalizedFilters.macroStatus
   localFilters.status = normalizedFilters.status
   localFilters.startDate = normalizedFilters.startDate
   localFilters.endDate = normalizedFilters.endDate
@@ -243,6 +292,7 @@ function deleteEntry(entryItem) {
 
   emit('delete-entry', entryItem)
 }
+
 </script>
 
 <template>
@@ -279,11 +329,25 @@ function deleteEntry(entryItem) {
         </select>
       </label>
       <label>
+        <span>Macro-status</span>
+        <select v-model="localFilters.macroStatus">
+          <option value="">Todos</option>
+          <option
+            v-for="macroStatusOption in macroStatusOptions"
+            :key="macroStatusOption.value"
+            :value="macroStatusOption.value"
+          >
+            {{ macroStatusOption.label }}
+          </option>
+        </select>
+      </label>
+
+      <label>
         <span>{{ translate('shared.financeEntriesPanel.filters.status') }}</span>
-        <select v-model="localFilters.status">
+        <select v-model="localFilters.status" :disabled="localFilters.macroStatus === ''">
           <option value="">{{ translate('shared.financeEntriesPanel.filters.statusAll') }}</option>
           <option
-            v-for="statusOption in statusOptions"
+            v-for="statusOption in filteredStatusOptions"
             :key="statusOption.value"
             :value="statusOption.value"
           >
@@ -332,9 +396,6 @@ function deleteEntry(entryItem) {
                 :status="entryItem.status"
                 :label="resolveFinanceLabel(entryItem.status)"
               />
-              <small class="finance-muted-block">
-                {{ resolveFinanceLabel(entryItem.macroStatus, '-') }}
-              </small>
             </td>
             <td>{{ formatDate(entryItem.dueDate, '-') }}</td>
             <td>{{ formatCurrency(entryItem.expectedAmountBrl) }}</td>
