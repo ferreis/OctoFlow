@@ -1,2 +1,1 @@
-este arquivo e gerado automaticamente
-as dependencias sao revalidadas automaticamente no proximo up
+ ao apagar este arquivo, o npm install irá rodar no próximo up

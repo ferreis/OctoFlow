@@ -36,7 +36,7 @@ services:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
     image: nodejs
-    restart: on-failure:5
+    restart: unless-stopped
     volumes:
       - ./frontend:/home/node/app
       - ../data/temp:/temp
@@ -107,7 +107,7 @@ services:
       - ../data/tempdb:/tempdb
       - ../data/temp:/temp
     ports:
-      - "14953:5432"
+      - "14954:5432"
     networks:
       - octoflow-network
 

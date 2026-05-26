@@ -113,6 +113,7 @@ final class FinanceEntryService
             LIMIT :limit OFFSET :offset',
             $parameters,
         );
+        $items = array_map(fn (array $entry): array => $this->appendMacroStatus($entry), $items);
 
         return [
             'items' => $items,
@@ -544,6 +545,8 @@ final class FinanceEntryService
             }
 
             $settlementBankAccountId = $creditCardId;
+        } elseif ($settlementType === 'ADJUSTMENT') {
+            $settlementBankAccountId = null;
         } else {
             $settlementBankAccountId = $this->normalizeOwnedBankAccountId(
                 $ownerId,
@@ -860,7 +863,7 @@ final class FinanceEntryService
             WHERE due_date < :today
               AND deleted_at IS NULL
               AND remaining_amount_brl > 0
-              AND status NOT IN ('OVERDUE', 'CANCELED', 'NEGOTIATED', 'PAID', 'RECEIVED')
+              AND status NOT IN ('OVERDUE', 'CANCELED', 'NEGOTIATED', 'PAID', 'RECEIVED', 'FORECAST')
         SQL, [
             'today' => $today,
         ]);
@@ -933,7 +936,7 @@ final class FinanceEntryService
             throw new \InvalidArgumentException('Entry not found.');
         }
 
-        return $entry;
+        return $this->appendMacroStatus($entry);
     }
 
     /**
@@ -1023,19 +1026,40 @@ final class FinanceEntryService
             return 'PARTIAL';
         }
 
+        if ($manualStatus === 'FORECAST') {
+            return 'FORECAST';
+        }
+
         if ($dueDate instanceof \DateTimeImmutable && $dueDate < new \DateTimeImmutable('today')) {
             return 'OVERDUE';
         }
 
-        if ($direction === FinanceConstants::DIRECTION_PAYABLE) {
-            if ($dueDate instanceof \DateTimeImmutable && $dueDate > new \DateTimeImmutable('today')) {
-                return 'SCHEDULED';
-            }
-
-            return 'PENDING';
+        if ($manualStatus === 'SCHEDULED') {
+            return $manualStatus;
         }
 
-        return 'FORECAST';
+        return 'PENDING';
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     *
+     * @return array<string, mixed>
+     */
+    private function appendMacroStatus(array $entry): array
+    {
+        $entry['macroStatus'] = $this->resolveMacroStatus((string) ($entry['status'] ?? ''));
+
+        return $entry;
+    }
+
+    private function resolveMacroStatus(string $status): string
+    {
+        return match ($status) {
+            'PAID', 'RECEIVED', 'CANCELED', 'NEGOTIATED' => 'FINISHED',
+            'FORECAST' => 'PROJECTION',
+            default => 'OPEN',
+        };
     }
 
     /**

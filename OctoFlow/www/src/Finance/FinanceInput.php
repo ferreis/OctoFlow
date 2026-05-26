@@ -101,15 +101,7 @@ final class FinanceInput
 
     public static function defaultStatusByDirection(string $direction, ?\DateTimeImmutable $dueDate): string
     {
-        if ($direction === FinanceConstants::DIRECTION_PAYABLE) {
-            if ($dueDate instanceof \DateTimeImmutable && $dueDate > new \DateTimeImmutable('today')) {
-                return 'SCHEDULED';
-            }
-
-            return 'PENDING';
-        }
-
-        return 'FORECAST';
+        return 'PENDING';
     }
 
     /**

@@ -208,8 +208,8 @@ final class FinanceDebtPlanService
             $createdInstallmentPlan = $this->financeInstallmentService->createPlan($user, [
                 'direction' => FinanceConstants::DIRECTION_PAYABLE,
                 'title' => sprintf('%s - Parcelamento', $title),
-                'totalAmountBrl' => (float) $preview['selectedReferenceAmountBrl'],
-                'downPaymentBrl' => (float) $preview['downPaymentBrl'],
+                'totalAmountBrl' => (float) $preview['plannedTotalAmountBrl'],
+                'downPaymentBrl' => 0,
                 'installmentAmountBrl' => $selectedMonthlyPaymentBrl,
                 'installmentsCount' => $selectedInstallmentsCount,
                 'interestAmountBrl' => 0,

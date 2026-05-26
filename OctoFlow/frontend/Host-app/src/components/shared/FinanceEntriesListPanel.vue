@@ -332,6 +332,9 @@ function deleteEntry(entryItem) {
                 :status="entryItem.status"
                 :label="resolveFinanceLabel(entryItem.status)"
               />
+              <small class="finance-muted-block">
+                {{ resolveFinanceLabel(entryItem.macroStatus, '-') }}
+              </small>
             </td>
             <td>{{ formatDate(entryItem.dueDate, '-') }}</td>
             <td>{{ formatCurrency(entryItem.expectedAmountBrl) }}</td>

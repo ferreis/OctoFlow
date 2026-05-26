@@ -29,6 +29,7 @@ import {
 } from '../../constants/financeTerms'
 import { RemoteFinanceEmptyState } from '../../federation/remoteComponents'
 import {
+  applyFinanceInstallmentPlanAdjustment,
   createFinanceEntry,
   createFinanceInstallmentPlan,
   createFinanceRecurringRule,
@@ -41,6 +42,7 @@ import {
   fetchFinanceRecurringRules,
   generateFinanceRecurringRuleManually,
   renegotiateFinanceInstallmentPlan,
+  updateFinanceInstallmentPlan,
   updateFinanceEntry,
   updateFinanceRecurringRule,
 } from '../../services/finance'
@@ -87,6 +89,7 @@ const loadingEntries = ref(false)
 const loadingDashboard = ref(false)
 const loadingRecurring = ref(false)
 const loadingInstallments = ref(false)
+const loadingSettlementEntries = ref(false)
 const accountActionProcessing = ref(false)
 const financeViewIsActive = ref(false)
 
@@ -113,9 +116,12 @@ const entryEditingId = ref('')
 
 const settlementForm = reactive({
   entryId: '',
+  entrySearch: '',
   amountBrl: '',
   settledAt: '',
   bankAccountId: '',
+  settlementType: 'PAYMENT',
+  installmentPlanId: '',
 })
 
 const recurringForm = reactive({
@@ -143,6 +149,9 @@ const installmentForm = reactive({
   categoryId: '',
   defaultBankAccountId: '',
 })
+const installmentEditingId = ref('')
+const settlementEntryOptions = ref([])
+const settlementEntrySearchDebounceId = ref(null)
 
 const renegotiationForm = reactive({
   planId: '',
@@ -377,7 +386,9 @@ const accountActionModalTitle = computed(() => {
   }
 
   if (actionType === 'INSTALLMENT_PLAN') {
-    return translateScoped('modal.titles.newInstallment', 'Novo parcelamento')
+    return installmentEditingId.value
+      ? translateScoped('modal.titles.editInstallment', 'Editar parcelamento')
+      : translateScoped('modal.titles.newInstallment', 'Novo parcelamento')
   }
 
   if (actionType === 'RENEGOTIATION') {
@@ -396,7 +407,7 @@ const entryTypeOptionsForForm = computed(() => {
 })
 
 const availableSettlementEntries = computed(() => {
-  return entriesState.value.filter((entryItem) => {
+  return settlementEntryOptions.value.filter((entryItem) => {
     const remainingAmount = Number(entryItem?.remainingAmountBrl || 0)
     const normalizedStatus = String(entryItem?.status || '').trim().toUpperCase()
 
@@ -410,6 +421,23 @@ const selectedSettlementEntry = computed(() => {
   return availableSettlementEntries.value.find((entryItem) => (
     sanitizeIdentifier(entryItem?.id) === normalizedEntryId
   )) || null
+})
+
+const settlementTypeOptions = computed(() => {
+  return [
+    {
+      value: 'PAYMENT',
+      label: translateScoped('settlement.types.payment', 'Pagamento'),
+    },
+    {
+      value: 'ADVANCE',
+      label: translateScoped('settlement.types.advance', 'Adiantamento'),
+    },
+    {
+      value: 'DISCOUNT',
+      label: translateScoped('settlement.types.discount', 'Desconto'),
+    },
+  ]
 })
 
 const availableRecurringTypes = computed(() => (
@@ -552,10 +580,15 @@ function resetEntryForm() {
 function resetSettlementForm() {
   Object.assign(settlementForm, {
     entryId: '',
+    entrySearch: '',
     amountBrl: '',
     settledAt: '',
     bankAccountId: '',
+    settlementType: 'PAYMENT',
+    installmentPlanId: '',
   })
+
+  settlementEntryOptions.value = []
 }
 
 function resetRecurringForm() {
@@ -587,6 +620,8 @@ function resetInstallmentForm() {
     categoryId: '',
     defaultBankAccountId: '',
   })
+
+  installmentEditingId.value = ''
 }
 
 function resetRenegotiationForm() {
@@ -670,6 +705,32 @@ async function loadEntries(showNotificationOnError = false) {
     }
   } finally {
     loadingEntries.value = false
+  }
+}
+
+async function loadSettlementEntryOptions(searchText = '') {
+  loadingSettlementEntries.value = true
+
+  try {
+    const response = await fetchFinanceEntries(
+      {
+        direction: accountsDirectionByTab.value || 'PAYABLE',
+        search: sanitizeSearchText(searchText, MAX_TITLE_LENGTH),
+      },
+      {
+        page: 1,
+        itemsPerPage: 20,
+      },
+    )
+
+    settlementEntryOptions.value = Array.isArray(response.data?.items) ? response.data.items : []
+  } catch (error) {
+    notifyUser(
+      extractHttpMessage(error, translateScoped('notifications.loadSettlementEntriesError', 'Erro ao buscar lançamentos para baixa.')),
+      'error',
+    )
+  } finally {
+    loadingSettlementEntries.value = false
   }
 }
 
@@ -880,8 +941,11 @@ function requestDeleteEntry(entryItem) {
 }
 
 function buildSettlementPayload() {
+  const normalizedSettlementType = String(settlementForm.settlementType || '').trim().toUpperCase()
+
   return {
     entryId: sanitizeIdentifier(settlementForm.entryId),
+    installmentPlanId: sanitizeIdentifier(settlementForm.installmentPlanId),
     amountBrl: sanitizeDecimal(settlementForm.amountBrl, {
       min: 0,
       max: 999999999,
@@ -890,6 +954,9 @@ function buildSettlementPayload() {
     }),
     settledAt: sanitizeDateTimeLocalInput(settlementForm.settledAt),
     bankAccountId: sanitizeIdentifier(settlementForm.bankAccountId),
+    settlementType: ['PAYMENT', 'ADVANCE', 'DISCOUNT'].includes(normalizedSettlementType)
+      ? normalizedSettlementType
+      : 'PAYMENT',
   }
 }
 
@@ -899,26 +966,57 @@ async function submitSettlement() {
   }
 
   const payload = buildSettlementPayload()
-  if (payload.entryId === '' || payload.amountBrl <= 0) {
-    notifyUser(translateScoped('notifications.settlementInvalid', 'Selecione um lançamento e um valor de baixa válido.'), 'warning')
+  if (payload.amountBrl <= 0) {
+    notifyUser(translateScoped('notifications.settlementAmountInvalid', 'Informe um valor válido para a baixa.'), 'warning')
     return
   }
 
-  const requestPayload = { amountBrl: payload.amountBrl }
-  if (payload.settledAt !== '') {
-    requestPayload.settledAt = payload.settledAt
+  if (payload.settlementType === 'PAYMENT' && payload.entryId === '') {
+    notifyUser(translateScoped('notifications.settlementInvalid', 'Selecione um lançamento para pagamento.'), 'warning')
+    return
   }
-  if (payload.bankAccountId !== '') {
-    requestPayload.bankAccountId = payload.bankAccountId
+
+  if (['ADVANCE', 'DISCOUNT'].includes(payload.settlementType) && payload.installmentPlanId === '') {
+    notifyUser(translateScoped('notifications.settlementPlanInvalid', 'Selecione um plano de parcelamento.'), 'warning')
+    return
   }
 
   accountActionProcessing.value = true
 
   try {
-    await createFinanceSettlement(payload.entryId, requestPayload)
-    notifyUser(translateScoped('notifications.settlementCreated', 'Baixa registrada com sucesso.'), 'success')
+    if (payload.settlementType === 'PAYMENT') {
+      const requestPayload = {
+        amountBrl: payload.amountBrl,
+        settlementType: selectedSettlementEntry.value?.direction === 'RECEIVABLE' ? 'RECEIPT' : 'PAYMENT',
+      }
+      if (payload.settledAt !== '') {
+        requestPayload.settledAt = payload.settledAt
+      }
+      if (payload.bankAccountId !== '') {
+        requestPayload.bankAccountId = payload.bankAccountId
+      }
+
+      await createFinanceSettlement(payload.entryId, requestPayload)
+      notifyUser(translateScoped('notifications.settlementCreated', 'Pagamento registrado com sucesso.'), 'success')
+    } else {
+      await applyFinanceInstallmentPlanAdjustment(payload.installmentPlanId, {
+        adjustmentType: payload.settlementType,
+        amountBrl: payload.amountBrl,
+        settledAt: payload.settledAt || undefined,
+      })
+      notifyUser(
+        payload.settlementType === 'ADVANCE'
+          ? translateScoped('notifications.advanceCreated', 'Adiantamento aplicado ao parcelamento.')
+          : translateScoped('notifications.discountCreated', 'Desconto aplicado ao parcelamento.'),
+        'success',
+      )
+    }
+
     closeAccountActionModal()
-    await loadEntries(false)
+    await Promise.all([
+      loadInstallments(false),
+      loadEntries(false),
+    ])
   } catch (error) {
     notifyUser(extractHttpMessage(error, translateScoped('notifications.settlementError', 'Erro ao registrar baixa.')), 'error')
   } finally {
@@ -1125,17 +1223,120 @@ async function submitInstallmentPlan() {
   accountActionProcessing.value = true
 
   try {
-    await createFinanceInstallmentPlan(payload)
-    notifyUser(translateScoped('notifications.installmentCreated', 'Parcelamento criado com sucesso.'), 'success')
+    const normalizedInstallmentId = sanitizeIdentifier(installmentEditingId.value)
+    if (normalizedInstallmentId !== '') {
+      await updateFinanceInstallmentPlan(normalizedInstallmentId, payload)
+      notifyUser(translateScoped('notifications.installmentUpdated', 'Parcelamento atualizado com sucesso.'), 'success')
+    } else {
+      await createFinanceInstallmentPlan(payload)
+      notifyUser(translateScoped('notifications.installmentCreated', 'Parcelamento criado com sucesso.'), 'success')
+    }
+
     closeAccountActionModal()
     await Promise.all([
       loadInstallments(false),
       loadEntries(false),
     ])
   } catch (error) {
-    notifyUser(extractHttpMessage(error, translateScoped('notifications.installmentError', 'Erro ao criar parcelamento.')), 'error')
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.installmentError', 'Erro ao salvar parcelamento.')), 'error')
   } finally {
     accountActionProcessing.value = false
+  }
+}
+
+function startEditingInstallmentPlan(installmentPlan) {
+  if (!canMutateFinance()) {
+    return
+  }
+
+  const normalizedInstallmentId = sanitizeIdentifier(installmentPlan?.id)
+  if (normalizedInstallmentId === '') {
+    notifyUser(translateScoped('notifications.invalidInstallment', 'Parcelamento inválido.'), 'warning')
+    return
+  }
+
+  Object.assign(installmentForm, {
+    direction: 'PAYABLE',
+    title: sanitizeSingleLineText(installmentPlan?.title, MAX_TITLE_LENGTH),
+    totalAmountBrl: String(sanitizeDecimal(installmentPlan?.totalAmountBrl, {
+      min: 0,
+      max: 999999999,
+      decimals: 2,
+      defaultValue: 0,
+    })),
+    downPaymentBrl: String(sanitizeDecimal(installmentPlan?.downPaymentBrl, {
+      min: 0,
+      max: 999999999,
+      decimals: 2,
+      defaultValue: 0,
+    })),
+    installmentsCount: sanitizeInteger(installmentPlan?.installmentsCount, {
+      min: 1,
+      max: 480,
+      defaultValue: 1,
+    }),
+    interestAmountBrl: String(sanitizeDecimal(installmentPlan?.interestAmountBrl, {
+      min: 0,
+      max: 999999999,
+      decimals: 2,
+      defaultValue: 0,
+    })),
+    discountAmountBrl: String(sanitizeDecimal(installmentPlan?.discountAmountBrl, {
+      min: 0,
+      max: 999999999,
+      decimals: 2,
+      defaultValue: 0,
+    })),
+    fineAmountBrl: String(sanitizeDecimal(installmentPlan?.fineAmountBrl, {
+      min: 0,
+      max: 999999999,
+      decimals: 2,
+      defaultValue: 0,
+    })),
+    firstDueDate: sanitizeDateInput(installmentPlan?.firstDueDate) || getCurrentDateInputValue(),
+    categoryId: sanitizeIdentifier(installmentPlan?.categoryId),
+    defaultBankAccountId: sanitizeIdentifier(installmentPlan?.bankAccountId),
+  })
+
+  installmentEditingId.value = normalizedInstallmentId
+  openAccountActionModal('INSTALLMENT_PLAN')
+}
+
+function requestDeleteInstallmentPlan(installmentPlan) {
+  const normalizedInstallmentId = sanitizeIdentifier(installmentPlan?.id)
+  if (normalizedInstallmentId === '') {
+    notifyUser(translateScoped('notifications.invalidInstallment', 'Parcelamento inválido.'), 'warning')
+    return
+  }
+
+  confirmDialogState.isOpen = true
+  confirmDialogState.title = translateScoped('confirm.deleteInstallmentTitle', 'Excluir parcelamento')
+  confirmDialogState.message = translateScoped(
+    'confirm.deleteInstallmentMessage',
+    'Excluir "{title}" e remover suas parcelas dos cálculos?',
+    {
+      title: sanitizeSingleLineText(installmentPlan?.title, MAX_TITLE_LENGTH),
+    },
+  )
+  confirmDialogState.confirmLabel = translateScoped('actions.delete', 'Excluir')
+  confirmDialogState.confirmTone = 'danger'
+
+  confirmDialogAction.value = async () => {
+    confirmDialogState.processing = true
+
+    try {
+      await updateFinanceInstallmentPlan(normalizedInstallmentId, { status: 'CANCELED' })
+      notifyUser(translateScoped('notifications.installmentDeleted', 'Parcelamento removido com sucesso.'), 'success')
+      await Promise.all([
+        loadInstallments(false),
+        loadEntries(false),
+      ])
+    } catch (error) {
+      notifyUser(extractHttpMessage(error, translateScoped('notifications.installmentDeleteError', 'Erro ao excluir parcelamento.')), 'error')
+    } finally {
+      confirmDialogState.processing = false
+      closeConfirmDialog()
+    }
   }
 }
 
@@ -1203,6 +1404,11 @@ function openAccountActionModal(actionType) {
 
   if (normalizedActionType === 'ENTRY' && entryEditingId.value === '') {
     resetEntryForm()
+  }
+
+  if (normalizedActionType === 'SETTLEMENT') {
+    resetSettlementForm()
+    void loadSettlementEntryOptions('')
   }
 }
 
@@ -1285,6 +1491,17 @@ function formatSettlementEntryOptionLabel(entryItem) {
   return `${entryItem.title} — ${formatCurrency(entryItem.remainingAmountBrl)} ${translateScoped('settlement.remainingSuffix', 'restante')}`
 }
 
+function findSettlementEntryBySearchText(searchText) {
+  const normalizedSearchText = sanitizeSearchText(searchText, MAX_TITLE_LENGTH)
+  if (normalizedSearchText === '') {
+    return null
+  }
+
+  return availableSettlementEntries.value.find((entryItem) => (
+    formatSettlementEntryOptionLabel(entryItem) === normalizedSearchText
+  )) || null
+}
+
 watch(activeAccountsTab, () => {
   const normalizedTab = String(activeAccountsTab.value || '').trim().toLowerCase()
   if (!['overview', 'payable', 'receivable'].includes(normalizedTab)) {
@@ -1306,10 +1523,52 @@ watch(activeAccountsTab, () => {
 watch(
   () => settlementForm.entryId,
   () => {
+    if (settlementForm.settlementType !== 'PAYMENT') {
+      return
+    }
+
     const remainingAmount = Number(selectedSettlementEntry.value?.remainingAmountBrl || 0)
     if (remainingAmount > 0) {
       settlementForm.amountBrl = remainingAmount.toFixed(2)
     }
+  },
+)
+
+watch(
+  () => settlementForm.settlementType,
+  (settlementType) => {
+    if (settlementType === 'PAYMENT') {
+      settlementForm.installmentPlanId = ''
+      const remainingAmount = Number(selectedSettlementEntry.value?.remainingAmountBrl || 0)
+      settlementForm.amountBrl = remainingAmount > 0 ? remainingAmount.toFixed(2) : ''
+      return
+    }
+
+    if (['ADVANCE', 'DISCOUNT'].includes(settlementType)) {
+      settlementForm.entryId = ''
+      settlementForm.entrySearch = ''
+      settlementForm.bankAccountId = ''
+    }
+  },
+)
+
+watch(
+  () => settlementForm.entrySearch,
+  (searchText) => {
+    if (accountActionModalState.actionType !== 'SETTLEMENT' || settlementForm.settlementType !== 'PAYMENT') {
+      return
+    }
+
+    const matchedEntry = findSettlementEntryBySearchText(searchText)
+    settlementForm.entryId = matchedEntry ? sanitizeIdentifier(matchedEntry.id) : ''
+
+    if (settlementEntrySearchDebounceId.value) {
+      window.clearTimeout(settlementEntrySearchDebounceId.value)
+    }
+
+    settlementEntrySearchDebounceId.value = window.setTimeout(() => {
+      void loadSettlementEntryOptions(searchText)
+    }, 300)
   },
 )
 
@@ -1376,6 +1635,9 @@ onBeforeUnmount(() => {
 })
 
 onUnmounted(() => {
+  if (settlementEntrySearchDebounceId.value) {
+    window.clearTimeout(settlementEntrySearchDebounceId.value)
+  }
   resetAllAccountForms()
   confirmDialogAction.value = null
 })
@@ -1600,6 +1862,7 @@ onErrorCaptured((error) => {
               <th>{{ translateScoped('installments.table.total', 'Total') }}</th>
               <th>{{ translateScoped('installments.table.count', 'Parcelas') }}</th>
               <th>{{ translateScoped('installments.table.remaining', 'Restante') }}</th>
+              <th>{{ translateScoped('installments.table.actions', 'Ação') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -1608,6 +1871,24 @@ onErrorCaptured((error) => {
               <td>{{ formatCurrency(installmentPlan.totalAmountBrl) }}</td>
               <td>{{ installmentPlan.installmentsCount }}</td>
               <td>{{ formatCurrency(installmentPlan.remainingAmountBrl) }}</td>
+              <td class="finance-actions-cell">
+                <button
+                  type="button"
+                  class="finance-inline-action"
+                  :disabled="accountActionProcessing || !canWriteFinance"
+                  @click="startEditingInstallmentPlan(installmentPlan)"
+                >
+                  {{ translateScoped('actions.edit', 'Editar') }}
+                </button>
+                <button
+                  type="button"
+                  class="finance-inline-action finance-inline-action-danger"
+                  :disabled="accountActionProcessing || !canWriteFinance"
+                  @click="requestDeleteInstallmentPlan(installmentPlan)"
+                >
+                  {{ translateScoped('actions.delete', 'Excluir') }}
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1710,24 +1991,58 @@ onErrorCaptured((error) => {
         class="finance-form-grid"
         @submit.prevent="submitSettlement"
       >
-        <label>
+        <label v-if="settlementForm.settlementType === 'PAYMENT'">
           <span>{{ translateScoped('modal.settlement.entry', 'Lançamento') }}</span>
-          <select v-model="settlementForm.entryId" :disabled="accountActionProcessing || !canWriteFinance">
+          <input
+            v-model="settlementForm.entrySearch"
+            type="search"
+            list="finance-settlement-entry-options"
+            :placeholder="loadingSettlementEntries
+              ? translateScoped('actions.loading', 'Carregando...')
+              : translateScoped('modal.settlement.entrySearchPlaceholder', 'Digite para buscar...')"
+            :disabled="accountActionProcessing || !canWriteFinance"
+            autocomplete="off"
+          >
+          <datalist id="finance-settlement-entry-options">
+            <option
+              v-for="entryItem in availableSettlementEntries"
+              :key="entryItem.id"
+              :value="formatSettlementEntryOptionLabel(entryItem)"
+            />
+          </datalist>
+        </label>
+
+        <label v-if="settlementForm.settlementType === 'ADVANCE' || settlementForm.settlementType === 'DISCOUNT'">
+          <span>{{ translateScoped('modal.settlement.installmentPlan', 'Plano de parcelamento') }}</span>
+          <select v-model="settlementForm.installmentPlanId" :disabled="accountActionProcessing || !canWriteFinance">
             <option value="">{{ translateScoped('options.select', 'Selecione') }}</option>
-            <option v-for="entryItem in availableSettlementEntries" :key="entryItem.id" :value="entryItem.id">
-              {{ formatSettlementEntryOptionLabel(entryItem) }}
+            <option v-for="installmentPlan in filteredInstallmentPlans" :key="installmentPlan.id" :value="installmentPlan.id">
+              {{ installmentPlan.title }} - {{ formatCurrency(installmentPlan.remainingAmountBrl) }}
             </option>
           </select>
         </label>
 
         <label>
-          <span>{{ translateScoped('modal.settlement.amount', 'Valor da baixa') }}</span>
+          <span>{{ translateScoped('modal.settlement.type', 'Tipo de baixa') }}</span>
+          <select v-model="settlementForm.settlementType" :disabled="accountActionProcessing || !canWriteFinance">
+            <option
+              v-for="settlementTypeOption in settlementTypeOptions"
+              :key="settlementTypeOption.value"
+              :value="settlementTypeOption.value"
+            >
+              {{ settlementTypeOption.label }}
+            </option>
+          </select>
+        </label>
+
+        <label>
+          <span>{{ translateScoped('modal.settlement.amount', 'Valor') }}</span>
           <input
             v-model="settlementForm.amountBrl"
             type="number"
             step="0.01"
             min="0.01"
-            :disabled="accountActionProcessing || !canWriteFinance"
+            :disabled="accountActionProcessing || !canWriteFinance || settlementForm.settlementType === 'PAYMENT'"
             required
           >
         </label>
@@ -1741,7 +2056,7 @@ onErrorCaptured((error) => {
           >
         </label>
 
-        <label>
+        <label v-if="settlementForm.settlementType === 'PAYMENT'">
           <span>{{ translateScoped('modal.settlement.bankAccount', 'Conta bancária') }}</span>
           <select v-model="settlementForm.bankAccountId" :disabled="accountActionProcessing || !canWriteFinance">
             <option value="">{{ translateScoped('options.select', 'Selecione') }}</option>
@@ -1947,7 +2262,9 @@ onErrorCaptured((error) => {
           >
             {{ accountActionProcessing
               ? translateScoped('actions.saving', 'Salvando...')
-              : translateScoped('actions.createInstallment', 'Criar parcelamento') }}
+              : installmentEditingId
+                ? translateScoped('actions.saveChanges', 'Salvar alterações')
+                : translateScoped('actions.createInstallment', 'Criar parcelamento') }}
           </button>
         </div>
       </form>

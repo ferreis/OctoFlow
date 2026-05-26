@@ -93,4 +93,25 @@ final class FinanceInstallmentController
             return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
         }
     }
+
+    #[Route('/installment-plans/{planId<\d+>}/adjustment', name: 'finance_installment_plans_adjustment', methods: ['POST'])]
+    public function applyPlanAdjustment(int $planId, Request $request, #[CurrentUser] ?User $user): JsonResponse
+    {
+        if ($user === null) {
+            return $this->buildUnauthorizedResponse();
+        }
+
+        $payload = $this->decodeJson($request);
+        if ($payload === null) {
+            return $this->buildInvalidJsonResponse();
+        }
+
+        try {
+            return new JsonResponse([
+                'item' => $this->financeInstallmentService->applyPlanAdjustment($user, $planId, $payload),
+            ], JsonResponse::HTTP_CREATED);
+        } catch (\Throwable $throwable) {
+            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
+        }
+    }
 }

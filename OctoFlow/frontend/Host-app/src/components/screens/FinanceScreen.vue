@@ -354,6 +354,7 @@ const installmentForm = reactive({
   categoryId: '',
   defaultBankAccountId: '',
 })
+const installmentEditingId = ref(null)
 
 const renegotiationForm = reactive({
   planId: '',
@@ -905,7 +906,7 @@ const accountActionModalTitle = computed(() => {
   }
 
   if (accountActionModalState.actionType === 'INSTALLMENT_PLAN') {
-    return 'Novo parcelamento'
+    return installmentEditingId.value ? 'Editar parcelamento' : 'Novo parcelamento'
   }
 
   if (accountActionModalState.actionType === 'RENEGOTIATION') {
@@ -2035,6 +2036,7 @@ function resetSettlementForm() {
 }
 
 function resetInstallmentForm() {
+  installmentEditingId.value = null
   installmentForm.direction = installmentDirectionByTab.value || 'PAYABLE'
   installmentForm.title = ''
   installmentForm.totalAmountBrl = ''
@@ -2670,7 +2672,8 @@ async function submitInstallmentPlan() {
   }
 
   try {
-    await createFinanceInstallmentPlan({
+    const isEditingInstallmentPlan = Boolean(installmentEditingId.value)
+    const installmentPayload = {
       direction: targetDirection,
       title: installmentForm.title,
       totalAmountBrl: normalizeMoneyInputValue(installmentForm.totalAmountBrl, 0),
@@ -2682,16 +2685,22 @@ async function submitInstallmentPlan() {
       firstDueDate: installmentForm.firstDueDate || getCurrentDateInputValue(),
       categoryId: normalizeOptionalNumber(installmentForm.categoryId),
       defaultBankAccountId: normalizeOptionalNumber(installmentForm.defaultBankAccountId),
-    })
+    }
+
+    if (isEditingInstallmentPlan) {
+      await updateFinanceInstallmentPlan(installmentEditingId.value, installmentPayload)
+    } else {
+      await createFinanceInstallmentPlan(installmentPayload)
+    }
 
     resetInstallmentForm()
     closeAccountActionModal()
 
-    notifyUser('Parcelamento criado com sucesso.', 'success')
+    notifyUser(isEditingInstallmentPlan ? 'Parcelamento atualizado com sucesso.' : 'Parcelamento criado com sucesso.', 'success')
     await Promise.all([loadInstallments(), loadEntries()])
     await loadDashboard()
   } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível criar o parcelamento.'), 'error')
+    notifyUser(extractHttpMessage(requestError, 'Não foi possível salvar o parcelamento.'), 'error')
   }
 }
 
@@ -2729,12 +2738,19 @@ function startEditingInstallmentPlan(installmentPlan) {
     return
   }
 
-  renegotiationForm.planId = String(installmentPlan.id)
-  renegotiationForm.installmentsCount = Number(installmentPlan.installmentsCount || 1)
-  renegotiationForm.reason = `Ajuste manual - ${String(installmentPlan.title || 'Plano')}`
-  renegotiationForm.categoryId = installmentPlan.categoryId ? String(installmentPlan.categoryId) : ''
-  renegotiationForm.defaultBankAccountId = installmentPlan.bankAccountId ? String(installmentPlan.bankAccountId) : ''
-  openAccountActionModal('RENEGOTIATION')
+  installmentEditingId.value = Number(installmentPlan.id)
+  installmentForm.direction = String(installmentPlan.direction || installmentDirectionByTab.value || 'PAYABLE')
+  installmentForm.title = String(installmentPlan.title || '')
+  installmentForm.totalAmountBrl = String(installmentPlan.totalAmountBrl || '')
+  installmentForm.downPaymentBrl = String(installmentPlan.downPaymentBrl || '0')
+  installmentForm.installmentsCount = Number(installmentPlan.installmentsCount || 1)
+  installmentForm.interestAmountBrl = String(installmentPlan.interestAmountBrl || '0')
+  installmentForm.discountAmountBrl = String(installmentPlan.discountAmountBrl || '0')
+  installmentForm.fineAmountBrl = String(installmentPlan.fineAmountBrl || '0')
+  installmentForm.firstDueDate = sanitizeDateInput(installmentPlan.firstDueDate) || getCurrentDateInputValue()
+  installmentForm.categoryId = installmentPlan.categoryId ? String(installmentPlan.categoryId) : ''
+  installmentForm.defaultBankAccountId = installmentPlan.bankAccountId ? String(installmentPlan.bankAccountId) : ''
+  openAccountActionModal('INSTALLMENT_PLAN')
 }
 
 function requestDeleteInstallmentPlan(installmentPlan) {
@@ -2744,7 +2760,7 @@ function requestDeleteInstallmentPlan(installmentPlan) {
 
   openConfirmDialog({
     title: 'Excluir plano de parcelamento',
-    message: 'O plano será marcado como cancelado. Deseja continuar?',
+    message: 'O plano e as parcelas vinculadas serão removidos da lista e dos cálculos. Deseja continuar?',
     confirmLabel: 'Excluir',
     confirmTone: 'danger',
     onConfirm: () => executeDeleteInstallmentPlan(installmentPlan),
@@ -3935,8 +3951,8 @@ function applyAccountsDirectionContext() {
             <thead>
               <tr>
                 <th>Título</th>
-                <th>Status</th>
                 <th>Total</th>
+                <th>Parcelas</th>
                 <th>Restante</th>
                 <th>Ação</th>
               </tr>
@@ -3944,10 +3960,8 @@ function applyAccountsDirectionContext() {
             <tbody>
               <tr v-for="plan in paginatedInstallmentPlans" :key="plan.id">
                 <td>{{ plan.title }}</td>
-                <td>
-                  <RemoteFinanceStatusBadge :status="plan.status" :label="getFinanceLabel(plan.status)" />
-                </td>
                 <td>{{ formatCurrency(plan.totalAmountBrl) }}</td>
+                <td>{{ plan.installmentsCount }}</td>
                 <td>{{ formatCurrency(plan.remainingAmountBrl) }}</td>
                 <td class="finance-actions-cell">
                   <button type="button" class="finance-inline-action" @click="startEditingInstallmentPlan(plan)">
@@ -4183,12 +4197,12 @@ function applyAccountsDirectionContext() {
           </label>
 
           <label>
-            <span>Desconto aplicado (opcional)</span>
+            <span>Desconto/crédito combinado (opcional)</span>
             <input v-model="debtForm.discountAmountBrl" type="number" step="0.01" min="0">
           </label>
 
           <label>
-            <span>Entrada (opcional)</span>
+            <span>Adiantamento já pago (opcional)</span>
             <input v-model="debtForm.downPaymentBrl" type="number" step="0.01" min="0">
           </label>
 
@@ -4246,6 +4260,14 @@ function applyAccountsDirectionContext() {
               <tr>
                 <th>Valor planejado</th>
                 <td>{{ formatCurrency(debtPreview.plannedTotalAmountBrl) }}</td>
+              </tr>
+              <tr>
+                <th>Desconto/crédito combinado</th>
+                <td>{{ formatCurrency(debtPreview.discountAmountBrl || 0) }}</td>
+              </tr>
+              <tr>
+                <th>Adiantamento já pago</th>
+                <td>{{ formatCurrency(debtPreview.downPaymentBrl || 0) }}</td>
               </tr>
               <tr>
                 <th>Renda mensal usada</th>
@@ -4851,7 +4873,9 @@ function applyAccountsDirectionContext() {
 
           <div class="finance-modal-actions">
             <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
-            <button class="button-primary" type="submit">Criar parcelamento</button>
+            <button class="button-primary" type="submit">
+              {{ installmentEditingId ? 'Salvar alterações' : 'Criar parcelamento' }}
+            </button>
           </div>
         </form>
 

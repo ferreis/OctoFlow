@@ -94,23 +94,90 @@ final class FinanceInstallmentService
         $ownerId = $this->requireOwnerId($user);
 
         $requestedStatus = strtoupper(trim((string) ($payload['status'] ?? '')));
-        if ($requestedStatus !== 'CANCELED') {
-            throw new \InvalidArgumentException('Only CANCELED status is allowed in this operation.');
+        if ($requestedStatus === 'CANCELED') {
+            return $this->softDeletePlan($user, $planId);
         }
 
-        return $this->connection->transactional(function () use ($user, $ownerId, $planId): array {
+        return $this->connection->transactional(function () use ($user, $ownerId, $planId, $payload): array {
             $existingPlan = $this->getPlanById($ownerId, $planId);
+
+            $title = FinanceInput::normalizeName((string) ($payload['title'] ?? $existingPlan['title'] ?? ''));
+            $totalAmountBrl = FinanceInput::normalizeMoney($payload['totalAmountBrl'] ?? $existingPlan['totalAmountBrl'] ?? 0, 'totalAmountBrl');
+            $downPaymentBrl = FinanceInput::normalizeOptionalMoney($payload['downPaymentBrl'] ?? $existingPlan['downPaymentBrl'] ?? null, 0.0) ?? 0.0;
+            $interestAmountBrl = FinanceInput::normalizeOptionalMoney($payload['interestAmountBrl'] ?? $existingPlan['interestAmountBrl'] ?? null, 0.0) ?? 0.0;
+            $discountAmountBrl = FinanceInput::normalizeOptionalMoney($payload['discountAmountBrl'] ?? $existingPlan['discountAmountBrl'] ?? null, 0.0) ?? 0.0;
+            $fineAmountBrl = FinanceInput::normalizeOptionalMoney($payload['fineAmountBrl'] ?? $existingPlan['fineAmountBrl'] ?? null, 0.0) ?? 0.0;
+            $installmentsCount = (int) ($payload['installmentsCount'] ?? $existingPlan['installmentsCount'] ?? 0);
+            $firstDueDate = FinanceInput::normalizeDate($payload['firstDueDate'] ?? $existingPlan['firstDueDate'] ?? 'today', 'firstDueDate');
+            $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? $existingPlan['categoryId'] ?? null);
+            $defaultBankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['defaultBankAccountId'] ?? $existingPlan['bankAccountId'] ?? null);
+
+            if ($title === '') {
+                throw new \InvalidArgumentException('The installment plan title is required.');
+            }
+
+            if ($totalAmountBrl <= 0) {
+                throw new \InvalidArgumentException('The total amount must be greater than zero.');
+            }
+
+            if ($installmentsCount <= 0) {
+                throw new \InvalidArgumentException('The installments count must be greater than zero.');
+            }
+
+            $calculatedNetAmount = round($totalAmountBrl + $interestAmountBrl + $fineAmountBrl - $discountAmountBrl - $downPaymentBrl, 2);
+            if ($calculatedNetAmount <= 0) {
+                throw new \InvalidArgumentException('The calculated net amount must be greater than zero.');
+            }
+
+            $installmentAmountBrl = round($calculatedNetAmount / $installmentsCount, 2);
 
             $this->softDeleteInstallmentEntriesForPlan($user, $planId);
             $this->softDeleteDownPaymentEntriesForPlan($user, $ownerId, $existingPlan);
+            $this->deleteInstallmentItemsForPlan($planId);
 
             $this->connection->update('finance_installment_plan', [
-                'status' => 'CANCELED',
-                'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+                'category_id' => $categoryId,
+                'default_bank_account_id' => $defaultBankAccountId,
+                'title' => $title,
+                'total_amount_brl' => $totalAmountBrl,
+                'down_payment_brl' => $downPaymentBrl,
+                'installment_amount_brl' => $installmentAmountBrl,
+                'installments_count' => $installmentsCount,
+                'interest_amount_brl' => $interestAmountBrl,
+                'discount_amount_brl' => $discountAmountBrl,
+                'fine_amount_brl' => $fineAmountBrl,
+                'first_due_date' => $firstDueDate->format('Y-m-d'),
+                'status' => 'ACTIVE',
+                'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s')
             ], [
                 'id' => $planId,
                 'owner_id' => $ownerId,
             ]);
+
+            $this->generateInstallmentItemsAndEntries(
+                $ownerId,
+                $planId,
+                (string) ($existingPlan['direction'] ?? FinanceConstants::DIRECTION_PAYABLE),
+                $title,
+                $categoryId,
+                $defaultBankAccountId,
+                $installmentsCount,
+                $installmentAmountBrl,
+                $calculatedNetAmount,
+                $firstDueDate,
+            );
+
+            if ($downPaymentBrl > 0.00001) {
+                $this->createDownPaymentEntry(
+                    $ownerId,
+                    (string) ($existingPlan['direction'] ?? FinanceConstants::DIRECTION_PAYABLE),
+                    $title,
+                    $categoryId,
+                    $defaultBankAccountId,
+                    $downPaymentBrl,
+                    $firstDueDate,
+                );
+            }
 
             return $this->getPlanById($ownerId, $planId);
         });
@@ -148,6 +215,45 @@ final class FinanceInstallmentService
         });
     }
 
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function applyPlanAdjustment(User $user, int $planId, array $payload): array
+    {
+        $ownerId = $this->requireOwnerId($user);
+
+        $adjustmentType = strtoupper(trim((string) ($payload['adjustmentType'] ?? '')));
+        if (!in_array($adjustmentType, ['ADVANCE', 'DISCOUNT'], true)) {
+            throw new \InvalidArgumentException('Tipo de ajuste inválido para o parcelamento.');
+        }
+
+        $adjustmentAmountBrl = FinanceInput::normalizeMoney($payload['amountBrl'] ?? 0, 'amountBrl');
+        if ($adjustmentAmountBrl <= 0) {
+            throw new \InvalidArgumentException('O valor do ajuste deve ser maior que zero.');
+        }
+
+        $currentPlan = $this->getPlanById($ownerId, $planId);
+        $currentTotalAmountBrl = (float) ($currentPlan['totalAmountBrl'] ?? 0);
+        if ($adjustmentAmountBrl >= $currentTotalAmountBrl) {
+            throw new \InvalidArgumentException('O ajuste deve ser menor que o valor total do parcelamento.');
+        }
+
+        return $this->updatePlan($user, $planId, [
+            'title' => $currentPlan['title'] ?? '',
+            'totalAmountBrl' => round($currentTotalAmountBrl - $adjustmentAmountBrl, 2),
+            'downPaymentBrl' => $currentPlan['downPaymentBrl'] ?? 0,
+            'installmentsCount' => $currentPlan['installmentsCount'] ?? 1,
+            'interestAmountBrl' => $currentPlan['interestAmountBrl'] ?? 0,
+            'discountAmountBrl' => $currentPlan['discountAmountBrl'] ?? 0,
+            'fineAmountBrl' => $currentPlan['fineAmountBrl'] ?? 0,
+            'firstDueDate' => $currentPlan['firstDueDate'] ?? 'today',
+            'categoryId' => $currentPlan['categoryId'] ?? null,
+            'defaultBankAccountId' => $currentPlan['bankAccountId'] ?? null,
+        ]);
+    }
+
     private function softDeleteInstallmentEntriesForPlan(User $user, int $planId): void
     {
         /** @var list<int|string> $installmentEntryIds */
@@ -169,6 +275,13 @@ final class FinanceInstallmentService
 
             $this->financeEntryService->softDeleteEntry($user, $entryId);
         }
+    }
+
+    private function deleteInstallmentItemsForPlan(int $planId): void
+    {
+        $this->connection->delete('finance_installment_item', [
+            'plan_id' => $planId,
+        ]);
     }
 
     /**
@@ -359,36 +472,56 @@ final class FinanceInstallmentService
             );
 
             if ($downPaymentBrl > 0.00001) {
-                $entryStatus = FinanceInput::defaultStatusByDirection($direction, $firstDueDate);
-                $entryNow = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-
-                $this->connection->insert('finance_entry', [
-                    'owner_id' => $ownerId,
-                    'category_id' => $categoryId,
-                    'bank_account_id' => $defaultBankAccountId,
-                    'direction' => $direction,
-                    'entry_type' => FinanceConstants::ENTRY_TYPE_ONE_OFF,
-                    'status' => $entryStatus,
-                    'title' => sprintf('%s (Down Payment)', $title),
-                    'description' => 'Auto generated down payment from installment plan.',
-                    'due_date' => $firstDueDate->format('Y-m-d'),
-                    'competence_month' => $firstDueDate->format('Y-m-01'),
-                    'expected_amount_brl' => $downPaymentBrl,
-                    'settled_amount_brl' => 0,
-                    'remaining_amount_brl' => $downPaymentBrl,
-                    'input_currency_code' => 'BRL',
-                    'input_amount' => $downPaymentBrl,
-                    'fx_rate_to_brl' => 1,
-                    'fx_rate_date' => $firstDueDate->format('Y-m-d'),
-                    'source_origin' => FinanceConstants::SOURCE_ORIGIN_SYSTEM,
-                    'source_system' => 'INSTALLMENT_ENGINE',
-                    'created_at' => $entryNow,
-                    'updated_at' => $entryNow,
-                ]);
+                $this->createDownPaymentEntry(
+                    $ownerId,
+                    $direction,
+                    $title,
+                    $categoryId,
+                    $defaultBankAccountId,
+                    $downPaymentBrl,
+                    $firstDueDate,
+                );
             }
 
             return $this->getPlanById($ownerId, $planId);
         });
+    }
+
+    private function createDownPaymentEntry(
+        int $ownerId,
+        string $direction,
+        string $title,
+        ?int $categoryId,
+        ?int $defaultBankAccountId,
+        float $downPaymentBrl,
+        \DateTimeImmutable $firstDueDate,
+    ): void {
+        $entryStatus = FinanceInput::defaultStatusByDirection($direction, $firstDueDate);
+        $entryNow = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $this->connection->insert('finance_entry', [
+            'owner_id' => $ownerId,
+            'category_id' => $categoryId,
+            'bank_account_id' => $defaultBankAccountId,
+            'direction' => $direction,
+            'entry_type' => FinanceConstants::ENTRY_TYPE_ONE_OFF,
+            'status' => $entryStatus,
+            'title' => sprintf('%s (Down Payment)', $title),
+            'description' => 'Auto generated down payment from installment plan.',
+            'due_date' => $firstDueDate->format('Y-m-d'),
+            'competence_month' => $firstDueDate->format('Y-m-01'),
+            'expected_amount_brl' => $downPaymentBrl,
+            'settled_amount_brl' => 0,
+            'remaining_amount_brl' => $downPaymentBrl,
+            'input_currency_code' => 'BRL',
+            'input_amount' => $downPaymentBrl,
+            'fx_rate_to_brl' => 1,
+            'fx_rate_date' => $firstDueDate->format('Y-m-d'),
+            'source_origin' => FinanceConstants::SOURCE_ORIGIN_SYSTEM,
+            'source_system' => 'INSTALLMENT_ENGINE',
+            'created_at' => $entryNow,
+            'updated_at' => $entryNow,
+        ]);
     }
 
     private function generateInstallmentItemsAndEntries(

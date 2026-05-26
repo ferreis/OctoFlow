@@ -228,6 +228,15 @@ export function updateFinanceInstallmentPlan(planId, payload) {
   })
 }
 
+export function applyFinanceInstallmentPlanAdjustment(planId, payload) {
+  return requestWithSession({
+    url: `/finance/installment-plans/${encodeURIComponent(planId)}/adjustment`,
+    method: 'POST',
+    csrfActionId: 'finance.installments.adjustment',
+    data: payload,
+  })
+}
+
 export function fetchFinanceDebtPlans() {
   return requestWithSession({
     url: '/finance/debt-plans',

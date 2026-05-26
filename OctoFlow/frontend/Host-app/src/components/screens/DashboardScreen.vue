@@ -1351,9 +1351,13 @@ function isFinanceEntryOverdue(financeEntry) {
 function getFinanceEntryStatusLabel(statusCode) {
   const statusCatalog = {
     PENDING: translateDashboard('dashboard.finance.statusCatalog.pending', 'Pendente'),
-    PARTIALLY_SETTLED: translateDashboard('dashboard.finance.statusCatalog.partiallySettled', 'Parcial'),
+    PARTIAL: translateDashboard('dashboard.finance.statusCatalog.partiallySettled', 'Parcial'),
     PAID: translateDashboard('dashboard.finance.statusCatalog.paid', 'Pago'),
+    RECEIVED: translateDashboard('dashboard.finance.statusCatalog.received', 'Recebido'),
     OVERDUE: translateDashboard('dashboard.finance.statusCatalog.overdue', 'Atrasado'),
+    SCHEDULED: translateDashboard('dashboard.finance.statusCatalog.scheduled', 'Agendado'),
+    FORECAST: translateDashboard('dashboard.finance.statusCatalog.forecast', 'Previsto'),
+    NEGOTIATED: translateDashboard('dashboard.finance.statusCatalog.negotiated', 'Negociado'),
     CANCELED: translateDashboard('dashboard.finance.statusCatalog.canceled', 'Cancelado'),
   }
 
@@ -1370,7 +1374,7 @@ function getFinanceStatusToneClasses(statusCode) {
     }
   }
 
-  if (statusCode === 'PAID') {
+  if (['PAID', 'RECEIVED'].includes(statusCode)) {
     return {
       wrapper: 'border-emerald-200 bg-emerald-50/80',
       badge: 'border-emerald-200 bg-white text-emerald-700',
@@ -1379,7 +1383,7 @@ function getFinanceStatusToneClasses(statusCode) {
     }
   }
 
-  if (statusCode === 'PARTIALLY_SETTLED') {
+  if (statusCode === 'PARTIAL') {
     return {
       wrapper: 'border-amber-200 bg-amber-50/80',
       badge: 'border-amber-200 bg-white text-amber-700',
@@ -1388,7 +1392,7 @@ function getFinanceStatusToneClasses(statusCode) {
     }
   }
 
-  if (statusCode === 'CANCELED') {
+  if (['CANCELED', 'NEGOTIATED'].includes(statusCode)) {
     return {
       wrapper: 'border-slate-300 bg-slate-100/80',
       badge: 'border-slate-300 bg-white text-slate-700',

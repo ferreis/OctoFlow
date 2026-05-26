@@ -20,6 +20,7 @@ final class FinanceConstants
      */
     public const PAYABLE_STATUSES = [
         'PENDING',
+        'FORECAST',
         'PAID',
         'PARTIAL',
         'OVERDUE',
@@ -32,11 +33,14 @@ final class FinanceConstants
      * @var list<string>
      */
     public const RECEIVABLE_STATUSES = [
+        'PENDING',
         'FORECAST',
         'RECEIVED',
         'PARTIAL',
         'OVERDUE',
+        'SCHEDULED',
         'CANCELED',
+        'NEGOTIATED',
     ];
 
     public const ENTRY_TYPE_ONE_OFF = 'ONE_OFF';
