@@ -52,7 +52,6 @@ import {
   generateFinanceRecurringRuleManually,
   importFinanceMigrationSnapshot,
   previewFinanceDebtPlan,
-  renegotiateFinanceInstallmentPlan,
   syncFinanceOpenFinanceConnection,
   deleteFinanceDebtPlan,
   deleteFinanceEntry,
@@ -333,7 +332,7 @@ const recurringForm = reactive({
   title: '',
   amountBrl: '',
   dayOfMonth: 5,
-  startsAt: getCurrentDateInputValue(),
+  startsAt: getFirstDayOfNextMonthInputValue(),
   recurringTypeId: '',
   categoryId: '',
   defaultBankAccountId: '',
@@ -355,14 +354,6 @@ const installmentForm = reactive({
   defaultBankAccountId: '',
 })
 const installmentEditingId = ref(null)
-
-const renegotiationForm = reactive({
-  planId: '',
-  installmentsCount: 6,
-  reason: 'Renegociação manual',
-  categoryId: '',
-  defaultBankAccountId: '',
-})
 
 const simulationForm = reactive({
   investmentType: 'SELIC',
@@ -398,6 +389,10 @@ function getNextMonthInputValue() {
   const nextMonthReferenceDate = new Date()
   nextMonthReferenceDate.setMonth(nextMonthReferenceDate.getMonth() + 1)
   return getCurrentYearMonthInputValue(nextMonthReferenceDate)
+}
+
+function getFirstDayOfNextMonthInputValue() {
+  return `${getNextMonthInputValue()}-01`
 }
 
 function buildReferenceDateFromYearMonth(yearMonthValue) {
@@ -870,7 +865,7 @@ const availableAccountActionOptions = computed(() => {
 
   if (shouldShowEntryManagement.value) {
     options.push(
-      { value: 'ENTRY', label: 'Lançamento avulso' },
+      { value: 'ENTRY', label: 'Lançamento' },
       { value: 'SETTLEMENT', label: 'Baixa de lançamento' },
     )
   }
@@ -884,10 +879,7 @@ const availableAccountActionOptions = computed(() => {
   }
 
   if (shouldShowInstallmentSection.value) {
-    options.push(
-      { value: 'INSTALLMENT_PLAN', label: 'Plano de parcelamento' },
-      { value: 'RENEGOTIATION', label: 'Renegociar plano' },
-    )
+    options.push({ value: 'INSTALLMENT_PLAN', label: 'Plano de parcelamento' })
   }
 
   return options
@@ -907,10 +899,6 @@ const accountActionModalTitle = computed(() => {
 
   if (accountActionModalState.actionType === 'INSTALLMENT_PLAN') {
     return installmentEditingId.value ? 'Editar parcelamento' : 'Novo parcelamento'
-  }
-
-  if (accountActionModalState.actionType === 'RENEGOTIATION') {
-    return 'Renegociar plano'
   }
 
   return 'Gerenciar lançamento'
@@ -2050,14 +2038,6 @@ function resetInstallmentForm() {
   installmentForm.defaultBankAccountId = ''
 }
 
-function resetRenegotiationForm() {
-  renegotiationForm.planId = ''
-  renegotiationForm.installmentsCount = 6
-  renegotiationForm.reason = 'Renegociação manual'
-  renegotiationForm.categoryId = ''
-  renegotiationForm.defaultBankAccountId = ''
-}
-
 function closeAccountActionModal() {
   accountActionModalState.isOpen = false
 }
@@ -2083,9 +2063,6 @@ function prepareAccountActionFormForCreate(actionType) {
     return
   }
 
-  if (actionType === 'RENEGOTIATION') {
-    resetRenegotiationForm()
-  }
 }
 
 function openAccountActionModal(actionType, shouldPrepareCreate = false) {
@@ -2537,7 +2514,9 @@ async function submitRecurringRule() {
       title: recurringForm.title,
       amountBrl: Number(recurringForm.amountBrl),
       dayOfMonth: Number(recurringForm.dayOfMonth),
-      startsAt: recurringForm.startsAt || getCurrentDateInputValue(),
+      startsAt: recurringRuleEditingId.value
+        ? recurringForm.startsAt || getCurrentDateInputValue()
+        : getFirstDayOfNextMonthInputValue(),
       recurringTypeId: Number(recurringForm.recurringTypeId),
       categoryId: normalizeOptionalNumber(recurringForm.categoryId),
       defaultBankAccountId: normalizeOptionalNumber(recurringForm.defaultBankAccountId),
@@ -2586,7 +2565,7 @@ function resetRecurringRuleForm() {
   recurringForm.title = ''
   recurringForm.amountBrl = ''
   recurringForm.dayOfMonth = 5
-  recurringForm.startsAt = getCurrentDateInputValue()
+  recurringForm.startsAt = getFirstDayOfNextMonthInputValue()
   recurringForm.recurringTypeId = ''
   recurringForm.categoryId = ''
   recurringForm.defaultBankAccountId = ''
@@ -2701,31 +2680,6 @@ async function submitInstallmentPlan() {
     await loadDashboard()
   } catch (requestError) {
     notifyUser(extractHttpMessage(requestError, 'Não foi possível salvar o parcelamento.'), 'error')
-  }
-}
-
-async function submitRenegotiation() {
-  const planId = normalizeOptionalNumber(renegotiationForm.planId)
-  if (!planId) {
-    notifyUser('Selecione um plano para renegociar.', 'warning')
-    return
-  }
-
-  try {
-    await renegotiateFinanceInstallmentPlan(planId, {
-      installmentsCount: Number(renegotiationForm.installmentsCount),
-      reason: renegotiationForm.reason,
-      categoryId: normalizeOptionalNumber(renegotiationForm.categoryId),
-      defaultBankAccountId: normalizeOptionalNumber(renegotiationForm.defaultBankAccountId),
-    })
-
-    resetRenegotiationForm()
-    closeAccountActionModal()
-    notifyUser('Plano renegociado com sucesso.', 'success')
-    await Promise.all([loadInstallments(), loadEntries()])
-    await loadDashboard()
-  } catch (requestError) {
-    notifyUser(extractHttpMessage(requestError, 'Não foi possível renegociar o plano.'), 'error')
   }
 }
 
@@ -4879,49 +4833,6 @@ function applyAccountsDirectionContext() {
           </div>
         </form>
 
-        <form v-else-if="accountActionModalState.actionType === 'RENEGOTIATION'" class="finance-form-grid"
-          @submit.prevent="submitRenegotiation">
-          <label>
-            <span>Plano</span>
-            <select v-model="renegotiationForm.planId">
-              <option value="">Selecione</option>
-              <option v-for="plan in filteredInstallmentPlans" :key="plan.id" :value="plan.id">{{ plan.title }}</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Nova quantidade de parcelas</span>
-            <input v-model="renegotiationForm.installmentsCount" type="number" min="1" required>
-          </label>
-
-          <label>
-            <span>Motivo</span>
-            <input v-model="renegotiationForm.reason" type="text" required>
-          </label>
-
-          <label>
-            <span>Categoria</span>
-            <select v-model="renegotiationForm.categoryId">
-              <option value="">Manter atual</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}
-              </option>
-            </select>
-          </label>
-
-          <label>
-            <span>Conta bancária padrão</span>
-            <select v-model="renegotiationForm.defaultBankAccountId">
-              <option value="">Manter atual</option>
-              <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{
-                bankAccount.name }}</option>
-            </select>
-          </label>
-
-          <div class="finance-modal-actions">
-            <button type="button" class="button-secondary" @click="closeAccountActionModal">Cancelar</button>
-            <button class="button-primary" type="submit">Renegociar plano</button>
-          </div>
-        </form>
       </div>
     </div>
 

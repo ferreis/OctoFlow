@@ -270,15 +270,6 @@ export function deleteFinanceDebtPlan(debtPlanId) {
   })
 }
 
-export function renegotiateFinanceInstallmentPlan(planId, payload) {
-  return requestWithSession({
-    url: `/finance/installment-plans/${encodeURIComponent(planId)}/renegotiate`,
-    method: 'POST',
-    csrfActionId: 'finance.installments.renegotiate',
-    data: payload,
-  })
-}
-
 export function fetchFinanceDashboardSummary(params = {}) {
   return requestWithSession({
     url: '/finance/dashboard/summary',

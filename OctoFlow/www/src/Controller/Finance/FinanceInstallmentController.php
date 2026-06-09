@@ -75,25 +75,6 @@ final class FinanceInstallmentController
         }
     }
 
-    #[Route('/installment-plans/{planId<\d+>}/renegotiate', name: 'finance_installment_plans_renegotiate', methods: ['POST'])]
-    public function renegotiatePlan(int $planId, Request $request, #[CurrentUser] ?User $user): JsonResponse
-    {
-        if ($user === null) {
-            return $this->buildUnauthorizedResponse();
-        }
-
-        $payload = $this->decodeJson($request);
-        if ($payload === null) {
-            return $this->buildInvalidJsonResponse();
-        }
-
-        try {
-            return new JsonResponse($this->financeInstallmentService->renegotiatePlan($user, $planId, $payload));
-        } catch (\Throwable $throwable) {
-            return new JsonResponse(['message' => $throwable->getMessage()], $this->resolveExceptionStatus($throwable));
-        }
-    }
-
     #[Route('/installment-plans/{planId<\d+>}/adjustment', name: 'finance_installment_plans_adjustment', methods: ['POST'])]
     public function applyPlanAdjustment(int $planId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {

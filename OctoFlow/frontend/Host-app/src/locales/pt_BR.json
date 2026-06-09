@@ -1028,9 +1028,6 @@
         "receivable": "Contas a receber",
         "navigationAriaLabel": "Abas de contas"
       },
-      "renegotiation": {
-        "defaultReason": "Renegociação manual"
-      },
       "confirm": {
         "defaultAction": "Confirmar",
         "deleteEntryTitle": "Excluir lançamento",
@@ -1067,11 +1064,10 @@
         }
       },
       "actions": {
-        "entry": "Lançamento avulso",
+        "entry": "Lançamento",
         "settlement": "Baixa de lançamento",
         "recurringRule": "Regra recorrente",
         "installmentPlan": "Plano de parcelamento",
-        "renegotiation": "Renegociar plano",
         "delete": "Excluir",
         "updating": "Atualizando...",
         "refreshValues": "Atualizar valores",
@@ -1085,8 +1081,7 @@
         "registerSettlement": "Registrar baixa",
         "save": "Salvar",
         "createRecurring": "Criar recorrência",
-        "createInstallment": "Criar parcelamento",
-        "renegotiate": "Renegociar plano"
+        "createInstallment": "Criar parcelamento"
       },
       "modal": {
         "titles": {
@@ -1096,7 +1091,6 @@
           "editRecurring": "Editar recorrência",
           "newRecurring": "Nova recorrência",
           "newInstallment": "Novo parcelamento",
-          "renegotiation": "Renegociar plano",
           "default": "Gerenciar lançamento"
         },
         "subtitle": "Os dados serão aplicados nas listagens desta aba.",
@@ -1131,13 +1125,6 @@
           "firstDueDate": "Primeiro vencimento",
           "category": "Categoria",
           "bankAccount": "Conta bancária padrão"
-        },
-        "renegotiation": {
-          "plan": "Plano",
-          "installmentsCount": "Nova quantidade de parcelas",
-          "reason": "Motivo",
-          "category": "Categoria",
-          "bankAccount": "Conta bancária"
         }
       },
       "notifications": {
@@ -1168,9 +1155,6 @@
         "installmentInvalid": "Informe título e valor total válidos para o parcelamento.",
         "installmentCreated": "Parcelamento criado com sucesso.",
         "installmentError": "Erro ao criar parcelamento.",
-        "renegotiationInvalid": "Selecione um plano e informe um motivo válido.",
-        "renegotiationSuccess": "Plano renegociado com sucesso.",
-        "renegotiationError": "Erro ao renegociar plano.",
         "childRenderError": "Erro inesperado ao renderizar contas financeiras."
       },
       "settlement": {

@@ -42,7 +42,6 @@ import {
   fetchFinanceInstallmentPlans,
   fetchFinanceRecurringRules,
   generateFinanceRecurringRuleManually,
-  renegotiateFinanceInstallmentPlan,
   updateFinanceInstallmentPlan,
   updateFinanceEntry,
   updateFinanceRecurringRule,
@@ -63,7 +62,6 @@ import { extractHttpMessage } from '../../utils/httpErrors'
 
 const LIST_ITEMS_PER_PAGE = 10
 const MAX_TITLE_LENGTH = 120
-const MAX_REASON_LENGTH = 180
 
 const financeStore = useFinanceStore()
 const { categories, bankAccounts, recurringTypes } = storeToRefs(financeStore)
@@ -132,7 +130,7 @@ const recurringForm = reactive({
   title: '',
   amountBrl: '',
   dayOfMonth: 5,
-  startsAt: getCurrentDateInputValue(),
+  startsAt: getFirstDayOfNextMonthInputValue(),
   recurringTypeId: '',
   categoryId: '',
   defaultBankAccountId: '',
@@ -155,14 +153,6 @@ const installmentForm = reactive({
 const installmentEditingId = ref('')
 const settlementEntryOptions = ref([])
 const settlementEntrySearchDebounceId = ref(null)
-
-const renegotiationForm = reactive({
-  planId: '',
-  installmentsCount: 6,
-  reason: translateScoped('renegotiation.defaultReason', 'Renegociação manual'),
-  categoryId: '',
-  defaultBankAccountId: '',
-})
 
 const selectedAccountActionType = ref('ENTRY')
 const accountActionModalState = reactive({
@@ -337,7 +327,7 @@ const availableAccountActionOptions = computed(() => {
     options.push(
       {
         value: 'ENTRY',
-        label: translateScoped('actions.entry', 'Lançamento avulso'),
+        label: translateScoped('actions.entry', 'Lançamento'),
       },
       {
         value: 'SETTLEMENT',
@@ -354,16 +344,10 @@ const availableAccountActionOptions = computed(() => {
   }
 
   if (showInstallment.value) {
-    options.push(
-      {
-        value: 'INSTALLMENT_PLAN',
-        label: translateScoped('actions.installmentPlan', 'Plano de parcelamento'),
-      },
-      {
-        value: 'RENEGOTIATION',
-        label: translateScoped('actions.renegotiation', 'Renegociar plano'),
-      },
-    )
+    options.push({
+      value: 'INSTALLMENT_PLAN',
+      label: translateScoped('actions.installmentPlan', 'Plano de parcelamento'),
+    })
   }
 
   return options
@@ -392,10 +376,6 @@ const accountActionModalTitle = computed(() => {
     return installmentEditingId.value
       ? translateScoped('modal.titles.editInstallment', 'Editar parcelamento')
       : translateScoped('modal.titles.newInstallment', 'Novo parcelamento')
-  }
-
-  if (actionType === 'RENEGOTIATION') {
-    return translateScoped('modal.titles.renegotiation', 'Renegociar plano')
   }
 
   return translateScoped('modal.titles.default', 'Gerenciar lançamento')
@@ -456,6 +436,10 @@ function getNextMonthInputValue() {
   nextMonthDate.setMonth(nextMonthDate.getMonth() + 1)
 
   return `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}`
+}
+
+function getFirstDayOfNextMonthInputValue() {
+  return `${getNextMonthInputValue()}-01`
 }
 
 function formatYearMonthLabel(rawMonthInput) {
@@ -611,7 +595,7 @@ function resetRecurringForm() {
     title: '',
     amountBrl: '',
     dayOfMonth: 5,
-    startsAt: getCurrentDateInputValue(),
+    startsAt: getFirstDayOfNextMonthInputValue(),
     recurringTypeId: '',
     categoryId: '',
     defaultBankAccountId: '',
@@ -638,22 +622,11 @@ function resetInstallmentForm() {
   installmentEditingId.value = ''
 }
 
-function resetRenegotiationForm() {
-  Object.assign(renegotiationForm, {
-    planId: '',
-    installmentsCount: 6,
-    reason: translateScoped('renegotiation.defaultReason', 'Renegociação manual'),
-    categoryId: '',
-    defaultBankAccountId: '',
-  })
-}
-
 function resetAllAccountForms() {
   resetEntryForm()
   resetSettlementForm()
   resetRecurringForm()
   resetInstallmentForm()
-  resetRenegotiationForm()
 }
 
 function focusModalPrimaryActionButton() {
@@ -1063,6 +1036,8 @@ function startEditingRecurringRule(recurringRule) {
 }
 
 function buildRecurringPayload() {
+  const isCreatingRecurringRule = sanitizeIdentifier(recurringRuleEditingId.value) === ''
+
   return {
     direction: normalizeDirection(recurringForm.direction, normalizeDirection(accountsDirectionByTab.value || 'PAYABLE')),
     title: sanitizeSingleLineText(recurringForm.title, MAX_TITLE_LENGTH),
@@ -1077,7 +1052,9 @@ function buildRecurringPayload() {
       max: 31,
       defaultValue: 5,
     }),
-    startsAt: sanitizeDateInput(recurringForm.startsAt),
+    startsAt: isCreatingRecurringRule
+      ? getFirstDayOfNextMonthInputValue()
+      : sanitizeDateInput(recurringForm.startsAt),
     recurringTypeId: sanitizeIdentifier(recurringForm.recurringTypeId),
     categoryId: sanitizeIdentifier(recurringForm.categoryId) || undefined,
     defaultBankAccountId: sanitizeIdentifier(recurringForm.defaultBankAccountId) || undefined,
@@ -1355,55 +1332,6 @@ function requestDeleteInstallmentPlan(installmentPlan) {
   }
 }
 
-function buildRenegotiationPayload() {
-  return {
-    planId: sanitizeIdentifier(renegotiationForm.planId),
-    installmentsCount: sanitizeInteger(renegotiationForm.installmentsCount, {
-      min: 1,
-      max: 480,
-      defaultValue: 1,
-    }),
-    reason: sanitizeSingleLineText(renegotiationForm.reason, MAX_REASON_LENGTH),
-    categoryId: sanitizeIdentifier(renegotiationForm.categoryId) || undefined,
-    defaultBankAccountId: sanitizeIdentifier(renegotiationForm.defaultBankAccountId) || undefined,
-  }
-}
-
-async function submitRenegotiation() {
-  if (!canMutateFinance() || accountActionProcessing.value) {
-    return
-  }
-
-  const payload = buildRenegotiationPayload()
-
-  if (payload.planId === '' || payload.reason === '') {
-    notifyUser(translateScoped('notifications.renegotiationInvalid', 'Selecione um plano e informe um motivo válido.'), 'warning')
-    return
-  }
-
-  accountActionProcessing.value = true
-
-  try {
-    await renegotiateFinanceInstallmentPlan(payload.planId, {
-      installmentsCount: payload.installmentsCount,
-      reason: payload.reason,
-      categoryId: payload.categoryId,
-      defaultBankAccountId: payload.defaultBankAccountId,
-    })
-
-    notifyUser(translateScoped('notifications.renegotiationSuccess', 'Plano renegociado com sucesso.'), 'success')
-    closeAccountActionModal()
-    await Promise.all([
-      loadInstallments(false),
-      loadEntries(false),
-    ])
-  } catch (error) {
-    notifyUser(extractHttpMessage(error, translateScoped('notifications.renegotiationError', 'Erro ao renegociar plano.')), 'error')
-  } finally {
-    accountActionProcessing.value = false
-  }
-}
-
 function openAccountActionModal(actionType) {
   if (!canMutateFinance()) {
     return
@@ -1575,8 +1503,8 @@ watch(selectedSettlementEntry, (entryItem) => {
     return
   }
 
-  const expectedAmount = Number(entryItem?.expectedAmountBrl || 0)
-  settlementForm.amountBrl = expectedAmount > 0 ? expectedAmount.toFixed(2) : ''
+  const remainingAmount = Number(entryItem?.remainingAmountBrl || 0)
+  settlementForm.amountBrl = remainingAmount > 0 ? remainingAmount.toFixed(2) : ''
 })
 
 watch(
@@ -2323,80 +2251,6 @@ onErrorCaptured((error) => {
         </div>
       </form>
 
-      <form
-        v-else-if="accountActionModalState.actionType === 'RENEGOTIATION'"
-        class="finance-form-grid"
-        @submit.prevent="submitRenegotiation"
-      >
-        <label>
-          <span>{{ translateScoped('modal.renegotiation.plan', 'Plano') }}</span>
-          <select v-model="renegotiationForm.planId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.select', 'Selecione') }}</option>
-            <option v-for="installmentPlan in filteredInstallmentPlans" :key="installmentPlan.id" :value="installmentPlan.id">
-              {{ installmentPlan.title }}
-            </option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.renegotiation.installmentsCount', 'Nova quantidade de parcelas') }}</span>
-          <input
-            v-model="renegotiationForm.installmentsCount"
-            type="number"
-            min="1"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.renegotiation.reason', 'Motivo') }}</span>
-          <input
-            v-model="renegotiationForm.reason"
-            type="text"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.renegotiation.category', 'Categoria') }}</span>
-          <select v-model="renegotiationForm.categoryId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.keepCurrent', 'Manter atual') }}</option>
-            <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.renegotiation.bankAccount', 'Conta bancária') }}</span>
-          <select v-model="renegotiationForm.defaultBankAccountId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.keepCurrent', 'Manter atual') }}</option>
-            <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-          </select>
-        </label>
-
-        <div class="finance-modal-actions">
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="accountActionProcessing"
-            @click="closeAccountActionModal"
-          >
-            {{ translateScoped('actions.cancel', 'Cancelar') }}
-          </button>
-
-          <button
-            ref="accountActionPrimaryButtonRef"
-            class="finance-action-button"
-            type="submit"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-            {{ accountActionProcessing
-              ? translateScoped('actions.saving', 'Salvando...')
-              : translateScoped('actions.renegotiate', 'Renegociar plano') }}
-          </button>
-        </div>
-      </form>
     </div>
   </div>
 

@@ -43,7 +43,6 @@ final class FinanceTransferService
                 'entryStatusHistory' => $this->fetchOwnerTableRows('finance_entry_status_history', $ownerId),
                 'bankAccountLedger' => $this->fetchOwnerTableRows('finance_bank_account_ledger', $ownerId),
                 'recurringRuleRuns' => $this->fetchRecurringRuleRunsRows($ownerId),
-                'negotiations' => $this->fetchOwnerTableRows('finance_negotiation', $ownerId),
                 'debtPlans' => $this->fetchOwnerTableRows('finance_debt_plan', $ownerId),
                 'externalTransactionLinks' => $this->fetchExternalTransactionLinksRows($ownerId),
             ],
@@ -249,12 +248,6 @@ final class FinanceTransferService
             $importedCounters['recurringRuleRuns'] += 1;
         }
 
-        $negotiationsRows = $this->readSnapshotRows($snapshotData, 'negotiations');
-        foreach ($negotiationsRows as $negotiationRow) {
-            $this->insertNegotiationRow($ownerId, $negotiationRow, $entryMap, $installmentPlanMap);
-            $importedCounters['negotiations'] += 1;
-        }
-
         $debtPlansRows = $this->readSnapshotRows($snapshotData, 'debtPlans');
         foreach ($debtPlansRows as $debtPlanRow) {
             $this->insertDebtPlanRow($ownerId, $debtPlanRow, $categoryMap, $bankAccountMap, $installmentPlanMap, $entryMap);
@@ -397,27 +390,6 @@ final class FinanceTransferService
             'external_transaction_id' => $newExternalTransactionId,
             'entry_id' => $newEntryId,
             'linked_at' => $this->normalizeDateTimeOrDefault($externalTransactionLinkRow['linked_at'] ?? null, (new \DateTimeImmutable())->format('Y-m-d H:i:s')),
-        ]);
-    }
-
-    /**
-     * @param array<int, int> $entryMap
-     * @param array<int, int> $installmentPlanMap
-     */
-    private function insertNegotiationRow(int $ownerId, array $negotiationRow, array $entryMap, array $installmentPlanMap): void
-    {
-        $newPlanId = $this->mapRequiredForeignId($installmentPlanMap, $negotiationRow['new_plan_id'] ?? null, 'finance_negotiation.new_plan_id');
-
-        $this->connection->insert('finance_negotiation', [
-            'owner_id' => $ownerId,
-            'original_entry_id' => $this->mapOptionalForeignId($entryMap, $negotiationRow['original_entry_id'] ?? null),
-            'original_plan_id' => $this->mapOptionalForeignId($installmentPlanMap, $negotiationRow['original_plan_id'] ?? null),
-            'new_plan_id' => $newPlanId,
-            'reason' => $this->normalizeNullableString($negotiationRow['reason'] ?? null),
-            'discount_amount_brl' => $this->normalizeNumericOrDefault($negotiationRow['discount_amount_brl'] ?? null, 0.0),
-            'fine_amount_brl' => $this->normalizeNumericOrDefault($negotiationRow['fine_amount_brl'] ?? null, 0.0),
-            'interest_amount_brl' => $this->normalizeNumericOrDefault($negotiationRow['interest_amount_brl'] ?? null, 0.0),
-            'created_at' => $this->normalizeDateTimeOrDefault($negotiationRow['created_at'] ?? null, (new \DateTimeImmutable())->format('Y-m-d H:i:s')),
         ]);
     }
 
@@ -877,11 +849,6 @@ final class FinanceTransferService
         SQL, ['ownerId' => $ownerId]);
 
         $this->connection->executeStatement(<<<'SQL'
-            DELETE FROM finance_negotiation
-            WHERE owner_id = :ownerId
-        SQL, ['ownerId' => $ownerId]);
-
-        $this->connection->executeStatement(<<<'SQL'
             DELETE FROM finance_bank_account_ledger
             WHERE owner_id = :ownerId
         SQL, ['ownerId' => $ownerId]);
@@ -1002,7 +969,6 @@ final class FinanceTransferService
             'entryStatusHistory' => 0,
             'bankAccountLedger' => 0,
             'recurringRuleRuns' => 0,
-            'negotiations' => 0,
             'debtPlans' => 0,
             'externalTransactionLinks' => 0,
         ];

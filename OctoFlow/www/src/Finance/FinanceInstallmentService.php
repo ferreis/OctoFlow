@@ -224,34 +224,149 @@ final class FinanceInstallmentService
     {
         $ownerId = $this->requireOwnerId($user);
 
-        $adjustmentType = strtoupper(trim((string) ($payload['adjustmentType'] ?? '')));
-        if (!in_array($adjustmentType, ['ADVANCE', 'DISCOUNT'], true)) {
-            throw new \InvalidArgumentException('Tipo de ajuste inválido para o parcelamento.');
+        return $this->connection->transactional(function () use ($ownerId, $planId, $payload): array {
+            $adjustmentType = strtoupper(trim((string) ($payload['adjustmentType'] ?? '')));
+            if (!in_array($adjustmentType, ['ADVANCE', 'DISCOUNT'], true)) {
+                throw new \InvalidArgumentException('Tipo de ajuste inválido para o parcelamento.');
+            }
+
+            $adjustmentAmountBrl = FinanceInput::normalizeMoney($payload['amountBrl'] ?? 0, 'amountBrl');
+            if ($adjustmentAmountBrl <= 0) {
+                throw new \InvalidArgumentException('O valor do ajuste deve ser maior que zero.');
+            }
+
+            $currentPlan = $this->getPlanById($ownerId, $planId);
+
+            /** @var list<array<string, mixed>> $openItems */
+            $openItems = $this->connection->fetchAllAssociative(<<<'SQL'
+                SELECT
+                    item.id AS "itemId",
+                    entry.id AS "entryId",
+                    entry.status,
+                    entry.due_date AS "dueDate",
+                    entry.settled_amount_brl AS "settledAmountBrl",
+                    entry.remaining_amount_brl AS "remainingAmountBrl"
+                FROM finance_installment_item item
+                INNER JOIN finance_entry entry ON entry.id = item.entry_id
+                WHERE item.plan_id = :planId
+                  AND entry.owner_id = :ownerId
+                  AND entry.deleted_at IS NULL
+                  AND entry.remaining_amount_brl > 0
+                  AND entry.status NOT IN ('CANCELED', 'NEGOTIATED')
+                ORDER BY item.installment_number ASC, entry.due_date ASC NULLS LAST, entry.id ASC
+            SQL, [
+                'ownerId' => $ownerId,
+                'planId' => $planId,
+            ]);
+
+            $currentRemainingAmountBrl = 0.0;
+            foreach ($openItems as $openItem) {
+                $currentRemainingAmountBrl += (float) ($openItem['remainingAmountBrl'] ?? 0);
+            }
+            $currentRemainingAmountBrl = round($currentRemainingAmountBrl, 2);
+
+            if ($currentRemainingAmountBrl <= 0.00001) {
+                throw new \InvalidArgumentException('Este parcelamento não possui saldo restante aberto.');
+            }
+
+            if ($adjustmentAmountBrl - $currentRemainingAmountBrl > 0.009) {
+                throw new \InvalidArgumentException('O ajuste não pode ser maior que o valor restante do parcelamento.');
+            }
+
+            $newRemainingAmountBrl = max(0.0, round($currentRemainingAmountBrl - $adjustmentAmountBrl, 2));
+            $openItemsCount = count($openItems);
+            $baseRemainingAmountBrl = $openItemsCount > 0
+                ? round($newRemainingAmountBrl / $openItemsCount, 2)
+                : 0.0;
+            $distributedRemainingAmountBrl = 0.0;
+            $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $planDirection = (string) ($currentPlan['direction'] ?? FinanceConstants::DIRECTION_PAYABLE);
+
+            foreach ($openItems as $openItemIndex => $openItem) {
+                $entryId = (int) ($openItem['entryId'] ?? 0);
+                $itemId = (int) ($openItem['itemId'] ?? 0);
+                if ($entryId <= 0 || $itemId <= 0) {
+                    continue;
+                }
+
+                $isLastOpenItem = $openItemIndex === $openItemsCount - 1;
+                $entryRemainingAmountBrl = $isLastOpenItem
+                    ? round($newRemainingAmountBrl - $distributedRemainingAmountBrl, 2)
+                    : $baseRemainingAmountBrl;
+                $entryRemainingAmountBrl = max(0.0, $entryRemainingAmountBrl);
+                $distributedRemainingAmountBrl = round($distributedRemainingAmountBrl + $entryRemainingAmountBrl, 2);
+
+                $settledAmountBrl = round((float) ($openItem['settledAmountBrl'] ?? 0), 2);
+                $expectedAmountBrl = round($settledAmountBrl + $entryRemainingAmountBrl, 2);
+                $dueDate = FinanceInput::normalizeOptionalDate($openItem['dueDate'] ?? null);
+                $previousStatus = (string) ($openItem['status'] ?? '');
+                $nextStatus = $this->resolveEntryStatusAfterPlanAdjustment(
+                    $planDirection,
+                    $dueDate,
+                    $settledAmountBrl,
+                    $entryRemainingAmountBrl,
+                );
+
+                $this->connection->update('finance_entry', [
+                    'status' => $nextStatus,
+                    'expected_amount_brl' => $expectedAmountBrl,
+                    'remaining_amount_brl' => $entryRemainingAmountBrl,
+                    'input_amount' => $expectedAmountBrl,
+                    'updated_at' => $now,
+                ], [
+                    'id' => $entryId,
+                    'owner_id' => $ownerId,
+                ]);
+
+                $this->connection->update('finance_installment_item', [
+                    'expected_amount_brl' => $expectedAmountBrl,
+                ], [
+                    'id' => $itemId,
+                    'plan_id' => $planId,
+                ]);
+
+                if ($previousStatus !== $nextStatus) {
+                    $this->connection->insert('finance_entry_status_history', [
+                        'owner_id' => $ownerId,
+                        'entry_id' => $entryId,
+                        'from_status' => $previousStatus !== '' ? $previousStatus : null,
+                        'to_status' => $nextStatus,
+                        'reason_code' => 'PLAN_ADJUSTED',
+                        'reason_text' => $adjustmentType === 'ADVANCE'
+                            ? 'Installment plan adjusted by advance.'
+                            : 'Installment plan adjusted by discount.',
+                        'changed_at' => $now,
+                    ]);
+                }
+            }
+
+            $this->connection->update('finance_installment_plan', [
+                'installment_amount_brl' => $baseRemainingAmountBrl,
+                'updated_at' => $now,
+            ], [
+                'id' => $planId,
+                'owner_id' => $ownerId,
+            ]);
+
+            return $this->getPlanById($ownerId, $planId);
+        });
+    }
+
+    private function resolveEntryStatusAfterPlanAdjustment(
+        string $direction,
+        ?\DateTimeImmutable $dueDate,
+        float $settledAmountBrl,
+        float $remainingAmountBrl,
+    ): string {
+        if ($remainingAmountBrl <= 0.00001) {
+            return $direction === FinanceConstants::DIRECTION_RECEIVABLE ? 'RECEIVED' : 'PAID';
         }
 
-        $adjustmentAmountBrl = FinanceInput::normalizeMoney($payload['amountBrl'] ?? 0, 'amountBrl');
-        if ($adjustmentAmountBrl <= 0) {
-            throw new \InvalidArgumentException('O valor do ajuste deve ser maior que zero.');
+        if ($settledAmountBrl > 0.00001) {
+            return 'PARTIAL';
         }
 
-        $currentPlan = $this->getPlanById($ownerId, $planId);
-        $currentTotalAmountBrl = (float) ($currentPlan['totalAmountBrl'] ?? 0);
-        if ($adjustmentAmountBrl >= $currentTotalAmountBrl) {
-            throw new \InvalidArgumentException('O ajuste deve ser menor que o valor total do parcelamento.');
-        }
-
-        return $this->updatePlan($user, $planId, [
-            'title' => $currentPlan['title'] ?? '',
-            'totalAmountBrl' => round($currentTotalAmountBrl - $adjustmentAmountBrl, 2),
-            'downPaymentBrl' => $currentPlan['downPaymentBrl'] ?? 0,
-            'installmentsCount' => $currentPlan['installmentsCount'] ?? 1,
-            'interestAmountBrl' => $currentPlan['interestAmountBrl'] ?? 0,
-            'discountAmountBrl' => $currentPlan['discountAmountBrl'] ?? 0,
-            'fineAmountBrl' => $currentPlan['fineAmountBrl'] ?? 0,
-            'firstDueDate' => $currentPlan['firstDueDate'] ?? 'today',
-            'categoryId' => $currentPlan['categoryId'] ?? null,
-            'defaultBankAccountId' => $currentPlan['bankAccountId'] ?? null,
-        ]);
+        return FinanceInput::defaultStatusByDirection($direction, $dueDate);
     }
 
     private function softDeleteInstallmentEntriesForPlan(User $user, int $planId): void
@@ -282,115 +397,6 @@ final class FinanceInstallmentService
         $this->connection->delete('finance_installment_item', [
             'plan_id' => $planId,
         ]);
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     *
-     * @return array<string, mixed>
-     */
-    public function renegotiatePlan(User $user, int $planId, array $payload): array
-    {
-        $ownerId = $this->requireOwnerId($user);
-
-        return $this->connection->transactional(function () use ($ownerId, $planId, $payload): array {
-            $originalPlan = $this->getPlanById($ownerId, $planId);
-
-            /** @var list<array<string, mixed>> $openItems */
-            $openItems = $this->connection->fetchAllAssociative(<<<'SQL'
-                SELECT
-                    item.id AS "itemId",
-                    entry.id AS "entryId",
-                    entry.remaining_amount_brl AS "remainingAmountBrl"
-                FROM finance_installment_item item
-                INNER JOIN finance_entry entry ON entry.id = item.entry_id
-                WHERE item.plan_id = :planId
-                  AND entry.deleted_at IS NULL
-                  AND entry.remaining_amount_brl > 0
-                  AND entry.status NOT IN ('CANCELED', 'NEGOTIATED')
-            SQL, [
-                'planId' => $planId,
-            ]);
-
-            $remainingAmountBrl = 0.0;
-            foreach ($openItems as $openItem) {
-                $remainingAmountBrl += (float) $openItem['remainingAmountBrl'];
-            }
-            $remainingAmountBrl = round($remainingAmountBrl, 2);
-
-            if ($remainingAmountBrl <= 0.00001) {
-                throw new \InvalidArgumentException('This installment plan has no remaining open balance.');
-            }
-
-            foreach ($openItems as $openItem) {
-                $entryId = (int) $openItem['entryId'];
-                $entryStatus = ((string) $originalPlan['direction']) === FinanceConstants::DIRECTION_PAYABLE
-                    ? 'NEGOTIATED'
-                    : 'CANCELED';
-
-                $this->connection->update('finance_entry', [
-                    'status' => $entryStatus,
-                    'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
-                ], [
-                    'id' => $entryId,
-                    'owner_id' => $ownerId,
-                ]);
-
-                $this->connection->insert('finance_entry_status_history', [
-                    'owner_id' => $ownerId,
-                    'entry_id' => $entryId,
-                    'from_status' => null,
-                    'to_status' => $entryStatus,
-                    'reason_code' => 'PLAN_RENEGOTIATED',
-                    'reason_text' => 'Automatically updated during installment renegotiation.',
-                    'changed_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
-                ]);
-            }
-
-            $this->connection->update('finance_installment_plan', [
-                'status' => 'RENEGOTIATED',
-                'updated_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
-            ], [
-                'id' => $planId,
-                'owner_id' => $ownerId,
-            ]);
-
-            $newPlanPayload = [
-                'direction' => $originalPlan['direction'],
-                'title' => (string) ($payload['title'] ?? sprintf('%s (Renegotiated)', $originalPlan['title'])),
-                'totalAmountBrl' => FinanceInput::normalizeOptionalMoney($payload['totalAmountBrl'] ?? null, $remainingAmountBrl),
-                'downPaymentBrl' => FinanceInput::normalizeOptionalMoney($payload['downPaymentBrl'] ?? null, 0.0),
-                'installmentAmountBrl' => $payload['installmentAmountBrl'] ?? null,
-                'installmentsCount' => (int) ($payload['installmentsCount'] ?? 1),
-                'interestAmountBrl' => FinanceInput::normalizeOptionalMoney($payload['interestAmountBrl'] ?? null, 0.0),
-                'discountAmountBrl' => FinanceInput::normalizeOptionalMoney($payload['discountAmountBrl'] ?? null, 0.0),
-                'fineAmountBrl' => FinanceInput::normalizeOptionalMoney($payload['fineAmountBrl'] ?? null, 0.0),
-                'firstDueDate' => $payload['firstDueDate'] ?? (new \DateTimeImmutable('today'))->format('Y-m-d'),
-                'categoryId' => $payload['categoryId'] ?? $originalPlan['categoryId'] ?? null,
-                'defaultBankAccountId' => $payload['defaultBankAccountId'] ?? $originalPlan['bankAccountId'] ?? null,
-            ];
-
-            $newPlan = $this->createPlanByOwnerId($ownerId, $newPlanPayload);
-            $newPlanId = (int) $newPlan['id'];
-
-            $this->connection->insert('finance_negotiation', [
-                'owner_id' => $ownerId,
-                'original_entry_id' => null,
-                'original_plan_id' => $planId,
-                'new_plan_id' => $newPlanId,
-                'reason' => trim((string) ($payload['reason'] ?? 'Installment renegotiation')),
-                'discount_amount_brl' => (float) ($newPlanPayload['discountAmountBrl'] ?? 0),
-                'fine_amount_brl' => (float) ($newPlanPayload['fineAmountBrl'] ?? 0),
-                'interest_amount_brl' => (float) ($newPlanPayload['interestAmountBrl'] ?? 0),
-                'created_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
-            ]);
-
-            return [
-                'originalPlan' => $this->getPlanById($ownerId, $planId),
-                'newPlan' => $this->getPlanById($ownerId, $newPlanId),
-                'remainingAmountBrl' => $remainingAmountBrl,
-            ];
-        });
     }
 
     /**

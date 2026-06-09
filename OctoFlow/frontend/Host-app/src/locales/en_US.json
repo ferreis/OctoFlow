@@ -1028,9 +1028,6 @@
         "receivable": "Accounts receivable",
         "navigationAriaLabel": "Accounts tabs"
       },
-      "renegotiation": {
-        "defaultReason": "Manual renegotiation"
-      },
       "confirm": {
         "defaultAction": "Confirm",
         "deleteEntryTitle": "Delete entry",
@@ -1071,7 +1068,6 @@
         "settlement": "Settle entry",
         "recurringRule": "Recurring rule",
         "installmentPlan": "Installment plan",
-        "renegotiation": "Renegotiate plan",
         "delete": "Delete",
         "updating": "Updating...",
         "refreshValues": "Refresh values",
@@ -1085,8 +1081,7 @@
         "registerSettlement": "Register settlement",
         "save": "Save",
         "createRecurring": "Create recurring rule",
-        "createInstallment": "Create installment plan",
-        "renegotiate": "Renegotiate plan"
+        "createInstallment": "Create installment plan"
       },
       "modal": {
         "titles": {
@@ -1096,7 +1091,6 @@
           "editRecurring": "Edit recurring rule",
           "newRecurring": "New recurring rule",
           "newInstallment": "New installment plan",
-          "renegotiation": "Renegotiate plan",
           "default": "Manage entry"
         },
         "subtitle": "Data will be applied to this tab's lists.",
@@ -1131,13 +1125,6 @@
           "firstDueDate": "First due date",
           "category": "Category",
           "bankAccount": "Default bank account"
-        },
-        "renegotiation": {
-          "plan": "Plan",
-          "installmentsCount": "New number of installments",
-          "reason": "Reason",
-          "category": "Category",
-          "bankAccount": "Bank account"
         }
       },
       "notifications": {
@@ -1168,9 +1155,6 @@
         "installmentInvalid": "Provide a valid title and total amount for the installment plan.",
         "installmentCreated": "Installment plan created successfully.",
         "installmentError": "Failed to create installment plan.",
-        "renegotiationInvalid": "Select a plan and provide a valid reason.",
-        "renegotiationSuccess": "Plan renegotiated successfully.",
-        "renegotiationError": "Failed to renegotiate plan.",
         "childRenderError": "Unexpected error while rendering financial accounts."
       },
       "settlement": {
