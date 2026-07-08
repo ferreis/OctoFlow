@@ -1094,6 +1094,7 @@
           "default": "Manage entry"
         },
         "subtitle": "Data will be applied to this tab's lists.",
+        "categoryHint": "An active category is required to save this record.",
         "entry": {
           "title": "Title",
           "type": "Type",
@@ -1134,6 +1135,7 @@
         "loadRecurringError": "Failed to load recurring rules.",
         "loadInstallmentsError": "Failed to load installment plans.",
         "entryInvalid": "Provide a valid title, amount, and due date.",
+        "categoryRequired": "Select an active category to continue.",
         "entryUpdated": "Entry updated successfully.",
         "entryCreated": "Entry created successfully.",
         "entrySaveError": "Failed to save entry.",
@@ -1189,6 +1191,7 @@
         "noCategory": "No category",
         "noAccount": "No account",
         "select": "Select",
+        "selectCategory": "Select a category",
         "keepCurrent": "Keep current"
       }
     },
@@ -1402,6 +1405,7 @@
         "snapshotExportError": "Error exporting snapshot.",
         "selectFileFirst": "Select a JSON file before importing.",
         "invalidJsonContent": "Invalid JSON content for import.",
+        "confirmationRequired": "Enter the confirmation phrase exactly as shown before replacing financial data.",
         "snapshotImportSuccess": "Data imported successfully.",
         "snapshotImportError": "Error importing financial snapshot.",
         "childRenderError": "Unexpected error while rendering reports."
@@ -1469,6 +1473,10 @@
           "description": "Restore history from an exported JSON file.",
           "chooseFile": "+ Choose .json file",
           "replaceExisting": "Replace current account data",
+          "confirmationLabel": "Required confirmation",
+          "confirmationWarning": "This import will replace all current financial data in the account.",
+          "confirmationInstruction": "Type {phrase} to confirm the replacement.",
+          "confirmationPlaceholder": "Enter the confirmation phrase",
           "loading": "Importing...",
           "button": "Import JSON snapshot"
         }

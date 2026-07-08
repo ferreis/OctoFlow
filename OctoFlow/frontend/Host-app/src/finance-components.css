@@ -88,6 +88,9 @@
   .finance-filter-grid label span {
     @apply text-[0.78rem] text-muted font-bold normal-case tracking-tight leading-snug break-words ml-1;
   }
+  .finance-field-hint {
+    @apply block text-[0.76rem] leading-snug text-muted font-medium ml-1;
+  }
 
   /* Inputs Modernos */
   .finance-form-grid input,
@@ -340,6 +343,26 @@
   .finance-migration-toggle input[type="checkbox"] {
     @apply cursor-pointer;
     transform: scale(1.1);
+  }
+  .finance-migration-confirmation {
+    @apply grid gap-2 p-4 border rounded-xl;
+    border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
+    background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+  }
+  .finance-migration-confirmation span {
+    @apply text-[0.78rem] text-danger font-bold;
+  }
+  .finance-migration-confirmation small {
+    @apply text-[0.76rem] leading-snug text-muted font-medium;
+  }
+  .finance-migration-confirmation input {
+    @apply border rounded-xl min-h-[44px] px-4 w-full max-w-full min-w-0 text-ink font-bold text-sm outline-none;
+    background: var(--surface-strong);
+    border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+  }
+  .finance-migration-confirmation input:focus {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
   }
 
   /* Form Actions (para alinhamento flex de botões em formulários) */

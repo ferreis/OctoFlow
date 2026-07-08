@@ -66,7 +66,7 @@ export const useFinanceStore = defineStore('finance', {
   getters: {
     activeBankAccounts: (state) => state.bankAccounts.filter((acc) => acc.isActive !== false),
     creditCardAccounts: (state) => state.bankAccounts.filter(
-      (acc) => acc.isActive !== false && String(acc.accountType || '').toUpperCase() === 'CREDIT_CARD',
+      (acc) => acc.isActive !== false && String(acc.accountType || '').toUpperCase() === 'CREDIT',
     ),
     isCatalogsReady: (state) => state.catalogsLoaded && !state.loading.catalogs,
   },

@@ -4,6 +4,7 @@ namespace App\Controller\Finance;
 
 use App\Entity\User;
 use App\Finance\FinanceCurrencyService;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -24,6 +25,7 @@ final class FinanceCurrencyController
     }
 
     #[Route('', name: 'finance_currencies_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listCurrencies(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -38,6 +40,7 @@ final class FinanceCurrencyController
     }
 
     #[Route('/rates', name: 'finance_currencies_rates', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listRates(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -52,6 +55,7 @@ final class FinanceCurrencyController
     }
 
     #[Route('/rates/manual', name: 'finance_currencies_rates_manual_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createManualRate(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

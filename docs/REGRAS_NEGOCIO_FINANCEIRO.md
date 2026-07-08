@@ -3,6 +3,8 @@
 Data de referencia: 01/04/2026  
 Status: base oficial para implementacao
 
+Nota GOD-30 em 07/07/2026: categoria permanece obrigatoria para novos lancamentos, recorrencias e parcelamentos. Registros historicos sem categoria devem continuar operacionais ate saneamento.
+
 ## 1. Objetivo
 
 Definir regras funcionais e contabeis do modulo financeiro, com foco em:

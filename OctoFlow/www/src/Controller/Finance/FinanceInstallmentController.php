@@ -4,6 +4,7 @@ namespace App\Controller\Finance;
 
 use App\Entity\User;
 use App\Finance\FinanceInstallmentService;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -24,6 +25,7 @@ final class FinanceInstallmentController
     }
 
     #[Route('/installment-plans', name: 'finance_installment_plans_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listPlans(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -34,6 +36,7 @@ final class FinanceInstallmentController
     }
 
     #[Route('/installment-plans', name: 'finance_installment_plans_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createPlan(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -55,6 +58,7 @@ final class FinanceInstallmentController
     }
 
     #[Route('/installment-plans/{planId<\d+>}', name: 'finance_installment_plans_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updatePlan(int $planId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -76,6 +80,7 @@ final class FinanceInstallmentController
     }
 
     #[Route('/installment-plans/{planId<\d+>}/adjustment', name: 'finance_installment_plans_adjustment', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function applyPlanAdjustment(int $planId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

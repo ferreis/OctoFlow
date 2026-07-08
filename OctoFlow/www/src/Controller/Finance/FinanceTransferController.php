@@ -3,6 +3,7 @@
 namespace App\Controller\Finance;
 
 use App\Entity\User;
+use App\Finance\FinancePermissionResolver;
 use App\Finance\FinanceTransferService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -24,6 +25,7 @@ final class FinanceTransferController
     }
 
     #[Route('/export', name: 'finance_migration_export', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function exportSnapshot(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -40,6 +42,7 @@ final class FinanceTransferController
     }
 
     #[Route('/import', name: 'finance_migration_import', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function importSnapshot(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

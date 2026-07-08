@@ -4,6 +4,7 @@ namespace App\Controller\Finance;
 
 use App\Entity\User;
 use App\Finance\FinanceDebtPlanService;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -24,6 +25,7 @@ final class FinanceDebtPlanController
     }
 
     #[Route('/debt-plans', name: 'finance_debt_plans_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listPlans(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -34,6 +36,7 @@ final class FinanceDebtPlanController
     }
 
     #[Route('/debt-plans/preview', name: 'finance_debt_plans_preview', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function previewPlan(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -55,6 +58,7 @@ final class FinanceDebtPlanController
     }
 
     #[Route('/debt-plans', name: 'finance_debt_plans_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createPlan(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -74,6 +78,7 @@ final class FinanceDebtPlanController
     }
 
     #[Route('/debt-plans/{debtPlanId<\d+>}', name: 'finance_debt_plans_delete', methods: ['DELETE'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function deletePlan(int $debtPlanId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

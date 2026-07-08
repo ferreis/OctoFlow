@@ -8,6 +8,7 @@ use App\Account\UserEmailManager;
 use App\Account\UserPayloadBuilder;
 use App\Controller\AuthController;
 use App\Entity\User;
+use App\Finance\FinancePermissionResolver;
 use App\Repository\UserRepository;
 use App\Security\AccessTokenManagerInterface;
 use App\Security\CsrfTokenManager;
@@ -243,6 +244,7 @@ final class AuthControllerGooglePasswordSetupTest extends TestCase
             $userEmailManager,
             $googlePasswordSetupManager,
             $entityManager,
+            new FinancePermissionResolver(),
         );
 
         $controller = new AuthController(

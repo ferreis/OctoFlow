@@ -24,6 +24,24 @@ final class FinanceInputTest extends TestCase
         $this->assertSame(85.13, FinanceInput::normalizeMoney('85,129', 'amountBrl'));
     }
 
+    public function testMoneyConversionUsesIntegerCents(): void
+    {
+        $this->assertSame(8513, FinanceInput::moneyToCents('85,129', 'amountBrl'));
+        $this->assertSame(85.13, FinanceInput::moneyFromCents(8513));
+    }
+
+    public function testNormalizeMoneyRejectsNegativeValues(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage(FinanceInputTest::getExpectedNegativeMessage());
+        FinanceInput::normalizeMoney('-50', 'amountBrl');
+    }
+
+    private static function getExpectedNegativeMessage(): string
+    {
+        return 'O valor nao pode ser negativo.';
+    }
+
     public function testNormalizeStatusValidatesByDirection(): void
     {
         $this->assertSame('PENDING', FinanceInput::normalizeStatus('PAYABLE', 'pending'));
@@ -41,6 +59,13 @@ final class FinanceInputTest extends TestCase
         $futureDate = new \DateTimeImmutable('tomorrow');
         $this->assertSame('SCHEDULED', FinanceInput::defaultStatusByDirection('PAYABLE', $futureDate));
         $this->assertSame('FORECAST', FinanceInput::defaultStatusByDirection('RECEIVABLE', $futureDate));
+    }
+
+    public function testDefaultStatusByDirectionUsesDueDate(): void
+    {
+        $this->assertSame('OVERDUE', FinanceInput::defaultStatusByDirection('PAYABLE', new \DateTimeImmutable('yesterday')));
+        $this->assertSame('PENDING', FinanceInput::defaultStatusByDirection('PAYABLE', new \DateTimeImmutable('today')));
+        $this->assertSame('PENDING', FinanceInput::defaultStatusByDirection('RECEIVABLE', null));
     }
 
     public function testConvertAnnualRateToMonthlyUsesCompoundFormula(): void

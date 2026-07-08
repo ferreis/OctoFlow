@@ -151,7 +151,12 @@ final class FinanceEntryService
      *
      * @return array<string, mixed>
      */
-    public function createEntry(User $user, array $payload): array
+    public function createEntry(
+        User $user,
+        array $payload,
+        bool $requireCategory = true,
+        bool $requireActiveCategory = true,
+    ): array
     {
         $ownerId = $this->requireOwnerId($user);
         $direction = FinanceInput::normalizeDirection($payload['direction'] ?? '');
@@ -160,11 +165,11 @@ final class FinanceEntryService
         $entryType = strtoupper(trim((string) ($payload['entryType'] ?? FinanceConstants::ENTRY_TYPE_ONE_OFF)));
 
         if ($title === '') {
-            throw new \InvalidArgumentException('The entry title is required.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_TITLE_REQUIRED);
         }
 
         if (!in_array($entryType, FinanceConstants::ENTRY_TYPES, true)) {
-            throw new \InvalidArgumentException('The entry type is invalid.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_TYPE_INVALID);
         }
 
         $dueDate = FinanceInput::normalizeOptionalDate($payload['dueDate'] ?? null);
@@ -176,7 +181,7 @@ final class FinanceEntryService
 
         $expectedAmountBrl = FinanceInput::normalizeMoney($payload['expectedAmountBrl'] ?? 0, 'expectedAmountBrl');
         if ($expectedAmountBrl <= 0) {
-            throw new \InvalidArgumentException('The expected amount must be greater than zero.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::EXPECTED_AMOUNT_MUST_BE_POSITIVE);
         }
 
         $inputCurrencyCode = strtoupper(trim((string) ($payload['inputCurrencyCode'] ?? 'BRL')));
@@ -189,10 +194,15 @@ final class FinanceEntryService
         $fxRateDate = FinanceInput::normalizeOptionalDate($payload['fxRateDate'] ?? null);
 
         if ($inputCurrencyCode !== 'BRL' && ($fxRateToBrl === null || $fxRateToBrl <= 0)) {
-            throw new \InvalidArgumentException('The FX rate must be informed for non-BRL entries.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::FX_RATE_REQUIRED);
         }
 
-        $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? null);
+        $categoryId = $this->normalizeOwnedCategoryId(
+            $ownerId,
+            $payload['categoryId'] ?? null,
+            $requireCategory,
+            $requireActiveCategory,
+        );
         $bankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['bankAccountId'] ?? null, true);
 
         $status = FinanceInput::normalizeStatus($direction, $payload['status'] ?? null, true);
@@ -242,7 +252,13 @@ final class FinanceEntryService
     public function updateEntry(User $user, int $entryId, array $payload): array
     {
         $ownerId = $this->requireOwnerId($user);
+
+        if ($entryId <= 0) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_NOT_FOUND);
+        }
+
         $existingEntry = $this->getEntryById($ownerId, $entryId);
+        $isTerminalStatusOnlyUpdate = $this->isTerminalStatusOnlyUpdate($payload);
 
         $direction = FinanceInput::normalizeDirection($payload['direction'] ?? $existingEntry['direction']);
         $title = array_key_exists('title', $payload)
@@ -256,11 +272,11 @@ final class FinanceEntryService
             : (string) $existingEntry['entryType'];
 
         if ($title === '') {
-            throw new \InvalidArgumentException('The entry title is required.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_TITLE_REQUIRED);
         }
 
         if (!in_array($entryType, FinanceConstants::ENTRY_TYPES, true)) {
-            throw new \InvalidArgumentException('The entry type is invalid.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_TYPE_INVALID);
         }
 
         $dueDate = array_key_exists('dueDate', $payload)
@@ -278,15 +294,17 @@ final class FinanceEntryService
             ? FinanceInput::normalizeMoney($payload['expectedAmountBrl'], 'expectedAmountBrl')
             : (float) $existingEntry['expectedAmountBrl'];
         if ($expectedAmountBrl <= 0) {
-            throw new \InvalidArgumentException('The expected amount must be greater than zero.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::EXPECTED_AMOUNT_MUST_BE_POSITIVE);
         }
 
         $settledAmountBrl = (float) $existingEntry['settledAmountBrl'];
-        if ($settledAmountBrl > $expectedAmountBrl) {
-            throw new \InvalidArgumentException('The expected amount cannot be lower than the already settled amount.');
+        $settledAmountCents = FinanceInput::moneyToCents($settledAmountBrl, 'settledAmountBrl');
+        $expectedAmountCents = FinanceInput::moneyToCents($expectedAmountBrl, 'expectedAmountBrl');
+        if ($settledAmountCents > $expectedAmountCents) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::AMOUNT_LOWER_THAN_SETTLED);
         }
 
-        $remainingAmountBrl = max(0, round($expectedAmountBrl - $settledAmountBrl, 2));
+        $remainingAmountBrl = FinanceInput::moneyFromCents(max(0, $expectedAmountCents - $settledAmountCents));
 
         $inputCurrencyCode = strtoupper(trim((string) ($payload['inputCurrencyCode'] ?? $existingEntry['inputCurrencyCode'] ?? 'BRL')));
         $inputAmount = array_key_exists('inputAmount', $payload)
@@ -300,12 +318,16 @@ final class FinanceEntryService
             : FinanceInput::normalizeOptionalDate($existingEntry['fxRateDate'] ?? null);
 
         if ($inputCurrencyCode !== 'BRL' && ($fxRateToBrl === null || $fxRateToBrl <= 0)) {
-            throw new \InvalidArgumentException('The FX rate must be informed for non-BRL entries.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::FX_RATE_REQUIRED);
         }
 
-        $categoryId = array_key_exists('categoryId', $payload)
-            ? $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'])
-            : $this->normalizeOwnedCategoryId($ownerId, $existingEntry['categoryId'] ?? null);
+        $categoryId = $isTerminalStatusOnlyUpdate
+            ? $this->normalizeStoredCategoryId($existingEntry['categoryId'] ?? null)
+            : (
+                array_key_exists('categoryId', $payload)
+                    ? $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'], true, true)
+                    : $this->normalizeOwnedCategoryId($ownerId, $existingEntry['categoryId'] ?? null, true, true)
+            );
         $bankAccountId = array_key_exists('bankAccountId', $payload)
             ? $this->normalizeOwnedBankAccountId($ownerId, $payload['bankAccountId'], true)
             : $this->normalizeOwnedBankAccountId($ownerId, $existingEntry['bankAccountId'] ?? null, true);
@@ -357,6 +379,10 @@ final class FinanceEntryService
     public function softDeleteEntry(User $user, int $entryId): array
     {
         $ownerId = $this->requireOwnerId($user);
+
+        if ($entryId <= 0) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_NOT_FOUND);
+        }
 
         return $this->connection->transactional(function () use ($ownerId, $entryId): array {
             $entry = $this->getEntryById($ownerId, $entryId);
@@ -445,13 +471,17 @@ final class FinanceEntryService
     {
         $ownerId = $this->requireOwnerId($user);
 
+        if ($entryId <= 0) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_NOT_FOUND);
+        }
+
         return $this->connection->transactional(function () use ($user, $ownerId, $entryId, $payload): array {
             $entry = $this->getEntryById($ownerId, $entryId);
             $this->assertEntryCanReceiveSettlement($entry);
 
             $settlementAmountBrl = FinanceInput::normalizeMoney($payload['amountBrl'] ?? 0, 'amountBrl');
             if ($settlementAmountBrl <= 0) {
-                throw new \InvalidArgumentException('The settlement amount must be greater than zero.');
+                throw new \InvalidArgumentException(FinanceErrorMessages::SETTLEMENT_AMOUNT_MUST_BE_POSITIVE);
             }
 
             $settlementContext = $this->resolveSettlementContext($ownerId, $entry, $payload);
@@ -487,7 +517,7 @@ final class FinanceEntryService
 
             $lastCreatedSettlement = $createdSettlements[count($createdSettlements) - 1] ?? null;
             if (!is_array($lastCreatedSettlement)) {
-                throw new \RuntimeException('Failed to process settlement.');
+                throw new \RuntimeException(FinanceErrorMessages::SETTLEMENT_FAILED);
             }
 
             $updatedRequestedEntry = $this->getEntryById($ownerId, $entryId);
@@ -543,7 +573,7 @@ final class FinanceEntryService
         }
 
         if (!in_array($settlementType, ['PAYMENT', 'RECEIPT', 'TRANSFER', 'ADJUSTMENT', 'CREDIT_CARD'], true)) {
-            throw new \InvalidArgumentException('The settlement type is invalid.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::SETTLEMENT_TYPE_INVALID);
         }
 
         $settlementBankAccountId = null;
@@ -551,18 +581,18 @@ final class FinanceEntryService
 
         if ($useCreditCard) {
             if ((string) $entry['direction'] !== FinanceConstants::DIRECTION_PAYABLE) {
-                throw new \InvalidArgumentException('Credit card settlement is only allowed for payable entries.');
+                throw new \InvalidArgumentException(FinanceErrorMessages::CREDIT_CARD_ONLY_FOR_PAYABLE);
             }
 
             $creditCardId = $this->normalizeOwnedBankAccountId($ownerId, $payload['creditCardId'] ?? null, false);
             if ($creditCardId === null) {
-                throw new \InvalidArgumentException('A credit card account must be selected for credit settlement.');
+                throw new \InvalidArgumentException(FinanceErrorMessages::CREDIT_CARD_ACCOUNT_REQUIRED);
             }
 
             $creditCard = $this->financeCatalogService->getBankAccountById($ownerId, $creditCardId);
             $creditCardAccountType = strtoupper(trim((string) ($creditCard['accountType'] ?? '')));
             if ($creditCardAccountType !== 'CREDIT') {
-                throw new \InvalidArgumentException('The selected account is not a credit card.');
+                throw new \InvalidArgumentException(FinanceErrorMessages::CREDIT_CARD_ACCOUNT_INVALID);
             }
 
             $settlementBankAccountId = $creditCardId;
@@ -599,71 +629,71 @@ final class FinanceEntryService
     private function resolveSettlementEntryAllocations(int $ownerId, array $entry, float $requestedSettlementAmountBrl): array
     {
         $entryId = (int) ($entry['id'] ?? 0);
-        $entryRemainingAmountBrl = (float) ($entry['remainingAmountBrl'] ?? 0);
+        $requestedSettlementAmountCents = FinanceInput::moneyToCents($requestedSettlementAmountBrl, 'amountBrl');
+        $entryRemainingAmountCents = FinanceInput::moneyToCents($entry['remainingAmountBrl'] ?? 0, 'remainingAmountBrl');
 
-        if ($requestedSettlementAmountBrl - $entryRemainingAmountBrl <= 0.009) {
+        if ($requestedSettlementAmountCents <= $entryRemainingAmountCents) {
             return [[
                 'entryId' => $entryId,
-                'amountBrl' => round($requestedSettlementAmountBrl, 2),
+                'amountBrl' => FinanceInput::moneyFromCents($requestedSettlementAmountCents),
             ]];
         }
 
         $openInstallmentEntries = $this->listOpenInstallmentEntryBalancesForAdvanceSettlement($ownerId, $entryId);
         if ($openInstallmentEntries === []) {
-            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::SETTLEMENT_AMOUNT_CANNOT_EXCEED_REMAINING);
         }
 
-        $totalOpenInstallmentAmountBrl = 0.0;
+        $totalOpenInstallmentAmountCents = 0;
         $selectedEntryInInstallmentPlan = false;
 
         foreach ($openInstallmentEntries as $openInstallmentEntry) {
             $openEntryId = (int) $openInstallmentEntry['entryId'];
-            $openEntryRemainingAmountBrl = (float) $openInstallmentEntry['remainingAmountBrl'];
+            $openEntryRemainingAmountCents = FinanceInput::moneyToCents($openInstallmentEntry['remainingAmountBrl'], 'remainingAmountBrl');
 
             if ($openEntryId === $entryId) {
                 $selectedEntryInInstallmentPlan = true;
             }
 
-            $totalOpenInstallmentAmountBrl += $openEntryRemainingAmountBrl;
+            $totalOpenInstallmentAmountCents += $openEntryRemainingAmountCents;
         }
 
         if (!$selectedEntryInInstallmentPlan) {
-            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::SETTLEMENT_AMOUNT_CANNOT_EXCEED_REMAINING);
         }
 
-        $totalOpenInstallmentAmountBrl = round($totalOpenInstallmentAmountBrl, 2);
-        if ($requestedSettlementAmountBrl - $totalOpenInstallmentAmountBrl > 0.009) {
-            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+        if ($requestedSettlementAmountCents > $totalOpenInstallmentAmountCents) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::SETTLEMENT_AMOUNT_CANNOT_EXCEED_REMAINING);
         }
 
         /** @var list<array{entryId: int, amountBrl: float}> $allocations */
         $allocations = [];
-        $remainingSettlementAmountBrl = round($requestedSettlementAmountBrl, 2);
+        $remainingSettlementAmountCents = $requestedSettlementAmountCents;
 
         foreach ($openInstallmentEntries as $openInstallmentEntry) {
-            if ($remainingSettlementAmountBrl <= 0.00001) {
+            if ($remainingSettlementAmountCents <= 0) {
                 break;
             }
 
-            $openEntryRemainingAmountBrl = (float) $openInstallmentEntry['remainingAmountBrl'];
-            if ($openEntryRemainingAmountBrl <= 0.00001) {
+            $openEntryRemainingAmountCents = FinanceInput::moneyToCents($openInstallmentEntry['remainingAmountBrl'], 'remainingAmountBrl');
+            if ($openEntryRemainingAmountCents <= 0) {
                 continue;
             }
 
-            $allocatedAmountBrl = round(min($openEntryRemainingAmountBrl, $remainingSettlementAmountBrl), 2);
-            if ($allocatedAmountBrl <= 0.00001) {
+            $allocatedAmountCents = min($openEntryRemainingAmountCents, $remainingSettlementAmountCents);
+            if ($allocatedAmountCents <= 0) {
                 continue;
             }
 
             $allocations[] = [
                 'entryId' => (int) $openInstallmentEntry['entryId'],
-                'amountBrl' => $allocatedAmountBrl,
+                'amountBrl' => FinanceInput::moneyFromCents($allocatedAmountCents),
             ];
-            $remainingSettlementAmountBrl = round($remainingSettlementAmountBrl - $allocatedAmountBrl, 2);
+            $remainingSettlementAmountCents -= $allocatedAmountCents;
         }
 
-        if ($remainingSettlementAmountBrl > 0.009) {
-            throw new \RuntimeException('Failed to allocate settlement amount across installment entries.');
+        if ($remainingSettlementAmountCents > 0) {
+            throw new \RuntimeException(FinanceErrorMessages::SETTLEMENT_ALLOCATION_FAILED);
         }
 
         return $allocations;
@@ -743,11 +773,13 @@ final class FinanceEntryService
         array $payload,
     ): array {
         $entryId = (int) ($entry['id'] ?? 0);
-        $remainingAmountBrl = (float) ($entry['remainingAmountBrl'] ?? 0);
-        if ($settlementAmountBrl - $remainingAmountBrl > 0.009) {
-            throw new \InvalidArgumentException('The settlement amount cannot exceed the remaining amount.');
+        $settlementAmountCents = FinanceInput::moneyToCents($settlementAmountBrl, 'amountBrl');
+        $remainingAmountCents = FinanceInput::moneyToCents($entry['remainingAmountBrl'] ?? 0, 'remainingAmountBrl');
+        if ($settlementAmountCents > $remainingAmountCents) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::SETTLEMENT_AMOUNT_CANNOT_EXCEED_REMAINING);
         }
 
+        $settlementAmountBrl = FinanceInput::moneyFromCents($settlementAmountCents);
         $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $settlementDate = $settlementContext['settlementDate'];
         $settlementBankAccountId = $settlementContext['settlementBankAccountId'];
@@ -757,7 +789,7 @@ final class FinanceEntryService
             'entry_id' => $entryId,
             'bank_account_id' => $settlementBankAccountId,
             'settlement_type' => $settlementContext['settlementType'],
-            'amount_brl' => round($settlementAmountBrl, 2),
+            'amount_brl' => $settlementAmountBrl,
             'settled_at' => $settlementDate->format('Y-m-d H:i:s'),
             'note' => $settlementContext['settlementNote'] !== '' ? $settlementContext['settlementNote'] : null,
             'created_at' => $now,
@@ -772,7 +804,7 @@ final class FinanceEntryService
                 $entryId,
                 $settlementId,
                 (string) $entry['direction'],
-                round($settlementAmountBrl, 2),
+                $settlementAmountBrl,
                 $settlementDate,
                 false,
             );
@@ -785,7 +817,7 @@ final class FinanceEntryService
             $generatedCreditCardEntry = $this->createCreditCardSettlementEntry(
                 $ownerId,
                 $entry,
-                round($settlementAmountBrl, 2),
+                $settlementAmountBrl,
                 $settlementDate,
                 $settlementContext['creditCardId'],
                 $payload,
@@ -809,7 +841,7 @@ final class FinanceEntryService
         SQL, ['settlementId' => $settlementId]);
 
         if (!is_array($createdSettlement)) {
-            throw new \RuntimeException('Failed to read created settlement.');
+            throw new \RuntimeException(FinanceErrorMessages::SETTLEMENT_READ_FAILED);
         }
 
         $response = [
@@ -831,12 +863,12 @@ final class FinanceEntryService
     {
         $currentStatus = (string) ($entry['status'] ?? '');
         if (in_array($currentStatus, ['CANCELED', 'NEGOTIATED'], true)) {
-            throw new \InvalidArgumentException('Canceled or negotiated entries cannot receive settlements.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_CANCELED_OR_NEGOTIATED);
         }
 
-        $remainingAmountBrl = (float) ($entry['remainingAmountBrl'] ?? 0);
-        if ($remainingAmountBrl <= 0.00001) {
-            throw new \InvalidArgumentException('This entry is already fully settled.');
+        $remainingAmountCents = FinanceInput::moneyToCents($entry['remainingAmountBrl'] ?? 0, 'remainingAmountBrl');
+        if ($remainingAmountCents <= 0) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_ALREADY_SETTLED);
         }
     }
 
@@ -884,7 +916,7 @@ final class FinanceEntryService
             WHERE due_date < :today
               AND deleted_at IS NULL
               AND remaining_amount_brl > 0
-              AND status NOT IN ('OVERDUE', 'CANCELED', 'NEGOTIATED', 'PAID', 'RECEIVED', 'FORECAST')
+              AND status NOT IN ('OVERDUE', 'CANCELED', 'NEGOTIATED', 'PAID', 'RECEIVED')
         SQL, [
             'today' => $today,
         ]);
@@ -958,7 +990,7 @@ final class FinanceEntryService
         ]);
 
         if (!is_array($entry)) {
-            throw new \InvalidArgumentException('Entry not found.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::ENTRY_NOT_FOUND);
         }
 
         return $this->appendMacroStatus($entry);
@@ -981,8 +1013,12 @@ final class FinanceEntryService
             'entryId' => $entryId,
         ]);
 
-        $expectedAmount = (float) $entry['expectedAmountBrl'];
-        $remainingAmount = max(0, round($expectedAmount - $totalSettledAmount, 2));
+        $totalSettledAmountCents = FinanceInput::moneyToCents($totalSettledAmount, 'settledAmountBrl');
+        $expectedAmountCents = FinanceInput::moneyToCents($entry['expectedAmountBrl'] ?? 0, 'expectedAmountBrl');
+        $remainingAmountCents = max(0, $expectedAmountCents - $totalSettledAmountCents);
+        $expectedAmount = FinanceInput::moneyFromCents($expectedAmountCents);
+        $settledAmount = FinanceInput::moneyFromCents($totalSettledAmountCents);
+        $remainingAmount = FinanceInput::moneyFromCents($remainingAmountCents);
         $dueDate = FinanceInput::normalizeOptionalDate($entry['dueDate'] ?? null);
 
         $previousStatus = (string) $entry['status'];
@@ -990,13 +1026,13 @@ final class FinanceEntryService
             (string) $entry['direction'],
             $dueDate,
             $expectedAmount,
-            $totalSettledAmount,
+            $settledAmount,
             $remainingAmount,
             null,
         );
 
         $fullySettledAt = null;
-        if ($remainingAmount <= 0.00001) {
+        if ($remainingAmountCents <= 0) {
             /** @var string|false $latestSettlementDate */
             $latestSettlementDate = $this->connection->fetchOne(<<<'SQL'
                 SELECT MAX(settled_at)
@@ -1014,7 +1050,7 @@ final class FinanceEntryService
         }
 
         $this->connection->update('finance_entry', [
-            'settled_amount_brl' => round($totalSettledAmount, 2),
+            'settled_amount_brl' => $settledAmount,
             'remaining_amount_brl' => $remainingAmount,
             'status' => $recalculatedStatus,
             'fully_settled_at' => $fullySettledAt,
@@ -1039,15 +1075,19 @@ final class FinanceEntryService
         float $remainingAmount,
         ?string $manualStatus,
     ): string {
+        $expectedAmountCents = FinanceInput::moneyToCents($expectedAmount, 'expectedAmountBrl');
+        $settledAmountCents = FinanceInput::moneyToCents($settledAmount, 'settledAmountBrl');
+        $remainingAmountCents = FinanceInput::moneyToCents($remainingAmount, 'remainingAmountBrl');
+
         if (in_array($manualStatus, ['CANCELED', 'NEGOTIATED'], true)) {
             return $manualStatus;
         }
 
-        if ($remainingAmount <= 0.00001) {
+        if ($remainingAmountCents <= 0) {
             return $direction === FinanceConstants::DIRECTION_PAYABLE ? 'PAID' : 'RECEIVED';
         }
 
-        if ($settledAmount > 0.00001 && $remainingAmount > 0.00001 && $settledAmount < $expectedAmount) {
+        if ($settledAmountCents > 0 && $remainingAmountCents > 0 && $settledAmountCents < $expectedAmountCents) {
             return 'PARTIAL';
         }
 
@@ -1063,7 +1103,11 @@ final class FinanceEntryService
             return $manualStatus;
         }
 
-        return 'PENDING';
+        if ($manualStatus !== null) {
+            return $manualStatus;
+        }
+
+        return FinanceInput::defaultStatusByDirection($direction, $dueDate);
     }
 
     /**
@@ -1114,16 +1158,18 @@ final class FinanceEntryService
         int $creditCardId,
         array $payload,
     ): array {
+        $settlementAmountCents = FinanceInput::moneyToCents($settlementAmountBrl, 'amountBrl');
+        $settlementAmountBrl = FinanceInput::moneyFromCents($settlementAmountCents);
         $interestRatePercent = FinanceInput::normalizeOptionalMoney($payload['creditCardInterestRatePercent'] ?? null, 2.99) ?? 2.99;
         $interestRatePercent = max(0.0, min(100.0, $interestRatePercent));
 
         $iofRatePercent = FinanceInput::normalizeOptionalMoney($payload['creditCardIofRatePercent'] ?? null, 0.38) ?? 0.38;
         $iofRatePercent = max(0.0, $iofRatePercent);
 
-        $interestAmountBrl = round($settlementAmountBrl * ($interestRatePercent / 100), 2);
-        $interestAmountBrl = min($interestAmountBrl, $settlementAmountBrl);
-        $iofAmountBrl = round($settlementAmountBrl * ($iofRatePercent / 100), 2);
-        $creditCardEntryAmountBrl = round($settlementAmountBrl + $interestAmountBrl + $iofAmountBrl, 2);
+        $interestAmountCents = FinanceInput::moneyToCents($settlementAmountBrl * ($interestRatePercent / 100), 'interestAmountBrl');
+        $interestAmountCents = min($interestAmountCents, $settlementAmountCents);
+        $iofAmountCents = FinanceInput::moneyToCents($settlementAmountBrl * ($iofRatePercent / 100), 'iofAmountBrl');
+        $creditCardEntryAmountBrl = FinanceInput::moneyFromCents($settlementAmountCents + $interestAmountCents + $iofAmountCents);
 
         $creditCardDueDate = FinanceInput::normalizeOptionalDate($payload['creditCardDueDate'] ?? null);
         if (!$creditCardDueDate instanceof \DateTimeImmutable) {
@@ -1218,15 +1264,18 @@ final class FinanceEntryService
         bool $isReversal,
     ): void {
         $bankAccount = $this->financeCatalogService->getBankAccountById($ownerId, $bankAccountId);
-        $currentBalance = (float) $bankAccount['currentBalanceBrl'];
+        $currentBalanceCents = FinanceInput::moneyToCents($bankAccount['currentBalanceBrl'] ?? 0, 'currentBalanceBrl');
+        $amountCents = FinanceInput::moneyToCents($amount, 'amountBrl');
+        $amount = FinanceInput::moneyFromCents($amountCents);
 
         $isPayableEntry = $direction === FinanceConstants::DIRECTION_PAYABLE;
         $shouldDebit = $isPayableEntry xor $isReversal;
 
         $movementType = $shouldDebit ? 'DEBIT' : 'CREDIT';
-        $newBalance = $shouldDebit
-            ? round($currentBalance - $amount, 2)
-            : round($currentBalance + $amount, 2);
+        $newBalanceCents = $shouldDebit
+            ? $currentBalanceCents - $amountCents
+            : $currentBalanceCents + $amountCents;
+        $newBalance = FinanceInput::moneyFromCents($newBalanceCents);
 
         $this->connection->update('finance_bank_account', [
             'current_balance_brl' => $newBalance,
@@ -1249,23 +1298,58 @@ final class FinanceEntryService
         ]);
     }
 
-    private function normalizeOwnedCategoryId(int $ownerId, mixed $categoryId): ?int
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function isTerminalStatusOnlyUpdate(array $payload): bool
+    {
+        if (array_diff(array_keys($payload), ['status']) !== []) {
+            return false;
+        }
+
+        $status = strtoupper(trim((string) ($payload['status'] ?? '')));
+
+        return in_array($status, ['CANCELED', 'NEGOTIATED'], true);
+    }
+
+    private function normalizeStoredCategoryId(mixed $categoryId): ?int
+    {
+        $normalizedCategoryId = (int) $categoryId;
+
+        return $normalizedCategoryId > 0 ? $normalizedCategoryId : null;
+    }
+
+    private function normalizeOwnedCategoryId(
+        int $ownerId,
+        mixed $categoryId,
+        bool $required = false,
+        bool $requireActive = true,
+    ): ?int
     {
         $normalizedCategoryId = (int) $categoryId;
         if ($normalizedCategoryId <= 0) {
+            if ($required) {
+                throw new \InvalidArgumentException(FinanceErrorMessages::CATEGORY_REQUIRED);
+            }
+
             return null;
         }
 
-        $exists = $this->connection->fetchOne(
-            'SELECT id FROM finance_category WHERE owner_id = :ownerId AND id = :categoryId LIMIT 1',
+        /** @var array<string, mixed>|false $category */
+        $category = $this->connection->fetchAssociative(
+            'SELECT id, is_active FROM finance_category WHERE owner_id = :ownerId AND id = :categoryId LIMIT 1',
             [
                 'ownerId' => $ownerId,
                 'categoryId' => $normalizedCategoryId,
             ],
         );
 
-        if ($exists === false) {
-            throw new \InvalidArgumentException('Category not found for current user.');
+        if (!is_array($category)) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::CATEGORY_NOT_FOUND);
+        }
+
+        if ($requireActive && !FinanceInput::normalizeBoolean($category['is_active'] ?? false, false)) {
+            throw new \InvalidArgumentException(FinanceErrorMessages::CATEGORY_INACTIVE);
         }
 
         return $normalizedCategoryId;
@@ -1279,7 +1363,7 @@ final class FinanceEntryService
                 return null;
             }
 
-            throw new \InvalidArgumentException('Bank account is required.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::BANK_ACCOUNT_REQUIRED);
         }
 
         /** @var array<string, mixed>|false $bankAccount */
@@ -1292,11 +1376,11 @@ final class FinanceEntryService
         );
 
         if (!is_array($bankAccount)) {
-            throw new \InvalidArgumentException('Bank account not found for current user.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::BANK_ACCOUNT_NOT_FOUND);
         }
 
         if (!(bool) $bankAccount['is_active']) {
-            throw new \InvalidArgumentException('Inactive bank accounts cannot be used in new entries or settlements.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::BANK_ACCOUNT_INACTIVE);
         }
 
         return $normalizedBankAccountId;
@@ -1306,7 +1390,7 @@ final class FinanceEntryService
     {
         $ownerId = (int) $user->getId();
         if ($ownerId <= 0) {
-            throw new \InvalidArgumentException('Invalid user context.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::INVALID_USER_CONTEXT);
         }
 
         return $ownerId;

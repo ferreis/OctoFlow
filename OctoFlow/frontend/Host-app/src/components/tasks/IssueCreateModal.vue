@@ -267,6 +267,17 @@ const assignablePlaceholderLabel = computed(() => {
   return translateIssue('assignee.none', 'Sem atribuição inicial')
 })
 
+function isKnownRepositoryKey(rawRepositoryKey) {
+  const normalizedRepositoryKey = sanitizeSingleLineText(rawRepositoryKey, 180)
+  if (normalizedRepositoryKey === '') {
+    return false
+  }
+
+  return availableRepositories.value.some(
+    (availableRepository) => String(availableRepository?.nameWithOwner || '').trim() === normalizedRepositoryKey,
+  )
+}
+
 onBeforeMount(() => {
   componentDisposed = false
   runtimeError.value = ''
@@ -413,7 +424,7 @@ watch(
 
 function resolveInitialRepositoryKey() {
   const normalizedInitialKey = String(props.initialRepositoryKey || '').trim()
-  if (normalizedInitialKey !== '') {
+  if (normalizedInitialKey !== '' && isKnownRepositoryKey(normalizedInitialKey)) {
     return normalizedInitialKey
   }
 
@@ -704,7 +715,7 @@ function restoreStoredCreateDraft() {
     creationMode.value = draftCreationMode === 'github' && !canUseGithubMode.value ? 'local' : draftCreationMode
 
     const draftRepositoryKey = sanitizeSingleLineText(storedDraft.selectedRepositoryKey, 180)
-    if (draftRepositoryKey !== '') {
+    if (draftRepositoryKey !== '' && isKnownRepositoryKey(draftRepositoryKey)) {
       selectedRepositoryKey.value = draftRepositoryKey
     }
 

@@ -4,6 +4,7 @@ namespace App\Controller\Finance;
 
 use App\Entity\User;
 use App\Finance\FinanceInvestmentService;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -24,6 +25,7 @@ final class FinanceInvestmentController
     }
 
     #[Route('/investment/simulations', name: 'finance_investment_simulations_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createSimulation(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -45,6 +47,7 @@ final class FinanceInvestmentController
     }
 
     #[Route('/investment/simulations/{simulationId<\d+>}', name: 'finance_investment_simulations_show', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function showSimulation(int $simulationId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -61,6 +64,7 @@ final class FinanceInvestmentController
     }
 
     #[Route('/investment/simulations/{simulationId<\d+>}/convert-to-plan', name: 'finance_investment_simulations_convert', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function convertSimulationToPlan(int $simulationId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -82,6 +86,7 @@ final class FinanceInvestmentController
     }
 
     #[Route('/investment/plans', name: 'finance_investment_plans_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listPlans(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -92,6 +97,7 @@ final class FinanceInvestmentController
     }
 
     #[Route('/investment/plans', name: 'finance_investment_plans_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createPlan(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -113,6 +119,7 @@ final class FinanceInvestmentController
     }
 
     #[Route('/investment/plans/{planId<\d+>}', name: 'finance_investment_plans_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updatePlan(int $planId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

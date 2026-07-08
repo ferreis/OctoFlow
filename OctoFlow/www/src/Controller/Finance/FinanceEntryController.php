@@ -5,6 +5,7 @@ namespace App\Controller\Finance;
 use App\Entity\User;
 use App\Finance\FinanceEntryService;
 use App\Finance\FinanceInput;
+use App\Finance\FinancePermissionResolver;
 use App\Finance\FinanceRecurringService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -27,6 +28,7 @@ final class FinanceEntryController
     }
 
     #[Route('/entries', name: 'finance_entries_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listEntries(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -51,6 +53,7 @@ final class FinanceEntryController
     }
 
     #[Route('/entries/{entryId<\d+>}', name: 'finance_entries_show', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function showEntry(int $entryId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -67,6 +70,7 @@ final class FinanceEntryController
     }
 
     #[Route('/entries', name: 'finance_entries_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createEntry(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -88,6 +92,7 @@ final class FinanceEntryController
     }
 
     #[Route('/entries/{entryId<\d+>}', name: 'finance_entries_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updateEntry(int $entryId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -109,6 +114,7 @@ final class FinanceEntryController
     }
 
     #[Route('/entries/{entryId<\d+>}', name: 'finance_entries_delete', methods: ['DELETE'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function deleteEntry(int $entryId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -125,6 +131,7 @@ final class FinanceEntryController
     }
 
     #[Route('/entries/{entryId<\d+>}/settlements', name: 'finance_entries_settlements_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createSettlement(int $entryId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

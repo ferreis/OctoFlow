@@ -181,18 +181,23 @@ final class FinanceDebtPlanService
             $debtPlanId = (int) $this->connection->lastInsertId();
 
             if ($selectedSettlementMode === 'FULL') {
-                $fullPaymentEntry = $this->financeEntryService->createEntry($user, [
-                    'direction' => FinanceConstants::DIRECTION_PAYABLE,
-                    'entryType' => 'DEBT',
-                    'title' => sprintf('%s - Quitação à vista', $title),
-                    'description' => 'Lançamento gerado pelo planejador de dívida.',
-                    'dueDate' => $firstDueDate,
-                    'expectedAmountBrl' => (float) $preview['plannedTotalAmountBrl'],
-                    'categoryId' => $categoryId,
-                    'bankAccountId' => $defaultBankAccountId,
-                    'sourceOrigin' => FinanceConstants::SOURCE_ORIGIN_MANUAL,
-                    'sourceSystem' => 'DEBT_PLANNER',
-                ]);
+                $fullPaymentEntry = $this->financeEntryService->createEntry(
+                    $user,
+                    [
+                        'direction' => FinanceConstants::DIRECTION_PAYABLE,
+                        'entryType' => 'DEBT',
+                        'title' => sprintf('%s - Quitação à vista', $title),
+                        'description' => 'Lançamento gerado pelo planejador de dívida.',
+                        'dueDate' => $firstDueDate,
+                        'expectedAmountBrl' => (float) $preview['plannedTotalAmountBrl'],
+                        'categoryId' => $categoryId,
+                        'bankAccountId' => $defaultBankAccountId,
+                        'sourceOrigin' => FinanceConstants::SOURCE_ORIGIN_MANUAL,
+                        'sourceSystem' => 'DEBT_PLANNER',
+                    ],
+                    false,
+                    false,
+                );
 
                 $this->connection->update('finance_debt_plan', [
                     'full_payment_entry_id' => (int) $fullPaymentEntry['id'],
@@ -205,20 +210,25 @@ final class FinanceDebtPlanService
                 return $debtPlanId;
             }
 
-            $createdInstallmentPlan = $this->financeInstallmentService->createPlan($user, [
-                'direction' => FinanceConstants::DIRECTION_PAYABLE,
-                'title' => sprintf('%s - Parcelamento', $title),
-                'totalAmountBrl' => (float) $preview['plannedTotalAmountBrl'],
-                'downPaymentBrl' => 0,
-                'installmentAmountBrl' => $selectedMonthlyPaymentBrl,
-                'installmentsCount' => $selectedInstallmentsCount,
-                'interestAmountBrl' => 0,
-                'discountAmountBrl' => 0,
-                'fineAmountBrl' => 0,
-                'firstDueDate' => $firstDueDate,
-                'categoryId' => $categoryId,
-                'defaultBankAccountId' => $defaultBankAccountId,
-            ]);
+            $createdInstallmentPlan = $this->financeInstallmentService->createPlan(
+                $user,
+                [
+                    'direction' => FinanceConstants::DIRECTION_PAYABLE,
+                    'title' => sprintf('%s - Parcelamento', $title),
+                    'totalAmountBrl' => (float) $preview['plannedTotalAmountBrl'],
+                    'downPaymentBrl' => 0,
+                    'installmentAmountBrl' => $selectedMonthlyPaymentBrl,
+                    'installmentsCount' => $selectedInstallmentsCount,
+                    'interestAmountBrl' => 0,
+                    'discountAmountBrl' => 0,
+                    'fineAmountBrl' => 0,
+                    'firstDueDate' => $firstDueDate,
+                    'categoryId' => $categoryId,
+                    'defaultBankAccountId' => $defaultBankAccountId,
+                ],
+                false,
+                false,
+            );
 
             $this->connection->update('finance_debt_plan', [
                 'linked_installment_plan_id' => (int) $createdInstallmentPlan['id'],

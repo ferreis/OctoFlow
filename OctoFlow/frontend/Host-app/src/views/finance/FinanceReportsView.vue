@@ -46,6 +46,7 @@ import {
 const MAX_MIGRATION_FILE_SIZE_BYTES = 5 * 1024 * 1024
 const EXPORT_DOWNLOAD_POLL_ATTEMPTS = 10
 const EXPORT_DOWNLOAD_POLL_INTERVAL_MS = 500
+const MIGRATION_IMPORT_CONFIRMATION_PHRASE = 'IMPORTAR SNAPSHOT FINANCEIRO'
 
 const financeStore = useFinanceStore()
 const sessionStore = useSessionStore()
@@ -69,6 +70,7 @@ const exportForm = reactive({
 
 const migrationForm = reactive({
   replaceExisting: true,
+  confirmationPhrase: '',
 })
 const migrationImportFile = ref(null)
 const migrationLoading = ref(false)
@@ -76,6 +78,20 @@ const migrationFileInputRef = ref(null)
 const latestDownloadObjectUrl = ref('')
 const localeForFormatting = computed(() => (
   String(currentLocale.value || '').toLowerCase() === 'en-us' ? 'en-US' : 'pt-BR'
+))
+const migrationImportRequiresConfirmation = computed(() => sanitizeToggle(migrationForm.replaceExisting))
+const migrationConfirmationMatches = computed(() => {
+  if (!migrationImportRequiresConfirmation.value) {
+    return true
+  }
+
+  return String(migrationForm.confirmationPhrase || '').trim() === MIGRATION_IMPORT_CONFIRMATION_PHRASE
+})
+const migrationImportSubmitDisabled = computed(() => (
+  migrationLoading.value
+  || !migrationImportFile.value
+  || !canWriteFinance.value
+  || !migrationConfirmationMatches.value
 ))
 
 function translateChart(key, fallbackMessage, variables = {}) {
@@ -322,6 +338,7 @@ function resolveExportType() {
 
 function resetMigrationImport() {
   migrationImportFile.value = null
+  migrationForm.confirmationPhrase = ''
   if (migrationFileInputRef.value) {
     migrationFileInputRef.value.value = ''
   }
@@ -704,6 +721,15 @@ async function submitFinanceMigrationImport() {
     return
   }
 
+  const replaceExisting = sanitizeToggle(migrationForm.replaceExisting)
+  if (replaceExisting && !migrationConfirmationMatches.value) {
+    notifyUser(translateScoped(
+      'notifications.confirmationRequired',
+      'Digite a frase de confirmação exatamente como exibida antes de substituir os dados financeiros.',
+    ), 'warning')
+    return
+  }
+
   migrationLoading.value = true
 
   try {
@@ -715,7 +741,8 @@ async function submitFinanceMigrationImport() {
     }
 
     await importFinanceMigrationSnapshot({
-      replaceExisting: sanitizeToggle(migrationForm.replaceExisting),
+      replaceExisting,
+      confirmationPhrase: replaceExisting ? String(migrationForm.confirmationPhrase || '').trim() : '',
       snapshot: parsedPayload,
     })
 
@@ -988,7 +1015,25 @@ onErrorCaptured((error) => {
             <input v-model="migrationForm.replaceExisting" type="checkbox" :disabled="migrationLoading || !canWriteFinance">
           </label>
 
-          <button class="finance-action-button" type="submit" :disabled="migrationLoading || !migrationImportFile || !canWriteFinance">
+          <label v-if="migrationImportRequiresConfirmation" class="finance-migration-confirmation">
+            <span>{{ translateScoped('migration.import.confirmationLabel', 'Confirmação obrigatória') }}</span>
+            <small>
+              {{ translateScoped('migration.import.confirmationWarning', 'Esta importação substituirá todos os dados financeiros atuais da conta.') }}
+            </small>
+            <small>
+              {{ translateScoped('migration.import.confirmationInstruction', 'Digite {phrase} para confirmar a substituição.', { phrase: MIGRATION_IMPORT_CONFIRMATION_PHRASE }) }}
+            </small>
+            <input
+              v-model="migrationForm.confirmationPhrase"
+              type="text"
+              :placeholder="translateScoped('migration.import.confirmationPlaceholder', 'Digite a frase de confirmação')"
+              autocomplete="off"
+              :disabled="migrationLoading || !canWriteFinance"
+              required
+            >
+          </label>
+
+          <button class="finance-action-button" type="submit" :disabled="migrationImportSubmitDisabled">
             {{ migrationLoading
               ? translateScoped('migration.import.loading', 'Importando...')
               : translateScoped('migration.import.button', 'Importar snapshot JSON') }}

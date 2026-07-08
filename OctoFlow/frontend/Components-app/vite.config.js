@@ -27,7 +27,20 @@ export default defineConfig({
         "./FinanceEmptyState": "./src/components/finance/FinanceEmptyState.vue",
         "./FinanceTrendMiniChart": "./src/components/finance/FinanceTrendMiniChart.vue",
       },
-      shared: ["vue"],
+      shared: {
+        vue: {
+          requiredVersion: "^3.5.25",
+          singleton: true,
+        },
+        "vue-router": {
+          requiredVersion: "^4.6.4",
+          singleton: true,
+        },
+        pinia: {
+          requiredVersion: "^2.3.1",
+          singleton: true,
+        },
+      },
     }),
   ],
   server: {
@@ -42,6 +55,11 @@ export default defineConfig({
   build: {
     target: "esnext",
     minify: false,
-    cssCodeSplit: false,
+    cssCodeSplit: true,
+    css: {
+      modules: {
+        localsConvention: "camelCase",
+      },
+    },
   },
 });

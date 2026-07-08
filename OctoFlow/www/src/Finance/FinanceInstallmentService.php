@@ -77,11 +77,16 @@ final class FinanceInstallmentService
      *
      * @return array<string, mixed>
      */
-    public function createPlan(User $user, array $payload): array
+    public function createPlan(
+        User $user,
+        array $payload,
+        bool $requireCategory = true,
+        bool $requireActiveCategory = true,
+    ): array
     {
         $ownerId = $this->requireOwnerId($user);
 
-        return $this->createPlanByOwnerId($ownerId, $payload);
+        return $this->createPlanByOwnerId($ownerId, $payload, $requireCategory, $requireActiveCategory);
     }
 
     /**
@@ -109,7 +114,9 @@ final class FinanceInstallmentService
             $fineAmountBrl = FinanceInput::normalizeOptionalMoney($payload['fineAmountBrl'] ?? $existingPlan['fineAmountBrl'] ?? null, 0.0) ?? 0.0;
             $installmentsCount = (int) ($payload['installmentsCount'] ?? $existingPlan['installmentsCount'] ?? 0);
             $firstDueDate = FinanceInput::normalizeDate($payload['firstDueDate'] ?? $existingPlan['firstDueDate'] ?? 'today', 'firstDueDate');
-            $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? $existingPlan['categoryId'] ?? null);
+            $categoryId = array_key_exists('categoryId', $payload)
+                ? $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'], true, true)
+                : $this->normalizeOwnedCategoryId($ownerId, $existingPlan['categoryId'] ?? null, true, true);
             $defaultBankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['defaultBankAccountId'] ?? $existingPlan['bankAccountId'] ?? null);
 
             if ($title === '') {
@@ -124,12 +131,27 @@ final class FinanceInstallmentService
                 throw new \InvalidArgumentException('The installments count must be greater than zero.');
             }
 
-            $calculatedNetAmount = round($totalAmountBrl + $interestAmountBrl + $fineAmountBrl - $discountAmountBrl - $downPaymentBrl, 2);
-            if ($calculatedNetAmount <= 0) {
+            $calculatedNetAmountCents = $this->calculateInstallmentNetAmountCents(
+                $totalAmountBrl,
+                $interestAmountBrl,
+                $fineAmountBrl,
+                $discountAmountBrl,
+                $downPaymentBrl,
+            );
+            if ($calculatedNetAmountCents <= 0) {
                 throw new \InvalidArgumentException('The calculated net amount must be greater than zero.');
             }
 
-            $installmentAmountBrl = round($calculatedNetAmount / $installmentsCount, 2);
+            $providedInstallmentAmount = array_key_exists('installmentAmountBrl', $payload)
+                ? FinanceInput::normalizeOptionalMoney($payload['installmentAmountBrl'], null)
+                : null;
+            $installmentAmountCents = $this->resolveInstallmentAmountCents(
+                $calculatedNetAmountCents,
+                $installmentsCount,
+                $providedInstallmentAmount,
+            );
+            $calculatedNetAmount = FinanceInput::moneyFromCents($calculatedNetAmountCents);
+            $installmentAmountBrl = FinanceInput::moneyFromCents($installmentAmountCents);
 
             $this->softDeleteInstallmentEntriesForPlan($user, $planId);
             $this->softDeleteDownPaymentEntriesForPlan($user, $ownerId, $existingPlan);
@@ -167,7 +189,7 @@ final class FinanceInstallmentService
                 $firstDueDate,
             );
 
-            if ($downPaymentBrl > 0.00001) {
+            if (FinanceInput::moneyToCents($downPaymentBrl, 'downPaymentBrl') > 0) {
                 $this->createDownPaymentEntry(
                     $ownerId,
                     (string) ($existingPlan['direction'] ?? FinanceConstants::DIRECTION_PAYABLE),
@@ -259,26 +281,26 @@ final class FinanceInstallmentService
                 'planId' => $planId,
             ]);
 
-            $currentRemainingAmountBrl = 0.0;
+            $currentRemainingAmountCents = 0;
             foreach ($openItems as $openItem) {
-                $currentRemainingAmountBrl += (float) ($openItem['remainingAmountBrl'] ?? 0);
+                $currentRemainingAmountCents += FinanceInput::moneyToCents($openItem['remainingAmountBrl'] ?? 0, 'remainingAmountBrl');
             }
-            $currentRemainingAmountBrl = round($currentRemainingAmountBrl, 2);
 
-            if ($currentRemainingAmountBrl <= 0.00001) {
+            if ($currentRemainingAmountCents <= 0) {
                 throw new \InvalidArgumentException('Este parcelamento não possui saldo restante aberto.');
             }
 
-            if ($adjustmentAmountBrl - $currentRemainingAmountBrl > 0.009) {
+            $adjustmentAmountCents = FinanceInput::moneyToCents($adjustmentAmountBrl, 'amountBrl');
+            if ($adjustmentAmountCents > $currentRemainingAmountCents) {
                 throw new \InvalidArgumentException('O ajuste não pode ser maior que o valor restante do parcelamento.');
             }
 
-            $newRemainingAmountBrl = max(0.0, round($currentRemainingAmountBrl - $adjustmentAmountBrl, 2));
+            $newRemainingAmountCents = max(0, $currentRemainingAmountCents - $adjustmentAmountCents);
             $openItemsCount = count($openItems);
-            $baseRemainingAmountBrl = $openItemsCount > 0
-                ? round($newRemainingAmountBrl / $openItemsCount, 2)
-                : 0.0;
-            $distributedRemainingAmountBrl = 0.0;
+            $baseRemainingAmountCents = $openItemsCount > 0
+                ? (int) round($newRemainingAmountCents / $openItemsCount)
+                : 0;
+            $distributedRemainingAmountCents = 0;
             $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
             $planDirection = (string) ($currentPlan['direction'] ?? FinanceConstants::DIRECTION_PAYABLE);
 
@@ -290,14 +312,17 @@ final class FinanceInstallmentService
                 }
 
                 $isLastOpenItem = $openItemIndex === $openItemsCount - 1;
-                $entryRemainingAmountBrl = $isLastOpenItem
-                    ? round($newRemainingAmountBrl - $distributedRemainingAmountBrl, 2)
-                    : $baseRemainingAmountBrl;
-                $entryRemainingAmountBrl = max(0.0, $entryRemainingAmountBrl);
-                $distributedRemainingAmountBrl = round($distributedRemainingAmountBrl + $entryRemainingAmountBrl, 2);
+                $entryRemainingAmountCents = $isLastOpenItem
+                    ? $newRemainingAmountCents - $distributedRemainingAmountCents
+                    : $baseRemainingAmountCents;
+                $entryRemainingAmountCents = max(0, $entryRemainingAmountCents);
+                $distributedRemainingAmountCents += $entryRemainingAmountCents;
 
-                $settledAmountBrl = round((float) ($openItem['settledAmountBrl'] ?? 0), 2);
-                $expectedAmountBrl = round($settledAmountBrl + $entryRemainingAmountBrl, 2);
+                $settledAmountCents = FinanceInput::moneyToCents($openItem['settledAmountBrl'] ?? 0, 'settledAmountBrl');
+                $expectedAmountCents = $settledAmountCents + $entryRemainingAmountCents;
+                $settledAmountBrl = FinanceInput::moneyFromCents($settledAmountCents);
+                $entryRemainingAmountBrl = FinanceInput::moneyFromCents($entryRemainingAmountCents);
+                $expectedAmountBrl = FinanceInput::moneyFromCents($expectedAmountCents);
                 $dueDate = FinanceInput::normalizeOptionalDate($openItem['dueDate'] ?? null);
                 $previousStatus = (string) ($openItem['status'] ?? '');
                 $nextStatus = $this->resolveEntryStatusAfterPlanAdjustment(
@@ -341,7 +366,7 @@ final class FinanceInstallmentService
             }
 
             $this->connection->update('finance_installment_plan', [
-                'installment_amount_brl' => $baseRemainingAmountBrl,
+                'installment_amount_brl' => FinanceInput::moneyFromCents($baseRemainingAmountCents),
                 'updated_at' => $now,
             ], [
                 'id' => $planId,
@@ -358,11 +383,14 @@ final class FinanceInstallmentService
         float $settledAmountBrl,
         float $remainingAmountBrl,
     ): string {
-        if ($remainingAmountBrl <= 0.00001) {
+        $settledAmountCents = FinanceInput::moneyToCents($settledAmountBrl, 'settledAmountBrl');
+        $remainingAmountCents = FinanceInput::moneyToCents($remainingAmountBrl, 'remainingAmountBrl');
+
+        if ($remainingAmountCents <= 0) {
             return $direction === FinanceConstants::DIRECTION_RECEIVABLE ? 'RECEIVED' : 'PAID';
         }
 
-        if ($settledAmountBrl > 0.00001) {
+        if ($settledAmountCents > 0) {
             return 'PARTIAL';
         }
 
@@ -404,9 +432,14 @@ final class FinanceInstallmentService
      *
      * @return array<string, mixed>
      */
-    private function createPlanByOwnerId(int $ownerId, array $payload): array
+    private function createPlanByOwnerId(
+        int $ownerId,
+        array $payload,
+        bool $requireCategory,
+        bool $requireActiveCategory,
+    ): array
     {
-        return $this->connection->transactional(function () use ($ownerId, $payload): array {
+        return $this->connection->transactional(function () use ($ownerId, $payload, $requireCategory, $requireActiveCategory): array {
             $direction = FinanceInput::normalizeDirection($payload['direction'] ?? FinanceConstants::DIRECTION_PAYABLE);
             $title = FinanceInput::normalizeName((string) ($payload['title'] ?? ''));
             $totalAmountBrl = FinanceInput::normalizeMoney($payload['totalAmountBrl'] ?? 0, 'totalAmountBrl');
@@ -429,17 +462,32 @@ final class FinanceInstallmentService
                 throw new \InvalidArgumentException('The installments count must be greater than zero.');
             }
 
-            $calculatedNetAmount = round($totalAmountBrl + $interestAmountBrl + $fineAmountBrl - $discountAmountBrl - $downPaymentBrl, 2);
-            if ($calculatedNetAmount <= 0) {
+            $calculatedNetAmountCents = $this->calculateInstallmentNetAmountCents(
+                $totalAmountBrl,
+                $interestAmountBrl,
+                $fineAmountBrl,
+                $discountAmountBrl,
+                $downPaymentBrl,
+            );
+            if ($calculatedNetAmountCents <= 0) {
                 throw new \InvalidArgumentException('The calculated net amount must be greater than zero.');
             }
 
             $providedInstallmentAmount = FinanceInput::normalizeOptionalMoney($payload['installmentAmountBrl'] ?? null, null);
-            $installmentAmountBrl = $providedInstallmentAmount !== null && $providedInstallmentAmount > 0
-                ? round($providedInstallmentAmount, 2)
-                : round($calculatedNetAmount / $installmentsCount, 2);
+            $installmentAmountCents = $this->resolveInstallmentAmountCents(
+                $calculatedNetAmountCents,
+                $installmentsCount,
+                $providedInstallmentAmount,
+            );
+            $calculatedNetAmount = FinanceInput::moneyFromCents($calculatedNetAmountCents);
+            $installmentAmountBrl = FinanceInput::moneyFromCents($installmentAmountCents);
 
-            $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? null);
+            $categoryId = $this->normalizeOwnedCategoryId(
+                $ownerId,
+                $payload['categoryId'] ?? null,
+                $requireCategory,
+                $requireActiveCategory,
+            );
             $defaultBankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['defaultBankAccountId'] ?? null);
 
             $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -477,7 +525,7 @@ final class FinanceInstallmentService
                 $firstDueDate,
             );
 
-            if ($downPaymentBrl > 0.00001) {
+            if (FinanceInput::moneyToCents($downPaymentBrl, 'downPaymentBrl') > 0) {
                 $this->createDownPaymentEntry(
                     $ownerId,
                     $direction,
@@ -530,6 +578,41 @@ final class FinanceInstallmentService
         ]);
     }
 
+    private function calculateInstallmentNetAmountCents(
+        float $totalAmountBrl,
+        float $interestAmountBrl,
+        float $fineAmountBrl,
+        float $discountAmountBrl,
+        float $downPaymentBrl,
+    ): int {
+        return FinanceInput::moneyToCents($totalAmountBrl, 'totalAmountBrl')
+            + FinanceInput::moneyToCents($interestAmountBrl, 'interestAmountBrl')
+            + FinanceInput::moneyToCents($fineAmountBrl, 'fineAmountBrl')
+            - FinanceInput::moneyToCents($discountAmountBrl, 'discountAmountBrl')
+            - FinanceInput::moneyToCents($downPaymentBrl, 'downPaymentBrl');
+    }
+
+    private function resolveInstallmentAmountCents(
+        int $calculatedNetAmountCents,
+        int $installmentsCount,
+        ?float $providedInstallmentAmount,
+    ): int {
+        if ($installmentsCount <= 1) {
+            return $calculatedNetAmountCents;
+        }
+
+        $installmentAmountCents = $providedInstallmentAmount !== null && $providedInstallmentAmount > 0
+            ? FinanceInput::moneyToCents($providedInstallmentAmount, 'installmentAmountBrl')
+            : (int) round($calculatedNetAmountCents / $installmentsCount);
+
+        $lastInstallmentAmountCents = $calculatedNetAmountCents - ($installmentAmountCents * ($installmentsCount - 1));
+        if ($installmentAmountCents <= 0 || $lastInstallmentAmountCents <= 0) {
+            throw new \InvalidArgumentException('The installment amount does not fit the calculated net amount.');
+        }
+
+        return $installmentAmountCents;
+    }
+
     private function generateInstallmentItemsAndEntries(
         int $ownerId,
         int $planId,
@@ -542,14 +625,20 @@ final class FinanceInstallmentService
         float $calculatedNetAmount,
         \DateTimeImmutable $firstDueDate,
     ): void {
-        $generatedAmountAccumulator = 0.0;
+        $installmentAmountCents = FinanceInput::moneyToCents($installmentAmountBrl, 'installmentAmountBrl');
+        $calculatedNetAmountCents = FinanceInput::moneyToCents($calculatedNetAmount, 'calculatedNetAmount');
+        $generatedAmountAccumulatorCents = 0;
 
         for ($installmentIndex = 1; $installmentIndex <= $installmentsCount; $installmentIndex += 1) {
             $dueDate = $firstDueDate->modify(sprintf('+%d months', $installmentIndex - 1));
-            $expectedInstallmentAmount = $installmentIndex === $installmentsCount
-                ? round($calculatedNetAmount - $generatedAmountAccumulator, 2)
-                : $installmentAmountBrl;
-            $generatedAmountAccumulator = round($generatedAmountAccumulator + $expectedInstallmentAmount, 2);
+            $expectedInstallmentAmountCents = $installmentIndex === $installmentsCount
+                ? $calculatedNetAmountCents - $generatedAmountAccumulatorCents
+                : $installmentAmountCents;
+            if ($expectedInstallmentAmountCents <= 0) {
+                throw new \RuntimeException('The installment distribution generated a non-positive installment.');
+            }
+            $expectedInstallmentAmount = FinanceInput::moneyFromCents($expectedInstallmentAmountCents);
+            $generatedAmountAccumulatorCents += $expectedInstallmentAmountCents;
 
             $entryStatus = FinanceInput::defaultStatusByDirection($direction, $dueDate);
             $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -607,7 +696,7 @@ final class FinanceInstallmentService
     private function softDeleteDownPaymentEntriesForPlan(User $user, int $ownerId, array $plan): void
     {
         $downPaymentBrl = (float) ($plan['downPaymentBrl'] ?? 0);
-        if ($downPaymentBrl <= 0.00001) {
+        if (FinanceInput::moneyToCents($downPaymentBrl, 'downPaymentBrl') <= 0) {
             return;
         }
 
@@ -726,23 +815,37 @@ final class FinanceInstallmentService
         return $plan;
     }
 
-    private function normalizeOwnedCategoryId(int $ownerId, mixed $categoryId): ?int
+    private function normalizeOwnedCategoryId(
+        int $ownerId,
+        mixed $categoryId,
+        bool $required = false,
+        bool $requireActive = true,
+    ): ?int
     {
         $normalizedCategoryId = (int) $categoryId;
         if ($normalizedCategoryId <= 0) {
+            if ($required) {
+                throw new \InvalidArgumentException('The category is required.');
+            }
+
             return null;
         }
 
-        $exists = $this->connection->fetchOne(
-            'SELECT id FROM finance_category WHERE owner_id = :ownerId AND id = :categoryId LIMIT 1',
+        /** @var array<string, mixed>|false $category */
+        $category = $this->connection->fetchAssociative(
+            'SELECT id, is_active FROM finance_category WHERE owner_id = :ownerId AND id = :categoryId LIMIT 1',
             [
                 'ownerId' => $ownerId,
                 'categoryId' => $normalizedCategoryId,
             ],
         );
 
-        if ($exists === false) {
+        if (!is_array($category)) {
             throw new \InvalidArgumentException('Category not found for current user.');
+        }
+
+        if ($requireActive && !FinanceInput::normalizeBoolean($category['is_active'] ?? false, false)) {
+            throw new \InvalidArgumentException('Inactive categories cannot be used in financial records.');
         }
 
         return $normalizedCategoryId;

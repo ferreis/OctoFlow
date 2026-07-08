@@ -18,7 +18,7 @@ final class FinanceInput
     {
         $normalizedDirection = strtoupper(trim((string) $value));
         if (!in_array($normalizedDirection, FinanceConstants::ALLOWED_DIRECTIONS, true)) {
-            throw new \InvalidArgumentException('The informed direction is invalid. Use PAYABLE or RECEIVABLE.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::FIELD_INVALID);
         }
 
         return $normalizedDirection;
@@ -31,10 +31,25 @@ final class FinanceInput
         }
 
         if (!is_numeric($value)) {
-            throw new \InvalidArgumentException(sprintf('The field "%s" must be numeric.', $fieldName));
+            throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::NUMERIC_FIELD_REQUIRED, $fieldName));
         }
 
-        return round((float) $value, 2);
+        $amount = round((float) $value, 2);
+        if ($amount < 0) {
+            throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::AMOUNT_CANNOT_BE_NEGATIVE));
+        }
+
+        return $amount;
+    }
+
+    public static function moneyToCents(mixed $value, string $fieldName = 'amount'): int
+    {
+        return (int) round(self::normalizeMoney($value, $fieldName) * 100);
+    }
+
+    public static function moneyFromCents(int $cents): float
+    {
+        return round($cents / 100, 2);
     }
 
     public static function normalizeOptionalMoney(mixed $value, ?float $fallback = null): ?float
@@ -48,7 +63,7 @@ final class FinanceInput
         }
 
         if (!is_numeric($value)) {
-            throw new \InvalidArgumentException('The informed money value is invalid.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::FIELD_INVALID);
         }
 
         return round((float) $value, 2);
@@ -58,13 +73,13 @@ final class FinanceInput
     {
         $normalizedValue = trim((string) $value);
         if ($normalizedValue === '') {
-            throw new \InvalidArgumentException(sprintf('The field "%s" is required.', $fieldName));
+            throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::DATE_REQUIRED, $fieldName));
         }
 
         try {
             return new \DateTimeImmutable($normalizedValue);
         } catch (\Throwable) {
-            throw new \InvalidArgumentException(sprintf('The field "%s" has an invalid date.', $fieldName));
+            throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::DATE_FIELD_INVALID, $fieldName));
         }
     }
 
@@ -77,7 +92,7 @@ final class FinanceInput
         try {
             return new \DateTimeImmutable((string) $value);
         } catch (\Throwable) {
-            throw new \InvalidArgumentException('The informed date is invalid.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::DATE_INVALID);
         }
     }
 
@@ -93,7 +108,7 @@ final class FinanceInput
             : FinanceConstants::RECEIVABLE_STATUSES;
 
         if (!in_array($normalizedStatus, $allowedStatuses, true)) {
-            throw new \InvalidArgumentException('The informed status is invalid for the selected direction.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::FIELD_INVALID);
         }
 
         return $normalizedStatus;
@@ -101,6 +116,22 @@ final class FinanceInput
 
     public static function defaultStatusByDirection(string $direction, ?\DateTimeImmutable $dueDate): string
     {
+        if (!$dueDate instanceof \DateTimeImmutable) {
+            return 'PENDING';
+        }
+
+        $normalizedDirection = strtoupper(trim($direction));
+        $today = new \DateTimeImmutable('today');
+        $normalizedDueDate = new \DateTimeImmutable($dueDate->format('Y-m-d'));
+
+        if ($normalizedDueDate < $today) {
+            return 'OVERDUE';
+        }
+
+        if ($normalizedDueDate > $today) {
+            return $normalizedDirection === FinanceConstants::DIRECTION_RECEIVABLE ? 'FORECAST' : 'SCHEDULED';
+        }
+
         return 'PENDING';
     }
 
@@ -160,7 +191,7 @@ final class FinanceInput
     {
         $normalizedType = strtoupper(trim((string) $value));
         if (!in_array($normalizedType, ['MONTHLY', 'ANNUAL'], true)) {
-            throw new \InvalidArgumentException('The rate input type must be MONTHLY or ANNUAL.');
+            throw new \InvalidArgumentException(FinanceErrorMessages::FIELD_INVALID);
         }
 
         return $normalizedType;

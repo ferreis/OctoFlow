@@ -47,6 +47,7 @@ const { notifyUser } = useNotification(props.notify)
 const ALLOWED_ISSUE_SCOPES = Object.freeze(['all', 'assigned', 'repository'])
 const ALLOWED_SOURCE_FILTERS = Object.freeze(['all', 'github', 'local'])
 const ALLOWED_STATE_FILTERS = Object.freeze(['open', 'closed', 'all'])
+const DEFAULT_ISSUE_SCOPE = 'repository'
 const TASK_SEARCH_MAX_LENGTH = 180
 const TASK_REPOSITORY_KEY_MAX_LENGTH = 160
 
@@ -64,14 +65,14 @@ const editingIssueId = ref('')
 const editingLocalTaskId = ref(null)
 const issueUpdateTemplates = ref([])
 const selectedIssueId = ref('')
-const issueScope = ref('all')
+const issueScope = ref(DEFAULT_ISSUE_SCOPE)
 const sourceFilter = ref('all')
 const stateFilter = ref('open')
 const searchTerm = ref('')
 const selectedLabel = ref('all')
 const selectedTicketType = ref('all')
 const selectedRepositoryKey = ref('all')
-const draftIssueScope = ref('all')
+const draftIssueScope = ref(DEFAULT_ISSUE_SCOPE)
 const draftSourceFilter = ref('all')
 const draftStateFilter = ref('open')
 const draftSearchTerm = ref('')
@@ -139,10 +140,6 @@ function notifyTaskSuccess(messageText) {
 
 function notifyTaskInfo(messageText) {
   notifyUser(messageText, 'info')
-}
-
-function notifyTaskWarning(messageText) {
-  notifyUser(messageText, 'warning')
 }
 
 function buildSearchableText(valuesList) {
@@ -232,6 +229,19 @@ const availableTicketTypes = computed(() => {
 
   return Array.from(types.values())
 })
+const effectiveRepositoryFilterKey = computed(() => {
+  const normalizedRepositoryKey = sanitizeRepositorySelection(selectedRepositoryKey.value)
+  if (normalizedRepositoryKey !== 'all') {
+    return normalizedRepositoryKey
+  }
+
+  if (issueScope.value !== DEFAULT_ISSUE_SCOPE) {
+    return 'all'
+  }
+
+  const activeRepositoryKey = sanitizeRepositorySelection(activeRepository.value?.nameWithOwner || '')
+  return activeRepositoryKey !== 'all' ? activeRepositoryKey : ''
+})
 const taskEntries = computed(() => {
   const githubEntries = issues.value.map((issue) => ({
     entryKey: `github:${issue.id}`,
@@ -277,11 +287,15 @@ const filteredTaskEntries = computed(() => {
   const normalizedSearch = sanitizeSingleLineText(searchTerm.value, TASK_SEARCH_MAX_LENGTH).toLowerCase()
   const normalizedSourceFilter = sanitizeSelectionValue(sourceFilter.value, ALLOWED_SOURCE_FILTERS, 'all')
   const normalizedStateFilter = sanitizeSelectionValue(stateFilter.value, ALLOWED_STATE_FILTERS, 'open')
-  const normalizedRepositoryKey = sanitizeRepositorySelection(selectedRepositoryKey.value)
+  const normalizedRepositoryKey = effectiveRepositoryFilterKey.value
   const normalizedSelectedLabel = sanitizeSingleLineText(selectedLabel.value, 120)
   const normalizedSelectedTicketType = sanitizeSingleLineText(selectedTicketType.value, 60)
 
   return taskEntries.value.filter((entry) => {
+    if (issueScope.value === DEFAULT_ISSUE_SCOPE && normalizedRepositoryKey === '') {
+      return false
+    }
+
     if (normalizedSourceFilter !== 'all' && entry.entryType !== normalizedSourceFilter) {
       return false
     }
@@ -374,9 +388,9 @@ const listLoading = computed(() => {
   return loadingCache.value || loadingLocalTasks.value
 })
 const scopeTitle = computed(() => {
-  if (issueScope.value === 'repository') {
+  if (issueScope.value === DEFAULT_ISSUE_SCOPE) {
     return activeRepository.value?.nameWithOwner
-      || selectedRepositoryKey.value
+      || effectiveRepositoryFilterKey.value
       || translateTasks('tasksScreen.scope.defaultRepository', 'Repositório padrão do perfil')
   }
 
@@ -387,7 +401,7 @@ const scopeTitle = computed(() => {
   return translateTasks('tasksScreen.scope.all', 'Todas as issues dos seus repositórios')
 })
 const scopeDescription = computed(() => {
-  if (issueScope.value === 'repository') {
+  if (issueScope.value === DEFAULT_ISSUE_SCOPE) {
     return translateTasks(
       'tasksScreen.scopeDescription.repository',
       'Visualize e atualize itens de um repositório específico com filtros de estado, label e tipo.',
@@ -407,8 +421,8 @@ const scopeDescription = computed(() => {
   )
 })
 const createRepositoryKey = computed(() => {
-  const normalizedRepositoryKey = sanitizeRepositorySelection(selectedRepositoryKey.value)
-  if (normalizedRepositoryKey !== 'all') {
+  const normalizedRepositoryKey = effectiveRepositoryFilterKey.value
+  if (normalizedRepositoryKey !== '' && normalizedRepositoryKey !== 'all') {
     return normalizedRepositoryKey
   }
 
@@ -593,7 +607,7 @@ async function loadCachedIssues(options = {}) {
 
     issueBoard.value = data || null
 
-    if (issueScope.value === 'repository' && selectedRepositoryKey.value === 'all' && data?.repository?.nameWithOwner) {
+    if (issueScope.value === DEFAULT_ISSUE_SCOPE && selectedRepositoryKey.value === 'all' && data?.repository?.nameWithOwner) {
       selectedRepositoryKey.value = sanitizeRepositorySelection(data.repository.nameWithOwner)
     }
 
@@ -668,7 +682,7 @@ async function syncIssues(options = {}) {
 
     issueBoard.value = data || null
 
-    if (issueScope.value === 'repository' && selectedRepositoryKey.value === 'all' && data?.repository?.nameWithOwner) {
+    if (issueScope.value === DEFAULT_ISSUE_SCOPE && selectedRepositoryKey.value === 'all' && data?.repository?.nameWithOwner) {
       selectedRepositoryKey.value = sanitizeRepositorySelection(data.repository.nameWithOwner)
     }
 
@@ -691,7 +705,7 @@ function buildIssueParams() {
     scope: normalizedScope,
   }
 
-  if (normalizedScope === 'repository') {
+  if (normalizedScope === DEFAULT_ISSUE_SCOPE) {
     const repositorySelection = splitRepositoryKey(sanitizeRepositorySelection(selectedRepositoryKey.value))
     if (repositorySelection.owner !== '' && repositorySelection.name !== '') {
       params.repositoryOwner = repositorySelection.owner
@@ -869,7 +883,7 @@ function mergeIssueIntoBoard(updatedIssue) {
 }
 
 function resetFilters() {
-  issueScope.value = 'all'
+  issueScope.value = DEFAULT_ISSUE_SCOPE
   sourceFilter.value = 'all'
   stateFilter.value = 'open'
   searchTerm.value = ''

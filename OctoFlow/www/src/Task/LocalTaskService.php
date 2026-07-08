@@ -7,6 +7,7 @@ use App\Entity\User;
 use App\Github\Exception\GithubConfigurationException;
 use App\Github\Exception\GithubGraphQLException;
 use App\Github\GithubIssuePublisherInterface;
+use App\Github\GithubRegistryService;
 use App\Github\GithubIssueTemplateCatalog;
 use App\Github\TemplateAccessService;
 use App\Repository\LocalTaskRepository;
@@ -20,6 +21,7 @@ final class LocalTaskService implements LocalTaskSyncInterface
         private readonly GithubIssuePublisherInterface $issuePublisher,
         private readonly GithubIssueTemplateCatalog $templateCatalog,
         private readonly TemplateAccessService $templateAccessService,
+        private readonly GithubRegistryService $registryService,
     ) {
     }
 
@@ -28,10 +30,14 @@ final class LocalTaskService implements LocalTaskSyncInterface
      */
     public function buildBoard(User $user): array
     {
-        $items = array_map(
-            fn (LocalTask $task): array => $this->normalizeTask($task),
-            $this->localTaskRepository->findUnsyncedByOwner($user),
-        );
+        $allowedRepositoryKeys = $this->buildAllowedRepositoryKeyLookup($user);
+        $items = array_values(array_filter(
+            array_map(
+                fn (LocalTask $task): array => $this->normalizeTask($task),
+                $this->localTaskRepository->findUnsyncedByOwner($user),
+            ),
+            static fn (array $task): bool => self::isVisibleOnBoard($task, $allowedRepositoryKeys),
+        ));
 
         $pendingCount = count(array_filter(
             $items,
@@ -77,6 +83,8 @@ final class LocalTaskService implements LocalTaskSyncInterface
         if (($repositoryOwner === '') xor ($repositoryName === '')) {
             throw new \InvalidArgumentException('Inform the synchronization repository owner and name together.');
         }
+
+        $this->assertRepositorySelectionAvailable($user, $repositoryOwner, $repositoryName);
 
         if ($templateKey !== '') {
             $template = $this->templateCatalog->find($templateKey);
@@ -147,6 +155,8 @@ final class LocalTaskService implements LocalTaskSyncInterface
             throw new \InvalidArgumentException('Inform the synchronization repository owner and name together.');
         }
 
+        $this->assertRepositorySelectionAvailable($user, $repositoryOwner, $repositoryName);
+
         if (!in_array($state, [LocalTask::STATE_OPEN, LocalTask::STATE_CLOSED], true)) {
             throw new \InvalidArgumentException('The local task state must be OPEN or CLOSED.');
         }
@@ -196,6 +206,8 @@ final class LocalTaskService implements LocalTaskSyncInterface
         if ($repositoryOwner === '' || $repositoryName === '') {
             throw new \InvalidArgumentException('Select the GitHub repository before synchronizing this local task.');
         }
+
+        $this->assertRepositorySelectionAvailable($user, $repositoryOwner, $repositoryName);
 
         $task
             ->setRepositoryOwner($repositoryOwner)
@@ -253,6 +265,8 @@ final class LocalTaskService implements LocalTaskSyncInterface
 
         foreach ($syncableTasks as $task) {
             try {
+                $this->assertRepositorySelectionAvailable($user, $task->getRepositoryOwner(), $task->getRepositoryName());
+
                 $result = $this->issuePublisher->createDraftIssue($user, [
                     'title' => $task->getTitle(),
                     'body' => $task->getBody(),
@@ -428,5 +442,52 @@ final class LocalTaskService implements LocalTaskSyncInterface
         }
 
         return $task;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function buildAllowedRepositoryKeyLookup(User $user): array
+    {
+        $allowedRepositoryKeys = [];
+
+        foreach ($this->registryService->buildCatalog($user, false) as $repository) {
+            $repositoryKey = trim((string) ($repository['nameWithOwner'] ?? ''));
+            if ($repositoryKey === '') {
+                continue;
+            }
+
+            $allowedRepositoryKeys[$repositoryKey] = true;
+        }
+
+        return $allowedRepositoryKeys;
+    }
+
+    private function assertRepositorySelectionAvailable(User $user, ?string $repositoryOwner, ?string $repositoryName): void
+    {
+        $normalizedRepositoryOwner = trim((string) $repositoryOwner);
+        $normalizedRepositoryName = trim((string) $repositoryName);
+
+        if ($normalizedRepositoryOwner === '' && $normalizedRepositoryName === '') {
+            return;
+        }
+
+        $repositoryKey = sprintf('%s/%s', $normalizedRepositoryOwner, $normalizedRepositoryName);
+        if (isset($this->buildAllowedRepositoryKeyLookup($user)[$repositoryKey])) {
+            return;
+        }
+
+        throw new \InvalidArgumentException('The selected GitHub repository is not available in your current workspace.');
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @param array<string, true> $allowedRepositoryKeys
+     */
+    private static function isVisibleOnBoard(array $task, array $allowedRepositoryKeys): bool
+    {
+        $repositoryKey = trim((string) ($task['repositoryKey'] ?? ''));
+
+        return $repositoryKey === '' || isset($allowedRepositoryKeys[$repositoryKey]);
     }
 }

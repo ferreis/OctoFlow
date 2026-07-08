@@ -3,6 +3,7 @@
 namespace App\Controller\Finance;
 
 use App\Entity\User;
+use App\Finance\FinancePermissionResolver;
 use App\Finance\FinanceRecurringService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -24,6 +25,7 @@ final class FinanceRecurringController
     }
 
     #[Route('/recurring-rules', name: 'finance_recurring_rules_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listRules(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -34,6 +36,7 @@ final class FinanceRecurringController
     }
 
     #[Route('/recurring-rules', name: 'finance_recurring_rules_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createRule(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -55,6 +58,7 @@ final class FinanceRecurringController
     }
 
     #[Route('/recurring-rules/{ruleId<\d+>}', name: 'finance_recurring_rules_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updateRule(int $ruleId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -76,6 +80,7 @@ final class FinanceRecurringController
     }
 
     #[Route('/recurring-rules/{ruleId<\d+>}', name: 'finance_recurring_rules_delete', methods: ['DELETE'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function deleteRule(int $ruleId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -92,6 +97,7 @@ final class FinanceRecurringController
     }
 
     #[Route('/recurring-rules/{ruleId<\d+>}/generate-manual', name: 'finance_recurring_rules_generate_manual', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function generateRuleManually(int $ruleId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

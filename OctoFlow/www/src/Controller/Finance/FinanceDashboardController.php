@@ -4,6 +4,7 @@ namespace App\Controller\Finance;
 
 use App\Entity\User;
 use App\Finance\FinanceDashboardService;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -24,6 +25,7 @@ final class FinanceDashboardController
     }
 
     #[Route('/summary', name: 'finance_dashboard_summary', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function summary(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -40,6 +42,7 @@ final class FinanceDashboardController
     }
 
     #[Route('/cashflow', name: 'finance_dashboard_cashflow', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function cashflow(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -54,6 +57,7 @@ final class FinanceDashboardController
     }
 
     #[Route('/categories', name: 'finance_dashboard_categories', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function categories(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

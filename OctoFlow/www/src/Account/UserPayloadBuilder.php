@@ -3,6 +3,7 @@
 namespace App\Account;
 
 use App\Entity\User;
+use App\Finance\FinancePermissionResolver;
 use Doctrine\ORM\EntityManagerInterface;
 
 final class UserPayloadBuilder
@@ -11,6 +12,7 @@ final class UserPayloadBuilder
         private readonly UserEmailManager $userEmailManager,
         private readonly GooglePasswordSetupManager $googlePasswordSetupManager,
         private readonly EntityManagerInterface $entityManager,
+        private readonly FinancePermissionResolver $financePermissionResolver,
     ) {
     }
 
@@ -28,6 +30,7 @@ final class UserPayloadBuilder
             'email' => $user->getEmail(),
             'defaultEmail' => $user->getEmail(),
             'roles' => $user->getRoles(),
+            'permissions' => $this->financePermissionResolver->resolve($user),
             'isActive' => $user->isActive(),
             'googleLinked' => $user->getGoogleSubject() !== null,
             'passwordLoginEnabled' => $user->isPasswordLoginEnabled(),

@@ -1094,6 +1094,7 @@
           "default": "Gerenciar lançamento"
         },
         "subtitle": "Os dados serão aplicados nas listagens desta aba.",
+        "categoryHint": "Categoria ativa obrigatória para salvar este cadastro.",
         "entry": {
           "title": "Título",
           "type": "Tipo",
@@ -1134,6 +1135,7 @@
         "loadRecurringError": "Erro ao carregar recorrências.",
         "loadInstallmentsError": "Erro ao carregar parcelamentos.",
         "entryInvalid": "Preencha título, valor e vencimento válidos.",
+        "categoryRequired": "Selecione uma categoria ativa para continuar.",
         "entryUpdated": "Lançamento atualizado com sucesso.",
         "entryCreated": "Lançamento criado com sucesso.",
         "entrySaveError": "Erro ao salvar lançamento.",
@@ -1189,6 +1191,7 @@
         "noCategory": "Sem categoria",
         "noAccount": "Sem conta",
         "select": "Selecione",
+        "selectCategory": "Selecione uma categoria",
         "keepCurrent": "Manter atual"
       }
     },
@@ -1402,6 +1405,7 @@
         "snapshotExportError": "Erro ao exportar snapshot.",
         "selectFileFirst": "Selecione um arquivo JSON antes de importar.",
         "invalidJsonContent": "Conteúdo JSON inválido para importação.",
+        "confirmationRequired": "Digite a frase de confirmação exatamente como exibida antes de substituir os dados financeiros.",
         "snapshotImportSuccess": "Dados importados com sucesso.",
         "snapshotImportError": "Erro ao importar snapshot financeiro.",
         "childRenderError": "Erro inesperado ao renderizar os relatórios."
@@ -1469,6 +1473,10 @@
           "description": "Restaure um histórico a partir de um arquivo JSON exportado.",
           "chooseFile": "+ Escolher arquivo .json",
           "replaceExisting": "Substituir dados atuais da conta",
+          "confirmationLabel": "Confirmação obrigatória",
+          "confirmationWarning": "Esta importação substituirá todos os dados financeiros atuais da conta.",
+          "confirmationInstruction": "Digite {phrase} para confirmar a substituição.",
+          "confirmationPlaceholder": "Digite a frase de confirmação",
           "loading": "Importando...",
           "button": "Importar snapshot JSON"
         }

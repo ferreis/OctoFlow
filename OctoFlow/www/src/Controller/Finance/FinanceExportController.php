@@ -4,6 +4,7 @@ namespace App\Controller\Finance;
 
 use App\Entity\User;
 use App\Finance\FinanceExportService;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -26,6 +27,7 @@ final class FinanceExportController
     }
 
     #[Route('/exports', name: 'finance_exports_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listExports(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -36,6 +38,7 @@ final class FinanceExportController
     }
 
     #[Route('/exports', name: 'finance_exports_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createExport(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -57,6 +60,7 @@ final class FinanceExportController
     }
 
     #[Route('/exports/{exportJobId<\d+>}/download', name: 'finance_exports_download', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function downloadExport(int $exportJobId, #[CurrentUser] ?User $user): BinaryFileResponse|JsonResponse
     {
         if ($user === null) {
@@ -79,6 +83,7 @@ final class FinanceExportController
     }
 
     #[Route('/exports/{exportJobId<\d+>}', name: 'finance_exports_delete', methods: ['DELETE'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function deleteExport(int $exportJobId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

@@ -6,6 +6,7 @@ use App\Entity\LocalTask;
 use App\Entity\User;
 use App\Github\GithubIssuePublisherInterface;
 use App\Github\GithubIssueTemplateCatalog;
+use App\Github\GithubRegistryService;
 use App\Github\TemplateAccessService;
 use App\Github\UserCapabilityResolver;
 use App\Repository\LocalTaskRepository;
@@ -19,6 +20,7 @@ final class LocalTaskServiceTest extends TestCase
     private EntityManagerInterface&MockObject $entityManager;
     private LocalTaskRepository&MockObject $localTaskRepository;
     private GithubIssuePublisherInterface&MockObject $issuePublisher;
+    private GithubRegistryService&MockObject $registryService;
     private LocalTaskService $service;
 
     protected function setUp(): void
@@ -26,12 +28,14 @@ final class LocalTaskServiceTest extends TestCase
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->localTaskRepository = $this->createMock(LocalTaskRepository::class);
         $this->issuePublisher = $this->createMock(GithubIssuePublisherInterface::class);
+        $this->registryService = $this->createMock(GithubRegistryService::class);
         $this->service = new LocalTaskService(
             $this->entityManager,
             $this->localTaskRepository,
             $this->issuePublisher,
             new GithubIssueTemplateCatalog(),
             new TemplateAccessService(new UserCapabilityResolver()),
+            $this->registryService,
         );
     }
 
@@ -115,6 +119,58 @@ final class LocalTaskServiceTest extends TestCase
         $this->assertSame(42, $task->getGithubIssueNumber());
     }
 
+    public function testBuildBoardSkipsTasksFromRepositoriesOutsideCurrentWorkspace(): void
+    {
+        $user = (new User())
+            ->setEmail('owner@example.com')
+            ->setPassword('not-used');
+
+        $activeTask = (new LocalTask())
+            ->setOwner($user)
+            ->setTitle('[feat] Repo atual')
+            ->setBody('Conteudo do repo atual')
+            ->setRepositoryOwner('acme')
+            ->setRepositoryName('delivery-desk')
+            ->markPending();
+
+        $staleTask = (new LocalTask())
+            ->setOwner($user)
+            ->setTitle('[feat] Repo antigo')
+            ->setBody('Conteudo do repo antigo')
+            ->setRepositoryOwner('legacy')
+            ->setRepositoryName('old-project')
+            ->markPending();
+
+        $genericTask = (new LocalTask())
+            ->setOwner($user)
+            ->setTitle('[feat] Sem repo')
+            ->setBody('Conteudo sem repo')
+            ->markPending();
+
+        $this->localTaskRepository
+            ->expects($this->once())
+            ->method('findUnsyncedByOwner')
+            ->with($user)
+            ->willReturn([$activeTask, $staleTask, $genericTask]);
+
+        $this->registryService
+            ->expects($this->once())
+            ->method('buildCatalog')
+            ->with($user, false)
+            ->willReturn([
+                ['nameWithOwner' => 'acme/delivery-desk'],
+            ]);
+
+        $board = $this->service->buildBoard($user);
+
+        $this->assertCount(2, $board['items']);
+        $this->assertSame(
+            ['[feat] Repo atual', '[feat] Sem repo'],
+            array_map(static fn (array $item): string => $item['title'], $board['items']),
+        );
+        $this->assertSame(['total' => 2, 'pending' => 2, 'failed' => 0], $board['stats']);
+    }
+
     public function testUpdateTaskChangesTitleBodyAndRepository(): void
     {
         $user = (new User())
@@ -134,6 +190,14 @@ final class LocalTaskServiceTest extends TestCase
             ->method('findOneByIdAndOwner')
             ->with(15, $user)
             ->willReturn($task);
+
+        $this->registryService
+            ->expects($this->once())
+            ->method('buildCatalog')
+            ->with($user, false)
+            ->willReturn([
+                ['nameWithOwner' => 'acme/delivery-desk'],
+            ]);
 
         $this->entityManager
             ->expects($this->once())
@@ -156,6 +220,36 @@ final class LocalTaskServiceTest extends TestCase
         $this->assertCount(2, $updated['historyEntries']);
         $this->assertSame('label-added', $updated['historyEntries'][0]['kind']);
         $this->assertSame('label-removed', $updated['historyEntries'][1]['kind']);
+    }
+
+    public function testCreateTaskRejectsRepositoryOutsideCurrentWorkspace(): void
+    {
+        $user = (new User())
+            ->setEmail('owner@example.com')
+            ->setPassword('not-used');
+
+        $this->registryService
+            ->expects($this->once())
+            ->method('buildCatalog')
+            ->with($user, false)
+            ->willReturn([
+                ['nameWithOwner' => 'acme/delivery-desk'],
+            ]);
+
+        $this->entityManager
+            ->expects($this->never())
+            ->method('persist');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The selected GitHub repository is not available in your current workspace.');
+
+        $this->service->createTask($user, [
+            'templateKey' => 'feature-request',
+            'title' => '[feat] Repo invalido',
+            'body' => 'Nao deve persistir',
+            'repositoryOwner' => 'legacy',
+            'repositoryName' => 'old-project',
+        ]);
     }
 
     public function testSyncTaskToGithubRequiresRepositorySelection(): void
@@ -208,6 +302,14 @@ final class LocalTaskServiceTest extends TestCase
             ->method('findOneByIdAndOwner')
             ->with(9, $user)
             ->willReturn($task);
+
+        $this->registryService
+            ->expects($this->once())
+            ->method('buildCatalog')
+            ->with($user, false)
+            ->willReturn([
+                ['nameWithOwner' => 'acme/delivery-desk'],
+            ]);
 
         $this->issuePublisher
             ->expects($this->once())

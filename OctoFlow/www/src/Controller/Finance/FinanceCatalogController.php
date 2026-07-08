@@ -5,6 +5,7 @@ namespace App\Controller\Finance;
 use App\Entity\User;
 use App\Finance\FinanceCatalogService;
 use App\Finance\FinanceInput;
+use App\Finance\FinancePermissionResolver;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -25,6 +26,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/categories', name: 'finance_categories_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listCategories(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -35,6 +37,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/categories', name: 'finance_categories_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createCategory(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -56,6 +59,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/categories/{categoryId<\d+>}', name: 'finance_categories_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updateCategory(int $categoryId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -77,6 +81,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/recurring-types', name: 'finance_recurring_types_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listRecurringTypes(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -87,6 +92,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/recurring-types', name: 'finance_recurring_types_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createRecurringType(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -108,6 +114,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/recurring-types/{recurringTypeId<\d+>}', name: 'finance_recurring_types_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updateRecurringType(int $recurringTypeId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -129,6 +136,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/recurring-types/{recurringTypeId<\d+>}', name: 'finance_recurring_types_delete', methods: ['DELETE'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function deleteRecurringType(int $recurringTypeId, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -145,6 +153,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/bank-accounts', name: 'finance_bank_accounts_list', methods: ['GET'])]
+    #[IsGranted(FinancePermissionResolver::READ)]
     public function listBankAccounts(#[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -155,6 +164,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/bank-accounts', name: 'finance_bank_accounts_create', methods: ['POST'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function createBankAccount(Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -176,6 +186,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/bank-accounts/{bankAccountId<\d+>}', name: 'finance_bank_accounts_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updateBankAccount(int $bankAccountId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {
@@ -197,6 +208,7 @@ final class FinanceCatalogController
     }
 
     #[Route('/bank-accounts/{bankAccountId<\d+>}/status', name: 'finance_bank_accounts_status_update', methods: ['PATCH'])]
+    #[IsGranted(FinancePermissionResolver::WRITE)]
     public function updateBankAccountStatus(int $bankAccountId, Request $request, #[CurrentUser] ?User $user): JsonResponse
     {
         if ($user === null) {

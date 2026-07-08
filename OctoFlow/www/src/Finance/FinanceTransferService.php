@@ -7,6 +7,8 @@ use Doctrine\DBAL\Connection;
 
 final class FinanceTransferService
 {
+    private const DESTRUCTIVE_IMPORT_CONFIRMATION_PHRASE = 'IMPORTAR SNAPSHOT FINANCEIRO';
+
     public function __construct(
         private readonly Connection $connection,
     ) {
@@ -65,6 +67,7 @@ final class FinanceTransferService
         }
 
         $replaceExisting = FinanceInput::normalizeBoolean($payload['replaceExisting'] ?? true, true);
+        $this->assertDestructiveImportConfirmed($payload, $replaceExisting);
 
         $this->connection->beginTransaction();
 
@@ -85,6 +88,27 @@ final class FinanceTransferService
             $this->connection->rollBack();
 
             throw $throwable;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function assertDestructiveImportConfirmed(array $payload, bool $replaceExisting): void
+    {
+        if (!$replaceExisting) {
+            return;
+        }
+
+        $confirmationPhrase = is_string($payload['confirmationPhrase'] ?? null)
+            ? trim($payload['confirmationPhrase'])
+            : '';
+
+        if ($confirmationPhrase !== self::DESTRUCTIVE_IMPORT_CONFIRMATION_PHRASE) {
+            throw new \InvalidArgumentException(sprintf(
+                'Importacao destrutiva exige confirmationPhrase exatamente igual a "%s".',
+                self::DESTRUCTIVE_IMPORT_CONFIRMATION_PHRASE,
+            ));
         }
     }
 

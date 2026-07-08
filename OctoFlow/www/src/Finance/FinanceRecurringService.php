@@ -91,7 +91,7 @@ final class FinanceRecurringService
         }
 
         $recurringTypeId = $this->normalizeOwnedRecurringTypeId($ownerId, $payload['recurringTypeId'] ?? null);
-        $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? null);
+        $categoryId = $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'] ?? null, true);
         $defaultBankAccountId = $this->normalizeOwnedBankAccountId($ownerId, $payload['defaultBankAccountId'] ?? null);
 
         $nextRunDate = $this->buildDateInMonth($startsAt, $dayOfMonth);
@@ -176,8 +176,8 @@ final class FinanceRecurringService
             ? $this->normalizeOwnedRecurringTypeId($ownerId, $payload['recurringTypeId'])
             : (int) $existingRule['recurringTypeId'];
         $categoryId = array_key_exists('categoryId', $payload)
-            ? $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'])
-            : (isset($existingRule['categoryId']) ? (int) $existingRule['categoryId'] : null);
+            ? $this->normalizeOwnedCategoryId($ownerId, $payload['categoryId'], true)
+            : $this->normalizeOwnedCategoryId($ownerId, $existingRule['categoryId'] ?? null, true);
         $defaultBankAccountId = array_key_exists('defaultBankAccountId', $payload)
             ? $this->normalizeOwnedBankAccountId($ownerId, $payload['defaultBankAccountId'])
             : (isset($existingRule['bankAccountId']) ? (int) $existingRule['bankAccountId'] : null);
@@ -731,23 +731,32 @@ final class FinanceRecurringService
         return $normalizedRecurringTypeId;
     }
 
-    private function normalizeOwnedCategoryId(int $ownerId, mixed $categoryId): ?int
+    private function normalizeOwnedCategoryId(int $ownerId, mixed $categoryId, bool $required = false): ?int
     {
         $normalizedCategoryId = (int) $categoryId;
         if ($normalizedCategoryId <= 0) {
+            if ($required) {
+                throw new \InvalidArgumentException('The category is required.');
+            }
+
             return null;
         }
 
-        $exists = $this->connection->fetchOne(
-            'SELECT id FROM finance_category WHERE owner_id = :ownerId AND id = :categoryId LIMIT 1',
+        /** @var array<string, mixed>|false $category */
+        $category = $this->connection->fetchAssociative(
+            'SELECT id, is_active FROM finance_category WHERE owner_id = :ownerId AND id = :categoryId LIMIT 1',
             [
                 'ownerId' => $ownerId,
                 'categoryId' => $normalizedCategoryId,
             ],
         );
 
-        if ($exists === false) {
+        if (!is_array($category)) {
             throw new \InvalidArgumentException('Category not found for current user.');
+        }
+
+        if (!FinanceInput::normalizeBoolean($category['is_active'] ?? false, false)) {
+            throw new \InvalidArgumentException('Inactive categories cannot be used in financial records.');
         }
 
         return $normalizedCategoryId;

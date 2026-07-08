@@ -18,6 +18,10 @@ import {
 import { storeToRefs } from 'pinia'
 import AppConfirmDialog from '../../components/shared/AppConfirmDialog.vue'
 import FinanceEntriesListPanel from '../../components/shared/FinanceEntriesListPanel.vue'
+import FinanceEntryFormModal from '../../components/finance/FinanceEntryFormModal.vue'
+import FinanceSettlementFormModal from '../../components/finance/FinanceSettlementFormModal.vue'
+import FinanceRecurringFormModal from '../../components/finance/FinanceRecurringFormModal.vue'
+import FinanceInstallmentFormModal from '../../components/finance/FinanceInstallmentFormModal.vue'
 import { useFinancePermissions } from '../../composables/useFinancePermissions'
 import { useNotification } from '../../composables/useNotification'
 import { useScopedI18n } from '../../composables/useScopedI18n'
@@ -64,7 +68,7 @@ const LIST_ITEMS_PER_PAGE = 10
 const MAX_TITLE_LENGTH = 120
 
 const financeStore = useFinanceStore()
-const { categories, bankAccounts, recurringTypes } = storeToRefs(financeStore)
+const { categories, bankAccounts, recurringTypes, creditCardAccounts } = storeToRefs(financeStore)
 
 const { notifyUser } = useNotification()
 const { translateScoped, currentLocale } = useScopedI18n('financeModule.accountsView')
@@ -123,6 +127,8 @@ const settlementForm = reactive({
   bankAccountId: '',
   settlementType: 'PAYMENT',
   installmentPlanId: '',
+  useCreditCard: false,
+  creditCardId: '',
 })
 
 const recurringForm = reactive({
@@ -223,7 +229,7 @@ const accountsEntriesTitle = computed(() => {
     return translateScoped('entries.titleReceivable', 'Lançamentos - Contas a receber')
   }
 
-  return translateScoped('entries.titleUnified', 'Lançamentos unificados (pagar e receber)')
+  return translateScoped('entries.titleUnified', 'Lançamentos (pagar e receber)')
 })
 
 const totalsLabel = computed(() => {
@@ -398,6 +404,10 @@ const availableSettlementEntries = computed(() => {
   })
 })
 
+const selectableCategories = computed(() => (
+  categories.value.filter((category) => category?.isActive !== false)
+))
+
 const selectedSettlementEntry = computed(() => {
   const normalizedEntryId = sanitizeIdentifier(settlementForm.entryId)
 
@@ -561,6 +571,23 @@ function canMutateFinance() {
   return true
 }
 
+function hasSelectableCategory(rawCategoryId) {
+  const normalizedCategoryId = sanitizeIdentifier(rawCategoryId)
+
+  if (normalizedCategoryId === '') {
+    return false
+  }
+
+  return selectableCategories.value.some((category) => sanitizeIdentifier(category?.id) === normalizedCategoryId)
+}
+
+function notifyCategoryRequired() {
+  notifyUser(
+    translateScoped('notifications.categoryRequired', 'Selecione uma categoria ativa para continuar.'),
+    'warning',
+  )
+}
+
 function resetEntryForm() {
   Object.assign(entryForm, {
     direction: normalizeDirection(accountsDirectionByTab.value || 'PAYABLE'),
@@ -584,6 +611,8 @@ function resetSettlementForm() {
     bankAccountId: '',
     settlementType: 'PAYMENT',
     installmentPlanId: '',
+    useCreditCard: false,
+    creditCardId: '',
   })
 
   settlementEntryOptions.value = []
@@ -859,7 +888,7 @@ function buildEntryPayload() {
       defaultValue: 0,
     }),
     dueDate: sanitizeDateInput(entryForm.dueDate),
-    categoryId: sanitizeIdentifier(entryForm.categoryId) || undefined,
+    categoryId: sanitizeIdentifier(entryForm.categoryId),
     bankAccountId: sanitizeIdentifier(entryForm.bankAccountId) || undefined,
   }
 }
@@ -873,6 +902,11 @@ async function submitEntry() {
 
   if (payload.title === '' || payload.expectedAmountBrl <= 0 || payload.dueDate === '') {
     notifyUser(translateScoped('notifications.entryInvalid', 'Preencha título, valor e vencimento válidos.'), 'warning')
+    return
+  }
+
+  if (!hasSelectableCategory(payload.categoryId)) {
+    notifyCategoryRequired()
     return
   }
 
@@ -945,6 +979,8 @@ function buildSettlementPayload() {
     settlementType: ['PAYMENT', 'ADVANCE', 'DISCOUNT'].includes(normalizedSettlementType)
       ? normalizedSettlementType
       : 'PAYMENT',
+    useCreditCard: settlementForm.useCreditCard === true,
+    creditCardId: sanitizeIdentifier(settlementForm.creditCardId),
   }
 }
 
@@ -982,6 +1018,12 @@ async function submitSettlement() {
       }
       if (payload.bankAccountId !== '') {
         requestPayload.bankAccountId = payload.bankAccountId
+      }
+      if (payload.useCreditCard && payload.creditCardId !== '') {
+        requestPayload.useCreditCard = true
+        requestPayload.creditCardId = payload.creditCardId
+        requestPayload.creditCardInterestRatePercent = 2.99
+        requestPayload.creditCardIofRatePercent = 0.38
       }
 
       await createFinanceSettlement(payload.entryId, requestPayload)
@@ -1056,7 +1098,7 @@ function buildRecurringPayload() {
       ? getFirstDayOfNextMonthInputValue()
       : sanitizeDateInput(recurringForm.startsAt),
     recurringTypeId: sanitizeIdentifier(recurringForm.recurringTypeId),
-    categoryId: sanitizeIdentifier(recurringForm.categoryId) || undefined,
+    categoryId: sanitizeIdentifier(recurringForm.categoryId),
     defaultBankAccountId: sanitizeIdentifier(recurringForm.defaultBankAccountId) || undefined,
   }
 }
@@ -1075,6 +1117,11 @@ async function submitRecurringRule() {
     || payload.recurringTypeId === ''
   ) {
     notifyUser(translateScoped('notifications.recurringInvalid', 'Preencha título, valor, início e tipo recorrente válidos.'), 'warning')
+    return
+  }
+
+  if (!hasSelectableCategory(payload.categoryId)) {
+    notifyCategoryRequired()
     return
   }
 
@@ -1195,7 +1242,7 @@ function buildInstallmentPayload() {
       defaultValue: 0,
     }),
     firstDueDate: sanitizeDateInput(installmentForm.firstDueDate) || undefined,
-    categoryId: sanitizeIdentifier(installmentForm.categoryId) || undefined,
+    categoryId: sanitizeIdentifier(installmentForm.categoryId),
     defaultBankAccountId: sanitizeIdentifier(installmentForm.defaultBankAccountId) || undefined,
   }
 }
@@ -1209,6 +1256,11 @@ async function submitInstallmentPlan() {
 
   if (payload.title === '' || payload.totalAmountBrl <= 0) {
     notifyUser(translateScoped('notifications.installmentInvalid', 'Informe título e valor total válidos para o parcelamento.'), 'warning')
+    return
+  }
+
+  if (!hasSelectableCategory(payload.categoryId)) {
+    notifyCategoryRequired()
     return
   }
 
@@ -1521,6 +1573,17 @@ watch(
       settlementForm.entryId = ''
       settlementForm.entrySearch = ''
       settlementForm.bankAccountId = ''
+      settlementForm.useCreditCard = false
+      settlementForm.creditCardId = ''
+    }
+  },
+)
+
+watch(
+  () => settlementForm.useCreditCard,
+  (useCreditCard) => {
+    if (!useCreditCard) {
+      settlementForm.creditCardId = ''
     }
   },
 )
@@ -1878,381 +1941,58 @@ onErrorCaptured((error) => {
     </article>
   </section>
 
-  <div
-    v-if="accountActionModalState.isOpen"
-    class="app-modal-overlay"
-    role="dialog"
-    aria-modal="true"
-    @click.self="handleModalOverlayClose"
-  >
-    <div class="app-modal-frame" style="max-width: 56rem; width: 100%; padding: 24px;">
-      <header class="finance-modal-header">
-        <h3>{{ accountActionModalTitle }}</h3>
-        <p>{{ translateScoped('modal.subtitle', 'Os dados serão aplicados nas listagens desta aba.') }}</p>
-      </header>
+  <FinanceEntryFormModal
+    :is-open="accountActionModalState.isOpen && accountActionModalState.actionType === 'ENTRY'"
+    :entry-form="entryForm"
+    :entry-editing-id="entryEditingId"
+    :selectable-categories="selectableCategories"
+    :bank-accounts="bankAccounts"
+    :entry-type-options="entryTypeOptionsForForm"
+    :processing="accountActionProcessing"
+    :can-write="canWriteFinance"
+    @submit="submitEntry"
+    @close="closeAccountActionModal"
+  />
 
-      <form
-        v-if="accountActionModalState.actionType === 'ENTRY'"
-        class="finance-form-grid"
-        @submit.prevent="submitEntry"
-      >
-        <label>
-          <span>{{ translateScoped('modal.entry.title', 'Título') }}</span>
-          <input v-model="entryForm.title" type="text" :disabled="accountActionProcessing || !canWriteFinance" required>
-        </label>
+  <FinanceSettlementFormModal
+    :is-open="accountActionModalState.isOpen && accountActionModalState.actionType === 'SETTLEMENT'"
+    :settlement-form="settlementForm"
+    :available-settlement-entries="availableSettlementEntries"
+    :filtered-installment-plans="filteredInstallmentPlans"
+    :bank-accounts="bankAccounts"
+    :credit-card-accounts="creditCardAccounts"
+    :settlement-type-options="settlementTypeOptions"
+    :loading-entries="loadingSettlementEntries"
+    :processing="accountActionProcessing"
+    :can-write="canWriteFinance"
+    @submit="submitSettlement"
+    @close="closeAccountActionModal"
+  />
 
-        <label>
-          <span>{{ translateScoped('modal.entry.type', 'Tipo') }}</span>
-          <select v-model="entryForm.entryType" :disabled="accountActionProcessing || !canWriteFinance">
-            <option v-for="entryTypeOption in entryTypeOptionsForForm" :key="entryTypeOption.value" :value="entryTypeOption.value">
-              {{ entryTypeOption.label }}
-            </option>
-          </select>
-        </label>
+  <FinanceRecurringFormModal
+    :is-open="accountActionModalState.isOpen && accountActionModalState.actionType === 'RECURRING_RULE'"
+    :recurring-form="recurringForm"
+    :recurring-rule-editing-id="recurringRuleEditingId"
+    :selectable-categories="selectableCategories"
+    :bank-accounts="bankAccounts"
+    :available-recurring-types="availableRecurringTypes"
+    :processing="accountActionProcessing"
+    :can-write="canWriteFinance"
+    @submit="submitRecurringRule"
+    @close="closeAccountActionModal"
+  />
 
-        <label>
-          <span>{{ translateScoped('modal.entry.amount', 'Valor (BRL)') }}</span>
-          <input
-            v-model="entryForm.expectedAmountBrl"
-            type="number"
-            step="0.01"
-            min="0.01"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.entry.dueDate', 'Vencimento') }}</span>
-          <input v-model="entryForm.dueDate" type="date" :disabled="accountActionProcessing || !canWriteFinance" required>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.entry.category', 'Categoria') }}</span>
-          <select v-model="entryForm.categoryId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.noCategory', 'Sem categoria') }}</option>
-            <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.entry.bankAccount', 'Conta bancária') }}</span>
-          <select v-model="entryForm.bankAccountId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.noAccount', 'Sem conta') }}</option>
-            <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-          </select>
-        </label>
-
-        <div class="finance-modal-actions">
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="accountActionProcessing"
-            @click="closeAccountActionModal"
-          >
-            {{ translateScoped('actions.cancel', 'Cancelar') }}
-          </button>
-
-          <button
-            ref="accountActionPrimaryButtonRef"
-            class="finance-action-button"
-            type="submit"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-            {{ accountActionProcessing
-              ? translateScoped('actions.saving', 'Salvando...')
-              : entryEditingId
-                ? translateScoped('actions.saveChanges', 'Salvar alterações')
-                : translateScoped('actions.saveEntry', 'Salvar lançamento') }}
-          </button>
-        </div>
-      </form>
-
-      <form
-        v-else-if="accountActionModalState.actionType === 'SETTLEMENT'"
-        class="finance-form-grid"
-        @submit.prevent="submitSettlement"
-      >
-        <label v-if="settlementForm.settlementType === 'PAYMENT'">
-          <span>{{ translateScoped('modal.settlement.entry', 'Lançamento') }}</span>
-          <input
-            v-model="settlementForm.entrySearch"
-            type="search"
-            list="finance-settlement-entry-options"
-            :placeholder="loadingSettlementEntries
-              ? translateScoped('actions.loading', 'Carregando...')
-              : translateScoped('modal.settlement.entrySearchPlaceholder', 'Digite para buscar...')"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            autocomplete="off"
-          >
-          <datalist id="finance-settlement-entry-options">
-            <option
-              v-for="entryItem in availableSettlementEntries"
-              :key="entryItem.id"
-              :value="formatSettlementEntryOptionLabel(entryItem)"
-            />
-          </datalist>
-        </label>
-
-        <label v-if="settlementForm.settlementType === 'ADVANCE' || settlementForm.settlementType === 'DISCOUNT'">
-          <span>{{ translateScoped('modal.settlement.installmentPlan', 'Plano de parcelamento') }}</span>
-          <select v-model="settlementForm.installmentPlanId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.select', 'Selecione') }}</option>
-            <option v-for="installmentPlan in filteredInstallmentPlans" :key="installmentPlan.id" :value="installmentPlan.id">
-              {{ installmentPlan.title }} - {{ formatCurrency(installmentPlan.remainingAmountBrl) }}
-            </option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.settlement.type', 'Tipo de baixa') }}</span>
-          <select v-model="settlementForm.settlementType" :disabled="accountActionProcessing || !canWriteFinance">
-            <option
-              v-for="settlementTypeOption in settlementTypeOptions"
-              :key="settlementTypeOption.value"
-              :value="settlementTypeOption.value"
-            >
-              {{ settlementTypeOption.label }}
-            </option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.settlement.amount', 'Valor') }}</span>
-          <input
-            v-model="settlementForm.amountBrl"
-            type="number"
-            step="0.01"
-            min="0.01"
-            :disabled="accountActionProcessing || !canWriteFinance || settlementForm.settlementType === 'PAYMENT'"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.settlement.dateTime', 'Data/hora da baixa') }}</span>
-          <input
-            v-model="settlementForm.settledAt"
-            type="datetime-local"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-        </label>
-
-        <label v-if="settlementForm.settlementType === 'PAYMENT'">
-          <span>{{ translateScoped('modal.settlement.bankAccount', 'Conta bancária') }}</span>
-          <select v-model="settlementForm.bankAccountId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.select', 'Selecione') }}</option>
-            <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-          </select>
-        </label>
-
-        <div class="finance-modal-actions">
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="accountActionProcessing"
-            @click="closeAccountActionModal"
-          >
-            {{ translateScoped('actions.cancel', 'Cancelar') }}
-          </button>
-
-          <button
-            ref="accountActionPrimaryButtonRef"
-            class="finance-action-button"
-            type="submit"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-            {{ accountActionProcessing
-              ? translateScoped('actions.saving', 'Salvando...')
-              : translateScoped('actions.registerSettlement', 'Registrar baixa') }}
-          </button>
-        </div>
-      </form>
-
-      <form
-        v-else-if="accountActionModalState.actionType === 'RECURRING_RULE'"
-        class="finance-form-grid"
-        @submit.prevent="submitRecurringRule"
-      >
-        <label>
-          <span>{{ translateScoped('modal.recurring.title', 'Título') }}</span>
-          <input v-model="recurringForm.title" type="text" :disabled="accountActionProcessing || !canWriteFinance" required>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.recurring.amount', 'Valor mensal') }}</span>
-          <input
-            v-model="recurringForm.amountBrl"
-            type="number"
-            step="0.01"
-            min="0.01"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.recurring.dayOfMonth', 'Dia do mês') }}</span>
-          <input
-            v-model="recurringForm.dayOfMonth"
-            type="number"
-            min="1"
-            max="31"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.recurring.startsAt', 'Início') }}</span>
-          <input v-model="recurringForm.startsAt" type="date" :disabled="accountActionProcessing || !canWriteFinance" required>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.recurring.recurringType', 'Tipo recorrente') }}</span>
-          <select v-model="recurringForm.recurringTypeId" :disabled="accountActionProcessing || !canWriteFinance" required>
-            <option value="">{{ translateScoped('options.select', 'Selecione') }}</option>
-            <option v-for="recurringType in availableRecurringTypes" :key="recurringType.id" :value="recurringType.id">{{ recurringType.name }}</option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.recurring.category', 'Categoria') }}</span>
-          <select v-model="recurringForm.categoryId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.noCategory', 'Sem categoria') }}</option>
-            <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.recurring.bankAccount', 'Conta bancária padrão') }}</span>
-          <select v-model="recurringForm.defaultBankAccountId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.noAccount', 'Sem conta') }}</option>
-            <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-          </select>
-        </label>
-
-        <div class="finance-modal-actions">
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="accountActionProcessing"
-            @click="closeAccountActionModal"
-          >
-            {{ translateScoped('actions.cancel', 'Cancelar') }}
-          </button>
-
-          <button
-            ref="accountActionPrimaryButtonRef"
-            class="finance-action-button"
-            type="submit"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-            {{ accountActionProcessing
-              ? translateScoped('actions.saving', 'Salvando...')
-              : recurringRuleEditingId
-                ? translateScoped('actions.save', 'Salvar')
-                : translateScoped('actions.createRecurring', 'Criar recorrência') }}
-          </button>
-        </div>
-      </form>
-
-      <form
-        v-else-if="accountActionModalState.actionType === 'INSTALLMENT_PLAN'"
-        class="finance-form-grid"
-        @submit.prevent="submitInstallmentPlan"
-      >
-        <label>
-          <span>{{ translateScoped('modal.installment.title', 'Título') }}</span>
-          <input v-model="installmentForm.title" type="text" :disabled="accountActionProcessing || !canWriteFinance" required>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.installment.totalAmount', 'Valor total') }}</span>
-          <input
-            v-model="installmentForm.totalAmountBrl"
-            type="number"
-            step="0.01"
-            min="0.01"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.installment.downPayment', 'Entrada') }}</span>
-          <input
-            v-model="installmentForm.downPaymentBrl"
-            type="number"
-            step="0.01"
-            min="0"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.installment.count', 'Parcelas') }}</span>
-          <input
-            v-model="installmentForm.installmentsCount"
-            type="number"
-            min="1"
-            :disabled="accountActionProcessing || !canWriteFinance"
-            required
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.installment.firstDueDate', 'Primeiro vencimento') }}</span>
-          <input
-            v-model="installmentForm.firstDueDate"
-            type="date"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.installment.category', 'Categoria') }}</span>
-          <select v-model="installmentForm.categoryId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.noCategory', 'Sem categoria') }}</option>
-            <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-          </select>
-        </label>
-
-        <label>
-          <span>{{ translateScoped('modal.installment.bankAccount', 'Conta bancária padrão') }}</span>
-          <select v-model="installmentForm.defaultBankAccountId" :disabled="accountActionProcessing || !canWriteFinance">
-            <option value="">{{ translateScoped('options.noAccount', 'Sem conta') }}</option>
-            <option v-for="bankAccount in bankAccounts" :key="bankAccount.id" :value="bankAccount.id">{{ bankAccount.name }}</option>
-          </select>
-        </label>
-
-        <div class="finance-modal-actions">
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="accountActionProcessing"
-            @click="closeAccountActionModal"
-          >
-            {{ translateScoped('actions.cancel', 'Cancelar') }}
-          </button>
-
-          <button
-            ref="accountActionPrimaryButtonRef"
-            class="finance-action-button"
-            type="submit"
-            :disabled="accountActionProcessing || !canWriteFinance"
-          >
-            {{ accountActionProcessing
-              ? translateScoped('actions.saving', 'Salvando...')
-              : installmentEditingId
-                ? translateScoped('actions.saveChanges', 'Salvar alterações')
-                : translateScoped('actions.createInstallment', 'Criar parcelamento') }}
-          </button>
-        </div>
-      </form>
-
-    </div>
-  </div>
+  <FinanceInstallmentFormModal
+    :is-open="accountActionModalState.isOpen && accountActionModalState.actionType === 'INSTALLMENT_PLAN'"
+    :installment-form="installmentForm"
+    :installment-editing-id="installmentEditingId"
+    :selectable-categories="selectableCategories"
+    :bank-accounts="bankAccounts"
+    :processing="accountActionProcessing"
+    :can-write="canWriteFinance"
+    @submit="submitInstallmentPlan"
+    @close="closeAccountActionModal"
+  />
 
   <AppConfirmDialog
     :is-open="confirmDialogState.isOpen"
