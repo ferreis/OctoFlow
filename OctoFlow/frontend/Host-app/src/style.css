@@ -1460,6 +1460,16 @@ select optgroup {
   color: var(--nav-text);
 }
 
+.menu-nav-svg {
+  fill: none;
+  height: 1.25rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+  width: 1.25rem;
+}
+
 .menu-subtitle,
 .menu-profile-kicker {
   color: var(--nav-muted);

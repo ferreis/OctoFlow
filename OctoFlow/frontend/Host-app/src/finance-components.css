@@ -247,12 +247,6 @@
     font-size: 1.05rem;
   }
 
-  .finance-header-badge {
-    @apply text-[0.6rem] font-bold uppercase tracking-[0.12em] leading-none px-2 py-1 rounded-md;
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
-    color: var(--accent);
-  }
-
   /* Vertical divider between brand and nav */
   .finance-header-divider {
     @apply block self-stretch shrink-0 mx-5;
@@ -276,10 +270,9 @@
 
   /* Individual navigation link */
   .finance-header-link {
-    @apply relative h-[60px] px-4 py-0 bg-transparent text-muted text-[0.78rem] font-semibold cursor-pointer
-           transition-all duration-200 whitespace-nowrap flex items-center justify-center border-b-2 border-transparent;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    @apply relative h-[60px] shrink-0 px-4 bg-transparent text-muted cursor-pointer
+           transition-all duration-200 flex items-center justify-center gap-2 border-b-2 border-transparent;
+    min-width: max-content;
   }
 
   .finance-header-link:hover:not(.active) {
@@ -291,6 +284,21 @@
     @apply text-accent border-accent;
     background: color-mix(in srgb, var(--accent) 8%, transparent);
     text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .finance-header-link-icon {
+    fill: none;
+    height: 1.2rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+    width: 1.2rem;
+  }
+
+  .finance-header-link-label {
+    @apply text-[0.76rem] font-semibold whitespace-nowrap;
+    letter-spacing: 0.02em;
   }
 
   /* Abas Internas (Secundárias/Content Rail) */

@@ -387,8 +387,12 @@ function isNavigationKeyActive(navigationItemKey) {
               <span
                 class="menu-nav-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black"
                 :class="isGroupActive(navigationItem) ? 'menu-nav-icon-active' : 'menu-nav-icon-idle'"
+                aria-hidden="true"
               >
-                {{ navigationItem.short }}
+                <svg v-if="navigationItem.icon === 'dashboard'" viewBox="0 0 24 24" class="menu-nav-svg"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
+                <svg v-else-if="navigationItem.icon === 'tasks'" viewBox="0 0 24 24" class="menu-nav-svg"><path d="m5 12 4 4L19 6M5 5h9M5 19h9" /></svg>
+                <svg v-else-if="navigationItem.icon === 'finance'" viewBox="0 0 24 24" class="menu-nav-svg"><path d="M4 19h16M6 16v-5M12 16V6M18 16v-8" /></svg>
+                <span v-else>{{ navigationItem.short }}</span>
               </span>
 
               <div
@@ -451,8 +455,12 @@ function isNavigationKeyActive(navigationItemKey) {
             <span
               class="menu-nav-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black"
               :class="isNavigationKeyActive(navigationItem.key) ? 'menu-nav-icon-active' : 'menu-nav-icon-idle'"
+              aria-hidden="true"
             >
-              {{ navigationItem.short }}
+              <svg v-if="navigationItem.icon === 'dashboard'" viewBox="0 0 24 24" class="menu-nav-svg"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
+              <svg v-else-if="navigationItem.icon === 'tasks'" viewBox="0 0 24 24" class="menu-nav-svg"><path d="m5 12 4 4L19 6M5 5h9M5 19h9" /></svg>
+              <svg v-else-if="navigationItem.icon === 'finance'" viewBox="0 0 24 24" class="menu-nav-svg"><path d="M4 19h16M6 16v-5M12 16V6M18 16v-8" /></svg>
+              <span v-else>{{ navigationItem.short }}</span>
             </span>
 
             <div

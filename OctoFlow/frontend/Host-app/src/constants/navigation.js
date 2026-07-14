@@ -2,6 +2,7 @@ export const navigationItems = [
   {
     key: 'dashboard',
     short: 'DB',
+    icon: 'dashboard',
     label: 'Dashboard',
     labelKey: 'navigation.items.dashboard.label',
     eyebrow: '',
@@ -12,6 +13,7 @@ export const navigationItems = [
   {
     key: 'tasks',
     short: 'TF',
+    icon: 'tasks',
     label: 'Tarefas',
     labelKey: 'navigation.items.tasks.label',
     eyebrow: 'Issues do GitHub',
@@ -29,6 +31,7 @@ export const navigationItems = [
   {
     key: 'finance',
     short: 'FN',
+    icon: 'finance',
     label: 'Financeiro',
     labelKey: 'navigation.items.finance.label',
     eyebrow: 'Financeiro',
