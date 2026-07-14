@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend - ${{ matrix.application }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        application: [Host-app, Components-app]
+    defaults:
+      run:
+        working-directory: OctoFlow/frontend/${{ matrix.application }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: OctoFlow/frontend/${{ matrix.application }}/package-lock.json
+      - name: Instalar dependências
+        run: npm ci
+      - name: Executar lint
+        run: npm run lint
+      - name: Gerar build
+        run: npm run build
+
+  backend:
+    name: Backend PHP
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: octoflow
+          POSTGRES_PASSWORD: octoflow
+          POSTGRES_DB: octoflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U octoflow -d octoflow_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: OctoFlow/www
+    env:
+      APP_ENV: test
+      APP_DEBUG: 0
+      APP_SECRET: ci-only-not-for-production
+      DATABASE_URL: postgresql://octoflow:octoflow@127.0.0.1:5432/octoflow_test?serverVersion=16&charset=utf8
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_PASSPHRASE: ci-only
+      AUTH_REFRESH_COOKIE_SECURE: 0
+      AUTH_REFRESH_COOKIE_SAMESITE: lax
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: ctype, curl, dom, fileinfo, gd, iconv, intl, mbstring, pdo_pgsql, redis, simplexml, xml, xmlreader, xmlwriter, zip
+          tools: composer:v2
+      - name: Validar composer.json
+        run: composer validate --strict
+      - name: Instalar dependências
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Gerar chaves JWT temporárias
+        run: |
+          mkdir -p config/jwt
+          openssl genrsa -out config/jwt/private.pem 2048
+          openssl rsa -in config/jwt/private.pem -pubout -out config/jwt/public.pem
+      - name: Preparar banco de testes
+        run: php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+      - name: Executar testes
+        run: vendor/bin/phpunit
+
+  dependency-review:
+    name: Revisão de dependências
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verificar dependências adicionadas
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
