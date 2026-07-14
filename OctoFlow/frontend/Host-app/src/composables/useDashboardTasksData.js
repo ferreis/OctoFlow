@@ -1,6 +1,5 @@
 import { computed, ref } from 'vue'
-import { usePermissions } from './usePermissions'
-import { fetchGithubProfile, fetchGithubWorkspace } from '../services/githubWorkspace'
+import { fetchGithubProfile } from '../services/githubWorkspace'
 import { fetchGithubIssuesCache, syncGithubIssues } from '../services/tasks'
 import { extractHttpMessage } from '../utils/httpErrors'
 
@@ -18,7 +17,6 @@ export function useDashboardTasksData({
   translate,
 }) {
   const profile = ref(null)
-  const workspace = ref(null)
   const issueBoard = ref(null)
   const loading = ref(false)
   const syncing = ref(false)
@@ -48,11 +46,6 @@ export function useDashboardTasksData({
   const openIssues = computed(() => issues.value.filter((issue) => issue.state !== 'CLOSED'))
   const closedIssues = computed(() => issues.value.filter((issue) => issue.state === 'CLOSED'))
 
-  const { canLoadRemoteGithubPanels } = usePermissions(currentUserRef, {
-    profile,
-    workspace,
-  })
-
   let dashboardRequestVersion = 0
   let dashboardComponentActive = true
 
@@ -70,7 +63,6 @@ export function useDashboardTasksData({
 
   function clearTasksState() {
     profile.value = null
-    workspace.value = null
     issueBoard.value = null
     loading.value = false
     syncing.value = false
@@ -93,7 +85,11 @@ export function useDashboardTasksData({
     }
 
     try {
-      const profileResponse = await fetchGithubProfile()
+      const [profileResponse, cacheResponse] = await Promise.all([
+        fetchGithubProfile(),
+        fetchGithubIssuesCache({ scope: 'all' }),
+      ])
+
       if (isRequestStale(requestVersion)) {
         return
       }
@@ -101,7 +97,6 @@ export function useDashboardTasksData({
       profile.value = profileResponse.data?.profile || null
 
       if (!workspaceReady.value) {
-        workspace.value = null
         issueBoard.value = null
 
         if (showStatus) {
@@ -115,32 +110,12 @@ export function useDashboardTasksData({
         return
       }
 
-      await loadWorkspaceContext(requestVersion)
-      if (isRequestStale(requestVersion)) {
-        return
-      }
-
-      if (!canLoadRemoteGithubPanels.value) {
-        issueBoard.value = null
-
-        if (showStatus) {
-          statusMessage.value = resolveMessage(
-            translate,
-            'dashboard.tasks.status.workspaceMissingPermissions',
-            'Workspace sem contexto suficiente para liberar analises.',
-          )
-        }
-
-        return
-      }
-
-      await loadIssueAnalytics(showStatus, requestVersion)
+      await loadIssueAnalytics(showStatus, requestVersion, cacheResponse)
     } catch (requestError) {
       if (isRequestStale(requestVersion)) {
         return
       }
 
-      workspace.value = null
       issueBoard.value = null
       errorMessage.value = extractHttpMessage(
         requestError,
@@ -157,18 +132,12 @@ export function useDashboardTasksData({
     }
   }
 
-  async function loadWorkspaceContext(requestVersion) {
-    const workspaceResponse = await fetchGithubWorkspace()
-
-    if (isRequestStale(requestVersion)) {
-      return
-    }
-
-    workspace.value = workspaceResponse.data || null
-  }
-
-  async function loadIssueAnalytics(showStatus = false, requestVersion = dashboardRequestVersion) {
-    const cacheResponse = await fetchGithubIssuesCache({ scope: 'all' })
+  async function loadIssueAnalytics(
+    showStatus = false,
+    requestVersion = dashboardRequestVersion,
+    cachedIssuesResponse = null,
+  ) {
+    const cacheResponse = cachedIssuesResponse || await fetchGithubIssuesCache({ scope: 'all' })
 
     if (isRequestStale(requestVersion)) {
       return
@@ -180,7 +149,7 @@ export function useDashboardTasksData({
     const needsRefresh = Boolean(cacheResponse.data?.cache?.needsRefresh)
 
     if (!hasItems) {
-      await syncIssueAnalytics(showStatus)
+      void syncIssueAnalytics(true, requestVersion)
       return
     }
 
@@ -193,12 +162,12 @@ export function useDashboardTasksData({
     }
 
     if (needsRefresh) {
-      void syncIssueAnalytics(false)
+      void syncIssueAnalytics(false, requestVersion)
     }
   }
 
-  async function syncIssueAnalytics(showStatus = false) {
-    const requestVersion = ++dashboardRequestVersion
+  async function syncIssueAnalytics(showStatus = false, activeRequestVersion = null) {
+    const requestVersion = activeRequestVersion ?? ++dashboardRequestVersion
 
     syncing.value = true
     errorMessage.value = ''
@@ -249,7 +218,6 @@ export function useDashboardTasksData({
 
   return {
     profile,
-    workspace,
     issueBoard,
     loading,
     syncing,

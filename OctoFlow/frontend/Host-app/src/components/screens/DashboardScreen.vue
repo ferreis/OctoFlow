@@ -1585,7 +1585,14 @@ function toggleAllDashboardContainers() {
 
       <div v-else-if="activeTab === 'tasks'" class="grid gap-5">
         <article
-          v-if="issues.length === 0 && !syncing"
+          v-if="issues.length === 0 && syncing"
+          class="dashboard-state-panel grid min-h-[220px] place-items-center rounded-[24px] border border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500"
+        >
+          {{ translateDashboard('dashboard.tasks.syncing', 'Atualizando as informações do GitHub...') }}
+        </article>
+
+        <article
+          v-else-if="issues.length === 0"
           class="dashboard-state-panel dashboard-state-empty grid gap-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50/80 p-5"
         >
           <div>
