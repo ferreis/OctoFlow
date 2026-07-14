@@ -16,6 +16,7 @@
 **/dist/
 **/dist-ssr/
 **/coverage/
+**/.install-state/
 **/.phpunit.result.cache
 **/phpunit.xml
 
