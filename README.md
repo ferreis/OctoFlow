@@ -1,7 +1,5 @@
 # OctoFlow
 
-[![CI](https://github.com/ferreis/OctoFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ferreis/OctoFlow/actions/workflows/ci.yml)
-
 O **OctoFlow** é uma aplicação web modular para organizar trabalho, integrações com GitHub e gestão financeira pessoal em uma única interface.
 
 O projeto está em desenvolvimento ativo e usa um backend Symfony, dois frontends Vue conectados por Module Federation e uma infraestrutura local baseada em Docker Compose.
