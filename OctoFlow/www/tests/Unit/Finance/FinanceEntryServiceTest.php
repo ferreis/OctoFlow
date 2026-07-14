@@ -10,6 +10,78 @@ use PHPUnit\Framework\TestCase;
 
 final class FinanceEntryServiceTest extends TestCase
 {
+    public function testReceiptCreditsBankAccountWithNegativeBalance(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->expects($this->once())
+            ->method('fetchAssociative')
+            ->willReturn([
+                'id' => 2,
+                'currentBalanceBrl' => -500.00,
+            ]);
+        $connection->expects($this->once())
+            ->method('update')
+            ->with(
+                'finance_bank_account',
+                $this->callback(function (array $updatedFields): bool {
+                    $this->assertSame(4344.33, $updatedFields['current_balance_brl']);
+
+                    return true;
+                }),
+                ['id' => 2, 'owner_id' => 5],
+            );
+        $connection->expects($this->once())
+            ->method('insert')
+            ->with(
+                'finance_bank_account_ledger',
+                $this->callback(function (array $ledgerEntry): bool {
+                    $this->assertSame('CREDIT', $ledgerEntry['movement_type']);
+                    $this->assertSame(4844.33, $ledgerEntry['amount_brl']);
+                    $this->assertSame(4344.33, $ledgerEntry['balance_after_brl']);
+
+                    return true;
+                }),
+            );
+
+        $this->applyBankAccountBalanceChange($connection, 'RECEIVABLE', 4844.33);
+    }
+
+    public function testPaymentDebitsBankAccountBelowZero(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->expects($this->once())
+            ->method('fetchAssociative')
+            ->willReturn([
+                'id' => 2,
+                'currentBalanceBrl' => -500.00,
+            ]);
+        $connection->expects($this->once())
+            ->method('update')
+            ->with(
+                'finance_bank_account',
+                $this->callback(function (array $updatedFields): bool {
+                    $this->assertSame(-600.00, $updatedFields['current_balance_brl']);
+
+                    return true;
+                }),
+                ['id' => 2, 'owner_id' => 5],
+            );
+        $connection->expects($this->once())
+            ->method('insert')
+            ->with(
+                'finance_bank_account_ledger',
+                $this->callback(function (array $ledgerEntry): bool {
+                    $this->assertSame('DEBIT', $ledgerEntry['movement_type']);
+                    $this->assertSame(100.00, $ledgerEntry['amount_brl']);
+                    $this->assertSame(-600.00, $ledgerEntry['balance_after_brl']);
+
+                    return true;
+                }),
+            );
+
+        $this->applyBankAccountBalanceChange($connection, 'PAYABLE', 100.00);
+    }
+
     public function testRefreshOverdueStatusesIncludesForecastReceivables(): void
     {
         $connection = $this->createMock(Connection::class);
@@ -76,5 +148,27 @@ final class FinanceEntryServiceTest extends TestCase
             );
 
         $this->assertSame(1, $service->refreshOverdueStatusesForAllUsers());
+    }
+
+    private function applyBankAccountBalanceChange(Connection $connection, string $entryDirection, float $amountBrl): void
+    {
+        $service = new FinanceEntryService(
+            $connection,
+            new FinanceCatalogService($connection),
+            new FinanceRecurringService($connection),
+        );
+        $balanceChangeMethod = new \ReflectionMethod(FinanceEntryService::class, 'applyBankAccountBalanceChange');
+        $balanceChangeMethod->setAccessible(true);
+        $balanceChangeMethod->invoke(
+            $service,
+            5,
+            2,
+            9,
+            10,
+            $entryDirection,
+            $amountBrl,
+            new \DateTimeImmutable('2026-07-14 10:00:00'),
+            false,
+        );
     }
 }

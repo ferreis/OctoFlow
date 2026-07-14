@@ -2,15 +2,9 @@
 import {
   computed,
   nextTick,
-  onActivated,
-  onBeforeMount,
-  onBeforeUnmount,
-  onBeforeUpdate,
-  onDeactivated,
   onMounted,
-  onUnmounted,
-  onUpdated,
   ref,
+  watch,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useScopedI18n } from '../../composables/useScopedI18n'
@@ -20,10 +14,6 @@ const appRouter = useRouter()
 const appRoute = useRoute()
 const { translateScoped } = useScopedI18n('financeModule.layout')
 
-const activeRouteNameBeforeDomUpdate = ref('')
-const shouldFocusCurrentTabAfterDomUpdate = ref(false)
-const keyboardNavigationEnabled = ref(true)
-const financeNavbarIsActive = ref(false)
 const navigationElementRef = ref(null)
 const tabButtonByRouteName = new Map()
 
@@ -79,7 +69,7 @@ function navigateToTab(tabItem) {
     return
   }
 
-  appRouter.push({ name: tabItem.routeName })
+  void appRouter.push({ name: tabItem.routeName })
 }
 
 function focusCurrentTab() {
@@ -109,14 +99,6 @@ function navigateUsingKeyboard(direction) {
 }
 
 function handleTabsKeyboardNavigation(keyboardEvent) {
-  if (!keyboardNavigationEnabled.value) {
-    return
-  }
-
-  if (!navigationElementRef.value || !navigationElementRef.value.contains(keyboardEvent.target)) {
-    return
-  }
-
   if (keyboardEvent.key === 'ArrowRight') {
     keyboardEvent.preventDefault()
     navigateUsingKeyboard(1)
@@ -129,77 +111,22 @@ function handleTabsKeyboardNavigation(keyboardEvent) {
   }
 }
 
-onBeforeMount(() => {
-  if (!Object.values(FINANCE_ROUTE_NAMES).includes(currentRouteName.value)) {
-    void appRouter.replace({ name: FINANCE_ROUTE_NAMES.accounts })
-  }
-})
-
 onMounted(() => {
-  financeNavbarIsActive.value = true
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('keydown', handleTabsKeyboardNavigation)
-  }
-
   void nextTick(() => {
     focusCurrentTab()
   })
 })
 
-onBeforeUpdate(() => {
-  const routeNameBeforeDomUpdate = activeRouteNameBeforeDomUpdate.value
-  const nextRouteName = currentRouteName.value
-
-  if (
-    routeNameBeforeDomUpdate !== ''
-    && routeNameBeforeDomUpdate !== nextRouteName
-  ) {
-    shouldFocusCurrentTabAfterDomUpdate.value = true
-  }
-
-  activeRouteNameBeforeDomUpdate.value = nextRouteName
-})
-
-onUpdated(() => {
-  if (!shouldFocusCurrentTabAfterDomUpdate.value) {
+watch(currentRouteName, (nextRouteName) => {
+  if (!Object.values(FINANCE_ROUTE_NAMES).includes(nextRouteName)) {
+    void appRouter.replace({ name: FINANCE_ROUTE_NAMES.accounts })
     return
   }
 
-  shouldFocusCurrentTabAfterDomUpdate.value = false
   void nextTick(() => {
     focusCurrentTab()
   })
-})
-
-onActivated(() => {
-  financeNavbarIsActive.value = true
-  keyboardNavigationEnabled.value = true
-
-  void nextTick(() => {
-    focusCurrentTab()
-  })
-})
-
-onDeactivated(() => {
-  financeNavbarIsActive.value = false
-  keyboardNavigationEnabled.value = false
-})
-
-onBeforeUnmount(() => {
-  financeNavbarIsActive.value = false
-  keyboardNavigationEnabled.value = false
-  shouldFocusCurrentTabAfterDomUpdate.value = false
-})
-
-onUnmounted(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('keydown', handleTabsKeyboardNavigation)
-  }
-
-  activeRouteNameBeforeDomUpdate.value = ''
-  tabButtonByRouteName.clear()
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -223,6 +150,7 @@ onUnmounted(() => {
       class="finance-header-nav"
       role="tablist"
       :aria-label="translateScoped('tabs.navigationAriaLabel', 'Navegação do módulo financeiro')"
+      @keydown="handleTabsKeyboardNavigation"
     >
       <button
         v-for="tabItem in tabItems"

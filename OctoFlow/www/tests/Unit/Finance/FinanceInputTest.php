@@ -37,6 +37,12 @@ final class FinanceInputTest extends TestCase
         FinanceInput::normalizeMoney('-50', 'amountBrl');
     }
 
+    public function testNormalizeSignedMoneyAcceptsNegativeBankBalance(): void
+    {
+        $this->assertSame(-125.75, FinanceInput::normalizeSignedMoney('-125,75', 'currentBalanceBrl'));
+        $this->assertSame(-12575, FinanceInput::signedMoneyToCents('-125,75', 'currentBalanceBrl'));
+    }
+
     private static function getExpectedNegativeMessage(): string
     {
         return 'O valor nao pode ser negativo.';

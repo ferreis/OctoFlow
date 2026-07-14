@@ -38,13 +38,13 @@ function onOverlayClick() {
 
 <template>
   <div v-if="isOpen" class="app-modal-overlay" role="dialog" aria-modal="true" @click.self="onOverlayClick">
-    <div class="app-modal-frame" style="max-width: 56rem; width: 100%; padding: 24px;">
+    <div class="app-modal-frame finance-modal-frame">
       <header class="finance-modal-header">
         <h3>{{ formTitle }}</h3>
         <p>{{ translateScoped('modal.subtitle', 'Os dados serão aplicados nas listagens desta aba.') }}</p>
       </header>
 
-      <form class="finance-form-grid" @submit.prevent="emit('submit')">
+      <form class="finance-modal-form" @submit.prevent="emit('submit')">
         <label>
           <span>{{ translateScoped('modal.entry.title', 'Título') }}</span>
           <input v-model="entryForm.title" type="text" :disabled="processing || !canWrite" required>
@@ -90,7 +90,7 @@ function onOverlayClick() {
           <button type="button" class="finance-inline-action" :disabled="processing" @click="emit('close')">
             {{ translateScoped('actions.cancel', 'Cancelar') }}
           </button>
-          <button ref="accountActionPrimaryButtonRef" class="finance-action-button" type="submit" :disabled="processing || !canWrite">
+          <button class="finance-action-button" type="submit" :disabled="processing || !canWrite">
             {{ submitLabel }}
           </button>
         </div>

@@ -13,6 +13,7 @@ import {
   reactive,
   ref,
 } from 'vue'
+import FinancePageHeader from '../../components/finance/FinancePageHeader.vue'
 import { FINANCE_EXPORT_TYPE_OPTIONS } from '../../constants/financeTerms'
 import { useFinancePermissions } from '../../composables/useFinancePermissions'
 import { useNotification } from '../../composables/useNotification'
@@ -820,6 +821,12 @@ onErrorCaptured((error) => {
 
 <template>
   <section class="finance-section finance-dashboard-section">
+    <FinancePageHeader
+      eyebrow="Análise"
+      title="Relatórios financeiros"
+      description="Acompanhe o fluxo de caixa, as categorias e os indicadores que mostram a evolução do período."
+    />
+
     <div class="finance-form-actions">
       <button type="button" class="finance-inline-action" :disabled="refreshingReports" @click="refreshReportsAndGenerateRecurring">
         {{ refreshingReports

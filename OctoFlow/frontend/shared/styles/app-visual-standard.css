@@ -348,9 +348,13 @@ select.app-field-control optgroup {
 }
 
 .app-modal-overlay {
+  align-items: center;
   background: var(--app-modal-overlay-bg);
   backdrop-filter: blur(4px);
+  display: grid;
   inset: 0;
+  justify-items: center;
+  overflow-y: auto;
   padding: calc(1.5rem * var(--app-layout-density-factor, 1)) calc(1rem * var(--app-layout-density-factor, 1));
   position: fixed;
   z-index: 50;

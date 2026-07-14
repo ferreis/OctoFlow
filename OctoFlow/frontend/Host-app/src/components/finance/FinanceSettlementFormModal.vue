@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useScopedI18n } from '../../composables/useScopedI18n'
 
 const props = defineProps({
@@ -15,9 +15,23 @@ const props = defineProps({
   canWrite: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['submit', 'close', 'update:settlementForm', 'search-entries'])
+const emit = defineEmits(['submit', 'close', 'update:settlementForm', 'search-entries', 'select-entry'])
 
 const { translateScoped } = useScopedI18n('financeModule.accountsView')
+const searchSelectElement = ref(null)
+const entrySearchTerm = ref('')
+const entryOptionsOpen = ref(false)
+
+const shouldShowEntryOptions = computed(() => entryOptionsOpen.value)
+const selectedEntryLabel = computed(() => String(props.settlementForm.entrySearch || '').trim())
+
+watch(
+  () => props.settlementForm.entrySearch,
+  (nextEntrySearch) => {
+    entrySearchTerm.value = String(nextEntrySearch || '')
+  },
+  { immediate: true },
+)
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 }).format(Number(value || 0))
@@ -33,31 +47,111 @@ function formatSettlementEntryOptionLabel(entryItem) {
 function onOverlayClick() {
   if (!props.processing) emit('close')
 }
+
+function openEntryOptions() {
+  entryOptionsOpen.value = true
+  entrySearchTerm.value = ''
+  emit('search-entries', '', false)
+}
+
+function searchEntries() {
+  emit('search-entries', entrySearchTerm.value, true)
+}
+
+function selectEntry(entryItem) {
+  entryOptionsOpen.value = false
+  emit('select-entry', entryItem)
+}
+
+function closeEntryOptions() {
+  entryOptionsOpen.value = false
+}
+
+function closeEntryOptionsWhenClickingOutside(pointerEvent) {
+  const searchSelectContainer = searchSelectElement.value
+  const clickedElement = pointerEvent.target
+
+  if (!(searchSelectContainer instanceof HTMLElement) || !(clickedElement instanceof Node)) {
+    return
+  }
+
+  if (!searchSelectContainer.contains(clickedElement)) {
+    closeEntryOptions()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', closeEntryOptionsWhenClickingOutside)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', closeEntryOptionsWhenClickingOutside)
+})
 </script>
 
 <template>
   <div v-if="isOpen" class="app-modal-overlay" role="dialog" aria-modal="true" @click.self="onOverlayClick">
-    <div class="app-modal-frame" style="max-width: 56rem; width: 100%; padding: 24px;">
+    <div class="app-modal-frame finance-modal-frame finance-modal-frame--with-search-select">
       <header class="finance-modal-header">
         <h3>{{ translateScoped('modal.titles.settlement', 'Baixa de lançamento') }}</h3>
         <p>{{ translateScoped('modal.subtitle', 'Os dados serão aplicados nas listagens desta aba.') }}</p>
       </header>
 
-      <form class="finance-form-grid" @submit.prevent="emit('submit')">
-        <label v-if="settlementForm.settlementType === 'PAYMENT'">
+      <form class="finance-modal-form" @submit.prevent="emit('submit')">
+        <div
+          v-if="settlementForm.settlementType === 'PAYMENT'"
+          ref="searchSelectElement"
+          class="finance-search-select"
+          :class="{ 'is-open': shouldShowEntryOptions }"
+          @keydown.esc.stop="closeEntryOptions"
+        >
           <span>{{ translateScoped('modal.settlement.entry', 'Lançamento') }}</span>
-          <input
-            v-model="settlementForm.entrySearch"
-            type="search"
-            list="finance-settlement-entry-options"
-            :placeholder="loadingEntries ? translateScoped('actions.loading', 'Carregando...') : translateScoped('modal.settlement.entrySearchPlaceholder', 'Digite para buscar...')"
+          <button
+            type="button"
+            class="finance-search-select-trigger"
+            role="combobox"
+            :aria-expanded="shouldShowEntryOptions"
+            aria-controls="finance-settlement-entry-options"
             :disabled="processing || !canWrite"
-            autocomplete="off"
+            @click="openEntryOptions"
           >
-          <datalist id="finance-settlement-entry-options">
-            <option v-for="entryItem in availableSettlementEntries" :key="entryItem.id" :value="formatSettlementEntryOptionLabel(entryItem)" />
-          </datalist>
-        </label>
+            <span class="finance-search-select-value" :class="{ 'is-placeholder': selectedEntryLabel === '' }">
+              {{ selectedEntryLabel || translateScoped('modal.settlement.selectEntry', 'Selecione um lançamento') }}
+            </span>
+            <span class="finance-search-select-chevron" aria-hidden="true">⌄</span>
+          </button>
+
+          <div v-if="shouldShowEntryOptions" id="finance-settlement-entry-options" class="finance-search-select-options" role="listbox">
+            <label class="finance-search-select-filter">
+              <span class="sr-only">{{ translateScoped('modal.settlement.entrySearch', 'Buscar lançamento') }}</span>
+              <input
+                v-model="entrySearchTerm"
+                type="search"
+                :placeholder="loadingEntries ? translateScoped('actions.loading', 'Buscando lançamentos...') : translateScoped('modal.settlement.entrySearchPlaceholder', 'Digite para buscar...')"
+                :disabled="processing || !canWrite"
+                autocomplete="off"
+                @input="searchEntries"
+              >
+            </label>
+            <p v-if="loadingEntries" class="finance-search-select-state">
+              {{ translateScoped('actions.loading', 'Buscando lançamentos...') }}
+            </p>
+            <p v-else-if="!availableSettlementEntries.length" class="finance-search-select-state">
+              {{ translateScoped('modal.settlement.noEntriesFound', 'Nenhum lançamento encontrado.') }}
+            </p>
+            <button
+              v-for="entryItem in availableSettlementEntries"
+              :key="entryItem.id"
+              type="button"
+              class="finance-search-select-option"
+              role="option"
+              @click="selectEntry(entryItem)"
+            >
+              <strong>{{ entryItem.title }}</strong>
+              <span>{{ formatSettlementEntryOptionLabel(entryItem) }}</span>
+            </button>
+          </div>
+        </div>
 
         <label v-if="settlementForm.settlementType === 'ADVANCE' || settlementForm.settlementType === 'DISCOUNT'">
           <span>{{ translateScoped('modal.settlement.installmentPlan', 'Plano de parcelamento') }}</span>
@@ -94,7 +188,7 @@ function onOverlayClick() {
           </select>
         </label>
 
-        <label v-if="settlementForm.settlementType === 'PAYMENT'" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+        <label v-if="settlementForm.settlementType === 'PAYMENT'" class="finance-modal-checkbox">
           <input v-model="settlementForm.useCreditCard" type="checkbox" :disabled="processing || !canWrite">
           <span>{{ translateScoped('modal.settlement.useCreditCard', 'Baixa de valor em Crédito') }}</span>
         </label>

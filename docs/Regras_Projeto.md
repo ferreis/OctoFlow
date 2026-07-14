@@ -6,7 +6,7 @@
 |---|---|
 | Nome do projeto | OctoFlow |
 | Sigla | OF |
-| Versão | 1.0 |
+| Versão | 1.2 |
 | Responsável | Rafael Fernando dos Reis Mecabô |
 | Data de criação | 10/03/2026 |
 | Última atualização | 14/07/2026 |
@@ -67,6 +67,8 @@ O OctoFlow é uma aplicação web para centralizar a organização pessoal de ta
 | `RN-003` | Regra de Negócio | Integridade financeira | Todo lançamento financeiro deve respeitar os dados e as categorias exigidas pelo seu tipo. | Ao criar ou editar um lançamento. | O sistema deve aceitar apenas registros válidos e consistentes para cálculo e relatório. | Tipos que não exigirem categoria, conforme regra específica do domínio. | Alta | Implementada |
 | `RN-004` | Regra de Negócio | Tarefas independentes | Cada tarefa pertence ao usuário que a criou e pode ter seu estado alterado sem afetar tarefas de outros usuários. | Ao criar, editar, concluir ou excluir uma tarefa. | A alteração deve ser aplicada somente à tarefa autorizada. | N/A | Alta | Implementada |
 | `RN-005` | Regra de Negócio | Integração com GitHub | Recursos do GitHub só podem ser usados com credenciais e permissões válidas para a integração. | Ao carregar workspace, projetos ou issues do GitHub. | O sistema deve exibir apenas as operações autorizadas. | Indisponibilidade temporária do GitHub. | Média | Implementada |
+| `RN-006` | Regra de Negócio | Saldo bancário e baixa financeira | O saldo de uma conta bancária pode ser negativo para representar saldo devedor. Valores de lançamentos, baixas e saldos restantes devem ser maiores que zero ou iguais a zero conforme a operação. | Ao cadastrar ou editar uma conta, ou registrar uma baixa. | Recebimentos devem creditar e pagamentos devem debitar a conta, inclusive quando o saldo atual for negativo. A baixa de receita deve ser identificada como recebimento. | Ajustes de parcelamento seguem suas regras próprias. | Alta | Implementada |
+| `RN-007` | Regra de Negócio | Ciclo de vida financeiro | Lançamentos e parcelamentos devem ser cancelados, preservando o histórico e revertendo movimentos vinculados quando aplicável. Contas, categorias, tipos e regras recorrentes devem ser inativados antes de qualquer exclusão definitiva. | Ao encerrar, remover ou reutilizar um cadastro financeiro. | Itens inativos permanecem no histórico e não podem ser escolhidos em novos cadastros. Exclusão definitiva de tipo recorrente só é permitida sem vínculos. Simulações e cotações são históricos imutáveis. | Relatórios e exportações são apenas consulta, geração ou importação controlada. | Alta | Implementada |
 | `RS-001` | Regra de Sistema | Renovação segura de sessão | O refresh token deve ser armazenado em cookie `HttpOnly` e rotacionado a cada renovação de sessão. | Ao restaurar a sessão ou receber resposta `401` em rota protegida. | O sistema deve emitir novos tokens, revogar o token anterior e repetir a requisição original somente uma vez. | Sessão sem refresh token válido. | Alta | Implementada |
 | `RS-002` | Regra de Sistema | Detecção de reuso de token | O reuso de refresh token revogado deve invalidar a família de tokens relacionada. | Ao identificar token revogado em tentativa de refresh. | O sistema deve encerrar a sessão relacionada e exigir nova autenticação. | N/A | Alta | Implementada |
 | `RS-003` | Regra de Sistema | Limite de sessões | Cada usuário pode manter até 10 sessões ativas por refresh token. | Ao criar uma nova sessão acima do limite. | Os tokens ativos mais antigos devem ser revogados. | N/A | Média | Implementada |
@@ -87,6 +89,8 @@ O OctoFlow é uma aplicação web para centralizar a organização pessoal de ta
 | `CA-006` | `RS-002` | Revogação por reuso | Um refresh token já foi rotacionado ou revogado. | Ele é usado novamente. | O sistema deve revogar a família de tokens e solicitar novo login. | Pendente |
 | `CA-007` | `RS-004` | Responsabilidades do remote | O host carrega um componente remoto. | O componente é renderizado. | Ele deve receber dados e callbacks do host sem controlar sessão, autenticação ou autorização. | Pendente |
 | `CA-008` | `RS-005` | Validação de permissão no servidor | Um usuário manipula a interface ou chama a API diretamente. | Ele solicita recurso sem autorização. | O backend deve negar a requisição, independentemente do estado do frontend. | Pendente |
+| `CA-009` | `RN-006` | Baixa de recebimento com saldo negativo | Uma conta bancária possui saldo negativo e existe um lançamento de receita em aberto. | O usuário registra a baixa com valor positivo e seleciona a conta. | O sistema deve concluir o recebimento, creditar o saldo e exibir a confirmação de recebimento. | Pendente |
+| `CA-010` | `RN-007` | Inativação de cadastro financeiro | Uma categoria, conta, tipo ou regra recorrente está ativo e possui histórico vinculado. | O usuário solicita a inativação. | O item deve permanecer visível no histórico, deixar de aparecer em novos selects e poder ser reativado. | Pendente |
 
 ---
 
@@ -98,6 +102,8 @@ O OctoFlow é uma aplicação web para centralizar a organização pessoal de ta
 | `RN-002` | Serviços e controladores protegidos da API | `CA-002` | Teste de autorização por proprietário | Implementado |
 | `RN-003` | Módulo financeiro | `CA-003` | Testes unitários de validação financeira | Implementado |
 | `RN-004` | Módulo de tarefas | `CA-004` | Testes unitários de tarefas | Implementado |
+| `RN-006` | Contas bancárias e baixas financeiras | `CA-009` | Testes unitários de valores monetários com sinal e baixa de recebimento | Implementado |
+| `RN-007` | CRUD financeiro e catálogos | `CA-010` | Testes de inativação, reativação e filtros de cadastros ativos | Implementado |
 | `RS-001` | Gerenciador de refresh token e store de sessão | `CA-005` | Testes unitários de access e refresh token | Implementado |
 | `RS-002` | Gerenciador de refresh token | `CA-006` | Teste de detecção de reuso de token | Implementado |
 | `RS-004` | Host App e Components App | `CA-007` | Validação de integração federada | Em teste |
@@ -110,3 +116,5 @@ O OctoFlow é uma aplicação web para centralizar a organização pessoal de ta
 | Versão | Data | Responsável | Alteração |
 |---|---|---|---|
 | 1.0 | 14/07/2026 | Rafael Fernando dos Reis Mecabô | Criação inicial do documento com escopo, regras e critérios do OctoFlow. |
+| 1.1 | 14/07/2026 | Rafael Fernando dos Reis Mecabô | Registro da regra de saldo bancário negativo e baixa de recebimento. |
+| 1.2 | 14/07/2026 | Rafael Fernando dos Reis Mecabô | Padronização do ciclo de vida financeiro, CRUD por inativação e interface operacional compacta. |

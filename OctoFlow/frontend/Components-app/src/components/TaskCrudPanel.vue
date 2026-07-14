@@ -12,155 +12,184 @@ const props = defineProps({
   },
 })
 
-const activeAction = ref(null)
+const TaskListPanel = defineAsyncComponent(() => import('./task/TaskListPanel.vue'))
+const TaskCreatePanel = defineAsyncComponent(() => import('./task/TaskCreatePanel.vue'))
+const TaskViewPanel = defineAsyncComponent(() => import('./task/TaskViewPanel.vue'))
+const TaskEditPanel = defineAsyncComponent(() => import('./task/TaskEditPanel.vue'))
+
+const activeMode = ref('')
 const selectedTaskId = ref(null)
-const mountKey = ref(0)
-const panelError = ref('')
-const panelStatus = ref('')
+const listRefreshKey = ref(0)
+const feedbackMessage = ref('')
+const feedbackTone = ref('success')
 
-const actionComponents = {
-  list: defineAsyncComponent(() => import('./task/TaskListPanel.vue')),
-  create: defineAsyncComponent(() => import('./task/TaskCreatePanel.vue')),
-  view: defineAsyncComponent(() => import('./task/TaskViewPanel.vue')),
-  edit: defineAsyncComponent(() => import('./task/TaskEditPanel.vue')),
-}
-
-const currentComponent = computed(() => {
-  if (!activeAction.value) {
-    return null
+const detailsComponent = computed(() => {
+  if (activeMode.value === 'create') {
+    return TaskCreatePanel
   }
 
-  return actionComponents[activeAction.value] || null
+  if (activeMode.value === 'view') {
+    return TaskViewPanel
+  }
+
+  if (activeMode.value === 'edit') {
+    return TaskEditPanel
+  }
+
+  return null
 })
 
-const currentComponentProps = computed(() => {
-  const baseProps = {
-    request: props.request,
-    endpoint: props.endpoint,
+const detailsTitle = computed(() => {
+  const titleByMode = {
+    create: 'Nova tarefa',
+    view: 'Detalhes da tarefa',
+    edit: 'Editar tarefa',
   }
 
-  if (activeAction.value === 'list') {
-    return {
-      ...baseProps,
-      selectedTaskId: selectedTaskId.value,
-    }
-  }
-
-  if (activeAction.value === 'view' || activeAction.value === 'edit') {
-    return {
-      ...baseProps,
-      taskId: selectedTaskId.value,
-    }
-  }
-
-  return baseProps
+  return titleByMode[activeMode.value] || ''
 })
 
-function openAction(action) {
-  if ((action === 'view' || action === 'edit') && !selectedTaskId.value) {
-    panelError.value = 'Selecione uma tarefa na lista antes de abrir View ou Editar.'
-    return
-  }
+const detailsProps = computed(() => ({
+  request: props.request,
+  endpoint: props.endpoint,
+  ...(activeMode.value === 'view' || activeMode.value === 'edit'
+    ? { taskId: selectedTaskId.value }
+    : {}),
+}))
 
-  panelError.value = ''
-  panelStatus.value = ''
-  activeAction.value = action
-  mountKey.value += 1
-}
-
-function closeAction() {
-  if (!activeAction.value) {
-    return
-  }
-
-  activeAction.value = null
-  mountKey.value += 1
-  panelStatus.value = 'Componente encerrado e destruído. Clique em uma ação para montar novamente.'
-}
-
-function onTaskSelected(taskId) {
+function selectTask(taskId) {
   selectedTaskId.value = taskId
-  panelError.value = ''
+  feedbackMessage.value = ''
 }
 
-function onTaskDeleted(taskId) {
+function openCreate() {
+  activeMode.value = 'create'
+  feedbackMessage.value = ''
+}
+
+function openTaskDetails(mode) {
+  if (!selectedTaskId.value) {
+    feedbackTone.value = 'danger'
+    feedbackMessage.value = 'Selecione uma tarefa na lista para continuar.'
+    return
+  }
+
+  activeMode.value = mode
+  feedbackMessage.value = ''
+}
+
+function closeDetails() {
+  activeMode.value = ''
+}
+
+function refreshTaskList() {
+  listRefreshKey.value += 1
+}
+
+function handleTaskCreated(task) {
+  selectedTaskId.value = task?.id || null
+  activeMode.value = task?.id ? 'view' : ''
+  feedbackTone.value = 'success'
+  feedbackMessage.value = 'Tarefa criada com sucesso.'
+  refreshTaskList()
+}
+
+function handleTaskUpdated(task) {
+  selectedTaskId.value = task?.id || selectedTaskId.value
+  activeMode.value = 'view'
+  feedbackTone.value = 'success'
+  feedbackMessage.value = 'Alterações salvas.'
+  refreshTaskList()
+}
+
+function handleTaskDeleted(taskId) {
   if (selectedTaskId.value === taskId) {
     selectedTaskId.value = null
   }
+
+  activeMode.value = ''
+  feedbackTone.value = 'success'
+  feedbackMessage.value = 'Tarefa removida.'
+  refreshTaskList()
 }
 
-function onTaskCreated(task) {
-  if (task?.id) {
-    selectedTaskId.value = task.id
+function handleTaskStatus(message) {
+  if (typeof message !== 'string' || message.trim() === '') {
+    return
   }
-}
 
-function onTaskUpdated(task) {
-  if (task?.id) {
-    selectedTaskId.value = task.id
-  }
-}
-
-function onStatus(message) {
-  if (typeof message === 'string' && message.trim() !== '') {
-    panelStatus.value = message
-  }
+  feedbackTone.value = 'success'
+  feedbackMessage.value = message
+  refreshTaskList()
 }
 </script>
 
 <template>
-  <article class="task-shell">
-    <header class="task-shell-header">
-      <p class="task-shell-kicker">Componente remoto de task</p>
-      <h3 class="task-shell-title">Ações sob demanda</h3>
-      <p class="task-shell-copy">
-        Lista, create, view e edit são montados apenas quando você clica na ação correspondente.
-      </p>
-      <p class="task-shell-copy">
-        Ao fechar ou trocar de ação, o componente atual é destruído.
-      </p>
+  <section class="task-workspace" aria-label="Gerenciamento de tarefas">
+    <header class="task-workspace-header">
+      <div>
+        <p class="task-workspace-eyebrow">Organização</p>
+        <h2 class="task-workspace-title">Tarefas</h2>
+        <p class="task-workspace-description">Selecione uma tarefa para consultar ou editar. Crie novas tarefas sem perder o contexto da lista.</p>
+      </div>
+
+      <button type="button" class="task-panel-button task-panel-button--primary" @click="openCreate">
+        Nova tarefa
+      </button>
     </header>
 
-    <div class="task-shell-toolbar">
-      <button type="button" class="task-panel-button task-panel-button--primary" @click="openAction('list')">Lista</button>
-      <button type="button" class="task-panel-button task-panel-button--primary" @click="openAction('create')">Create</button>
-      <button type="button" class="task-panel-button task-panel-button--primary" @click="openAction('view')">View</button>
-      <button type="button" class="task-panel-button task-panel-button--primary" @click="openAction('edit')">Edit</button>
-      <button type="button" class="task-panel-button task-panel-button--secondary" @click="closeAction">Fechar componente</button>
-    </div>
-
-    <p class="task-shell-selected">
-      <strong>Tarefa selecionada:</strong>
-      <span>{{ selectedTaskId || 'nenhuma' }}</span>
+    <p
+      v-if="feedbackMessage"
+      class="app-feedback task-panel-feedback"
+      :class="feedbackTone === 'danger' ? 'app-feedback--danger' : 'app-feedback--success'"
+      role="status"
+    >
+      {{ feedbackMessage }}
     </p>
 
-    <p v-if="panelError" class="app-feedback app-feedback--danger task-panel-feedback">{{ panelError }}</p>
-    <p v-if="panelStatus" class="app-feedback app-feedback--success task-panel-feedback">{{ panelStatus }}</p>
+    <div class="task-workspace-grid" :class="{ 'has-details': detailsComponent }">
+      <div class="task-workspace-list">
+        <Suspense>
+          <template #default>
+            <TaskListPanel
+              :key="listRefreshKey"
+              :request="request"
+              :endpoint="endpoint"
+              :selected-task-id="selectedTaskId"
+              @select-task="selectTask"
+              @open-view="openTaskDetails('view')"
+              @open-edit="openTaskDetails('edit')"
+              @task-deleted="handleTaskDeleted"
+              @task-status="handleTaskStatus"
+            />
+          </template>
+          <template #fallback>
+            <p class="task-panel-empty">Carregando tarefas...</p>
+          </template>
+        </Suspense>
+      </div>
 
-    <div class="task-shell-mount">
-      <p v-if="!currentComponent" class="task-panel-empty">
-        Nenhum componente ativo. Clique em um botão para montar um componente de task.
-      </p>
+      <aside v-if="detailsComponent" class="task-workspace-details" aria-live="polite">
+        <header class="task-workspace-details-header">
+          <h3>{{ detailsTitle }}</h3>
+          <button type="button" class="task-workspace-close" aria-label="Fechar painel" @click="closeDetails">×</button>
+        </header>
 
-      <Suspense v-else>
-        <template #default>
-          <component
-            :is="currentComponent"
-            :key="`${activeAction}-${mountKey}`"
-            v-bind="currentComponentProps"
-            @select-task="onTaskSelected"
-            @open-view="openAction('view')"
-            @open-edit="openAction('edit')"
-            @task-created="onTaskCreated"
-            @task-updated="onTaskUpdated"
-            @task-deleted="onTaskDeleted"
-            @task-status="onStatus"
-          />
-        </template>
-        <template #fallback>
-          <p class="task-panel-empty">Carregando componente de task...</p>
-        </template>
-      </Suspense>
+        <Suspense>
+          <template #default>
+            <component
+              :is="detailsComponent"
+              v-bind="detailsProps"
+              @task-created="handleTaskCreated"
+              @task-updated="handleTaskUpdated"
+              @task-status="handleTaskStatus"
+            />
+          </template>
+          <template #fallback>
+            <p class="task-panel-empty">Carregando painel...</p>
+          </template>
+        </Suspense>
+      </aside>
     </div>
-  </article>
+  </section>
 </template>

@@ -1264,7 +1264,7 @@ final class FinanceEntryService
         bool $isReversal,
     ): void {
         $bankAccount = $this->financeCatalogService->getBankAccountById($ownerId, $bankAccountId);
-        $currentBalanceCents = FinanceInput::moneyToCents($bankAccount['currentBalanceBrl'] ?? 0, 'currentBalanceBrl');
+        $currentBalanceCents = FinanceInput::signedMoneyToCents($bankAccount['currentBalanceBrl'] ?? 0, 'currentBalanceBrl');
         $amountCents = FinanceInput::moneyToCents($amount, 'amountBrl');
         $amount = FinanceInput::moneyFromCents($amountCents);
 

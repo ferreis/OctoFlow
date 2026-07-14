@@ -16,6 +16,8 @@ import {
 } from 'vue'
 import { storeToRefs } from 'pinia'
 import { FINANCE_BANK_ACCOUNT_TYPE_OPTIONS } from '../../constants/financeTerms'
+import FinancePageHeader from '../../components/finance/FinancePageHeader.vue'
+import FinancePagination from '../../components/finance/FinancePagination.vue'
 import { useFinancePermissions } from '../../composables/useFinancePermissions'
 import { useNotification } from '../../composables/useNotification'
 import { useScopedI18n } from '../../composables/useScopedI18n'
@@ -282,6 +284,12 @@ onErrorCaptured((error) => {
 
 <template>
   <section class="finance-section">
+    <FinancePageHeader
+      eyebrow="Patrimônio"
+      title="Contas bancárias"
+      description="Cadastre suas contas e acompanhe os saldos que alimentam seus lançamentos."
+    />
+
     <article class="finance-panel">
       <header>
         <h3>
@@ -405,13 +413,13 @@ onErrorCaptured((error) => {
                 </button>
                 <button
                   type="button"
-                  class="finance-inline-action finance-inline-action-danger"
+                  class="finance-inline-action"
                   :disabled="isSavingBankAccount || !canWriteFinance"
                   @click="toggleAccountStatus(account)"
                 >
                   {{ account.isActive === false
-                    ? translateScoped('actions.activate', 'Ativar')
-                    : translateScoped('actions.deactivate', 'Desativar') }}
+                    ? translateScoped('actions.activate', 'Reativar')
+                    : translateScoped('actions.deactivate', 'Inativar') }}
                 </button>
               </td>
             </tr>
@@ -425,29 +433,15 @@ onErrorCaptured((error) => {
         :description="translateScoped('table.empty.description', 'Cadastre sua primeira conta para começar.')"
       />
 
-      <div v-if="totalPages > 1" class="finance-pagination">
-        <span class="finance-pagination-summary">
-          {{ translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: currentPage, totalPages }) }}
-        </span>
-        <div class="finance-pagination-actions">
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="currentPage <= 1"
-            @click="currentPage--"
-          >
-            {{ translateScoped('pagination.previous', 'Anterior') }}
-          </button>
-          <button
-            type="button"
-            class="finance-inline-action"
-            :disabled="currentPage >= totalPages"
-            @click="currentPage++"
-          >
-            {{ translateScoped('pagination.next', 'Próxima') }}
-          </button>
-        </div>
-      </div>
+      <FinancePagination
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        :summary="translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: currentPage, totalPages })"
+        :previous-label="translateScoped('pagination.previous', 'Anterior')"
+        :next-label="translateScoped('pagination.next', 'Próxima')"
+        @previous="currentPage--"
+        @next="currentPage++"
+      />
     </article>
   </section>
 </template>

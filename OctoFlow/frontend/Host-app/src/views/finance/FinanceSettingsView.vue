@@ -16,6 +16,8 @@ import {
 } from 'vue'
 import { storeToRefs } from 'pinia'
 import AppConfirmDialog from '../../components/shared/AppConfirmDialog.vue'
+import FinancePageHeader from '../../components/finance/FinancePageHeader.vue'
+import FinancePagination from '../../components/finance/FinancePagination.vue'
 import { useFinancePermissions } from '../../composables/useFinancePermissions'
 import { useNotification } from '../../composables/useNotification'
 import { useScopedI18n } from '../../composables/useScopedI18n'
@@ -287,6 +289,31 @@ async function submitCategory() {
   }
 }
 
+async function toggleCategoryStatus(category) {
+  const categoryId = sanitizeIdentifier(category?.id)
+  if (categoryId === '' || submittingCategory.value || !canWriteFinance.value) {
+    return
+  }
+
+  submittingCategory.value = true
+
+  try {
+    const shouldActivate = category?.isActive === false
+    await updateFinanceCategory(categoryId, { isActive: shouldActivate })
+    notifyUser(
+      shouldActivate
+        ? translateScoped('notifications.categoryActivated', 'Categoria reativada com sucesso.')
+        : translateScoped('notifications.categoryInactivated', 'Categoria inativada com sucesso.'),
+      'success',
+    )
+    await financeStore.loadCatalogs(true)
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.categoryStatusError', 'Erro ao alterar o status da categoria.')), 'error')
+  } finally {
+    submittingCategory.value = false
+  }
+}
+
 async function submitRecurringType() {
   if (!canWriteFinance.value) {
     notifyUser(translateScoped('notifications.writeDenied', 'Você não possui permissão para alterar tipos recorrentes.'), 'warning')
@@ -319,6 +346,31 @@ async function submitRecurringType() {
     await financeStore.reloadRecurringData()
   } catch (error) {
     notifyUser(extractHttpMessage(error, translateScoped('notifications.recurringSaveError', 'Erro ao salvar tipo recorrente.')), 'error')
+  } finally {
+    submittingRecurringType.value = false
+  }
+}
+
+async function toggleRecurringTypeStatus(recurringType) {
+  const recurringTypeId = sanitizeIdentifier(recurringType?.id)
+  if (recurringTypeId === '' || submittingRecurringType.value || !canWriteFinance.value) {
+    return
+  }
+
+  submittingRecurringType.value = true
+
+  try {
+    const shouldActivate = recurringType?.isActive === false
+    await updateFinanceRecurringType(recurringTypeId, { isActive: shouldActivate })
+    notifyUser(
+      shouldActivate
+        ? translateScoped('notifications.recurringTypeActivated', 'Tipo recorrente reativado com sucesso.')
+        : translateScoped('notifications.recurringTypeInactivated', 'Tipo recorrente inativado com sucesso.'),
+      'success',
+    )
+    await financeStore.loadCatalogs(true)
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.recurringTypeStatusError', 'Erro ao alterar o status do tipo recorrente.')), 'error')
   } finally {
     submittingRecurringType.value = false
   }
@@ -473,6 +525,12 @@ onErrorCaptured((error) => {
 
 <template>
   <section class="finance-section">
+    <FinancePageHeader
+      eyebrow="Organização"
+      title="Configurações financeiras"
+      description="Defina as categorias, recorrências e cotações que organizam seus lançamentos."
+    />
+
     <article class="finance-panel">
       <header>
         <h3>
@@ -531,11 +589,17 @@ onErrorCaptured((error) => {
           </thead>
           <tbody>
             <tr v-for="category in paginatedCategories" :key="category.id">
-              <td><strong>{{ category.name }}</strong></td>
+              <td>
+                <strong>{{ category.name }}</strong>
+                <small v-if="category.isActive === false" class="finance-muted-block">Inativa</small>
+              </td>
               <td>{{ category.kind || 'BOTH' }}</td>
               <td class="finance-actions-cell">
                 <button type="button" class="finance-inline-action" :disabled="submittingCategory || !canWriteFinance" @click="startEditingCategory(category)">
                   {{ translateScoped('actions.edit', 'Editar') }}
+                </button>
+                <button type="button" class="finance-inline-action" :disabled="submittingCategory || !canWriteFinance" @click="toggleCategoryStatus(category)">
+                  {{ category.isActive === false ? 'Reativar' : 'Inativar' }}
                 </button>
               </td>
             </tr>
@@ -549,19 +613,15 @@ onErrorCaptured((error) => {
         :description="translateScoped('categories.empty.description', 'Crie sua primeira categoria.')"
       />
 
-      <div v-if="categoryTotalPages > 1" class="finance-pagination">
-        <span class="finance-pagination-summary">
-          {{ translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: categoryPage, totalPages: categoryTotalPages }) }}
-        </span>
-        <div class="finance-pagination-actions">
-          <button type="button" class="finance-inline-action" :disabled="categoryPage <= 1" @click="categoryPage--">
-            {{ translateScoped('pagination.previous', 'Anterior') }}
-          </button>
-          <button type="button" class="finance-inline-action" :disabled="categoryPage >= categoryTotalPages" @click="categoryPage++">
-            {{ translateScoped('pagination.next', 'Próxima') }}
-          </button>
-        </div>
-      </div>
+      <FinancePagination
+        :current-page="categoryPage"
+        :total-pages="categoryTotalPages"
+        :summary="translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: categoryPage, totalPages: categoryTotalPages })"
+        :previous-label="translateScoped('pagination.previous', 'Anterior')"
+        :next-label="translateScoped('pagination.next', 'Próxima')"
+        @previous="categoryPage--"
+        @next="categoryPage++"
+      />
     </article>
 
     <article class="finance-panel">
@@ -621,11 +681,17 @@ onErrorCaptured((error) => {
           </thead>
           <tbody>
             <tr v-for="recurringType in paginatedRecurringTypes" :key="recurringType.id">
-              <td><strong>{{ recurringType.name }}</strong></td>
+              <td>
+                <strong>{{ recurringType.name }}</strong>
+                <small v-if="recurringType.isActive === false" class="finance-muted-block">Inativo</small>
+              </td>
               <td>{{ recurringType.description || '-' }}</td>
               <td class="finance-actions-cell">
                 <button type="button" class="finance-inline-action" :disabled="submittingRecurringType || !canWriteFinance" @click="startEditingRecurringType(recurringType)">
                   {{ translateScoped('actions.edit', 'Editar') }}
+                </button>
+                <button type="button" class="finance-inline-action" :disabled="submittingRecurringType || !canWriteFinance" @click="toggleRecurringTypeStatus(recurringType)">
+                  {{ recurringType.isActive === false ? 'Reativar' : 'Inativar' }}
                 </button>
                 <button
                   type="button"
@@ -633,7 +699,7 @@ onErrorCaptured((error) => {
                   :disabled="submittingRecurringType || !canWriteFinance"
                   @click="openDeleteRecurringTypeDialog(recurringType)"
                 >
-                  {{ translateScoped('actions.delete', 'Excluir') }}
+                  Excluir definitivamente
                 </button>
               </td>
             </tr>
@@ -647,19 +713,15 @@ onErrorCaptured((error) => {
         :description="translateScoped('recurringTypes.empty.description', 'Crie tipos para organizar suas recorrências.')"
       />
 
-      <div v-if="recurringTypeTotalPages > 1" class="finance-pagination">
-        <span class="finance-pagination-summary">
-          {{ translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: recurringTypePage, totalPages: recurringTypeTotalPages }) }}
-        </span>
-        <div class="finance-pagination-actions">
-          <button type="button" class="finance-inline-action" :disabled="recurringTypePage <= 1" @click="recurringTypePage--">
-            {{ translateScoped('pagination.previous', 'Anterior') }}
-          </button>
-          <button type="button" class="finance-inline-action" :disabled="recurringTypePage >= recurringTypeTotalPages" @click="recurringTypePage++">
-            {{ translateScoped('pagination.next', 'Próxima') }}
-          </button>
-        </div>
-      </div>
+      <FinancePagination
+        :current-page="recurringTypePage"
+        :total-pages="recurringTypeTotalPages"
+        :summary="translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: recurringTypePage, totalPages: recurringTypeTotalPages })"
+        :previous-label="translateScoped('pagination.previous', 'Anterior')"
+        :next-label="translateScoped('pagination.next', 'Próxima')"
+        @previous="recurringTypePage--"
+        @next="recurringTypePage++"
+      />
     </article>
 
     <article class="finance-panel">
@@ -734,19 +796,15 @@ onErrorCaptured((error) => {
         :description="translateScoped('currency.empty.description', 'Registre cotações manualmente ou atualize via API do Bacen.')"
       />
 
-      <div v-if="currencyTotalPages > 1" class="finance-pagination">
-        <span class="finance-pagination-summary">
-          {{ translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: currencyPage, totalPages: currencyTotalPages }) }}
-        </span>
-        <div class="finance-pagination-actions">
-          <button type="button" class="finance-inline-action" :disabled="currencyPage <= 1" @click="currencyPage--">
-            {{ translateScoped('pagination.previous', 'Anterior') }}
-          </button>
-          <button type="button" class="finance-inline-action" :disabled="currencyPage >= currencyTotalPages" @click="currencyPage++">
-            {{ translateScoped('pagination.next', 'Próxima') }}
-          </button>
-        </div>
-      </div>
+      <FinancePagination
+        :current-page="currencyPage"
+        :total-pages="currencyTotalPages"
+        :summary="translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: currencyPage, totalPages: currencyTotalPages })"
+        :previous-label="translateScoped('pagination.previous', 'Anterior')"
+        :next-label="translateScoped('pagination.next', 'Próxima')"
+        @previous="currencyPage--"
+        @next="currencyPage++"
+      />
 
       <p v-if="!canWriteFinance" class="finance-muted-block">
         {{ translateScoped('permissions.readOnlyHint', 'Sua conta está em modo de leitura para configurações financeiras.') }}

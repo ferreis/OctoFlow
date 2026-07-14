@@ -1144,6 +1144,8 @@
         "entryDeleteError": "Failed to delete entry.",
         "settlementInvalid": "Select a valid entry and settlement amount.",
         "settlementCreated": "Settlement registered successfully.",
+        "settlementPaymentCreated": "Payment registered successfully.",
+        "settlementReceiptCreated": "Receipt registered successfully.",
         "settlementError": "Failed to register settlement.",
         "recurringInvalid": "Provide valid title, amount, start date, and recurring type.",
         "recurringUpdated": "Recurring rule updated successfully.",
@@ -1160,6 +1162,10 @@
         "childRenderError": "Unexpected error while rendering financial accounts."
       },
       "settlement": {
+        "types": {
+          "payment": "Payment",
+          "receipt": "Receipt"
+        },
         "remainingSuffix": "remaining"
       },
       "management": {

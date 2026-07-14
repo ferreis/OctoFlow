@@ -26,6 +26,17 @@ final class FinanceInput
 
     public static function normalizeMoney(mixed $value, string $fieldName): float
     {
+        $amount = self::normalizeSignedMoney($value, $fieldName);
+
+        if ($amount < 0) {
+            throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::AMOUNT_CANNOT_BE_NEGATIVE));
+        }
+
+        return $amount;
+    }
+
+    public static function normalizeSignedMoney(mixed $value, string $fieldName): float
+    {
         if (is_string($value)) {
             $value = str_replace(',', '.', trim($value));
         }
@@ -34,17 +45,17 @@ final class FinanceInput
             throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::NUMERIC_FIELD_REQUIRED, $fieldName));
         }
 
-        $amount = round((float) $value, 2);
-        if ($amount < 0) {
-            throw new \InvalidArgumentException(sprintf(FinanceErrorMessages::AMOUNT_CANNOT_BE_NEGATIVE));
-        }
-
-        return $amount;
+        return round((float) $value, 2);
     }
 
     public static function moneyToCents(mixed $value, string $fieldName = 'amount'): int
     {
         return (int) round(self::normalizeMoney($value, $fieldName) * 100);
+    }
+
+    public static function signedMoneyToCents(mixed $value, string $fieldName = 'amount'): int
+    {
+        return (int) round(self::normalizeSignedMoney($value, $fieldName) * 100);
     }
 
     public static function moneyFromCents(int $cents): float

@@ -5,6 +5,7 @@ import {
   RemoteFinanceEmptyState,
   RemoteFinanceStatusBadge,
 } from '../../federation/remoteComponents'
+import FinancePagination from '../finance/FinancePagination.vue'
 import { formatDate } from '../../utils/date'
 
 const props = defineProps({
@@ -421,35 +422,16 @@ function deleteEntry(entryItem) {
       </table>
     </div>
 
-    <div v-if="entriesItems.length" class="finance-pagination">
-      <span class="finance-pagination-summary">{{ resolvedTotalsLabel }}</span>
-      <div v-if="totalEntriesPages > 1" class="finance-pagination-actions">
-        <button
-          type="button"
-          class="finance-inline-action finance-pagination-button"
-          :disabled="currentEntriesPage <= 1"
-          @click="goToPreviousPage"
-        >
-          {{ translate('shared.financeEntriesPanel.pagination.previous') }}
-        </button>
-        <span class="finance-pagination-page">
-          {{
-            translate('shared.financeEntriesPanel.pagination.pageSummary', {
-              page: currentEntriesPage,
-              totalPages: totalEntriesPages,
-            })
-          }}
-        </span>
-        <button
-          type="button"
-          class="finance-inline-action finance-pagination-button"
-          :disabled="currentEntriesPage >= totalEntriesPages"
-          @click="goToNextPage"
-        >
-          {{ translate('shared.financeEntriesPanel.pagination.next') }}
-        </button>
-      </div>
-    </div>
+    <FinancePagination
+      v-if="entriesItems.length"
+      :current-page="currentEntriesPage"
+      :total-pages="totalEntriesPages"
+      :summary="resolvedTotalsLabel"
+      :previous-label="translate('shared.financeEntriesPanel.pagination.previous')"
+      :next-label="translate('shared.financeEntriesPanel.pagination.next')"
+      @previous="goToPreviousPage"
+      @next="goToNextPage"
+    />
 
     <RemoteFinanceEmptyState
       v-if="!entriesItems.length"

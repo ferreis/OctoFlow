@@ -22,6 +22,8 @@ import FinanceEntryFormModal from '../../components/finance/FinanceEntryFormModa
 import FinanceSettlementFormModal from '../../components/finance/FinanceSettlementFormModal.vue'
 import FinanceRecurringFormModal from '../../components/finance/FinanceRecurringFormModal.vue'
 import FinanceInstallmentFormModal from '../../components/finance/FinanceInstallmentFormModal.vue'
+import FinancePageHeader from '../../components/finance/FinancePageHeader.vue'
+import FinancePagination from '../../components/finance/FinancePagination.vue'
 import { useFinancePermissions } from '../../composables/useFinancePermissions'
 import { useNotification } from '../../composables/useNotification'
 import { useScopedI18n } from '../../composables/useScopedI18n'
@@ -40,7 +42,6 @@ import {
   createFinanceRecurringRule,
   createFinanceSettlement,
   deleteFinanceEntry,
-  deleteFinanceRecurringRule,
   fetchFinanceDashboardSummary,
   fetchFinanceEntries,
   fetchFinanceInstallmentPlans,
@@ -123,7 +124,7 @@ const settlementForm = reactive({
   entryId: '',
   entrySearch: '',
   amountBrl: '',
-  settledAt: '',
+  settledAt: getCurrentDateTimeLocalInputValue(),
   bankAccountId: '',
   settlementType: 'PAYMENT',
   installmentPlanId: '',
@@ -159,6 +160,7 @@ const installmentForm = reactive({
 const installmentEditingId = ref('')
 const settlementEntryOptions = ref([])
 const settlementEntrySearchDebounceId = ref(null)
+const settlementEntrySearchRequestId = ref(0)
 
 const selectedAccountActionType = ref('ENTRY')
 const accountActionModalState = reactive({
@@ -282,6 +284,14 @@ const paginatedInstallmentPlans = computed(() => {
   return filteredInstallmentPlans.value.slice(firstIndex, firstIndex + LIST_ITEMS_PER_PAGE)
 })
 
+const recurringRulesTotalPages = computed(() => (
+  Math.max(1, Math.ceil(filteredRecurringRules.value.length / LIST_ITEMS_PER_PAGE))
+))
+
+const installmentPlansTotalPages = computed(() => (
+  Math.max(1, Math.ceil(filteredInstallmentPlans.value.length / LIST_ITEMS_PER_PAGE))
+))
+
 const accountsOverviewSelectedMonthLabel = computed(() => formatYearMonthLabel(accountsOverviewMonth.value))
 
 const accountsOverviewComparisonRows = computed(() => {
@@ -359,34 +369,6 @@ const availableAccountActionOptions = computed(() => {
   return options
 })
 
-const accountActionModalTitle = computed(() => {
-  const actionType = accountActionModalState.actionType
-
-  if (actionType === 'ENTRY') {
-    return entryEditingId.value
-      ? translateScoped('modal.titles.editEntry', 'Editar lançamento')
-      : translateScoped('modal.titles.newEntry', 'Novo lançamento')
-  }
-
-  if (actionType === 'SETTLEMENT') {
-    return translateScoped('modal.titles.settlement', 'Baixa de lançamento')
-  }
-
-  if (actionType === 'RECURRING_RULE') {
-    return recurringRuleEditingId.value
-      ? translateScoped('modal.titles.editRecurring', 'Editar recorrência')
-      : translateScoped('modal.titles.newRecurring', 'Nova recorrência')
-  }
-
-  if (actionType === 'INSTALLMENT_PLAN') {
-    return installmentEditingId.value
-      ? translateScoped('modal.titles.editInstallment', 'Editar parcelamento')
-      : translateScoped('modal.titles.newInstallment', 'Novo parcelamento')
-  }
-
-  return translateScoped('modal.titles.default', 'Gerenciar lançamento')
-})
-
 const entryTypeOptionsForForm = computed(() => {
   if (entryForm.direction === 'RECEIVABLE') {
     return manualEntryTypeOptions.filter((entryTypeOption) => entryTypeOption.value !== 'DEBT')
@@ -408,6 +390,10 @@ const selectableCategories = computed(() => (
   categories.value.filter((category) => category?.isActive !== false)
 ))
 
+const selectableBankAccounts = computed(() => (
+  bankAccounts.value.filter((bankAccount) => bankAccount?.isActive !== false)
+))
+
 const selectedSettlementEntry = computed(() => {
   const normalizedEntryId = sanitizeIdentifier(settlementForm.entryId)
 
@@ -416,11 +402,20 @@ const selectedSettlementEntry = computed(() => {
   )) || null
 })
 
+const settlementEntryDirection = computed(() => normalizeDirection(
+  selectedSettlementEntry.value?.direction,
+  accountsDirectionByTab.value || 'PAYABLE',
+))
+
+const isSettlementReceipt = computed(() => settlementEntryDirection.value === 'RECEIVABLE')
+
 const settlementTypeOptions = computed(() => {
   return [
     {
       value: 'PAYMENT',
-      label: translateScoped('settlement.types.payment', 'Pagamento'),
+      label: isSettlementReceipt.value
+        ? translateScoped('settlement.types.receipt', 'Recebimento')
+        : translateScoped('settlement.types.payment', 'Pagamento'),
     },
     {
       value: 'ADVANCE',
@@ -434,11 +429,22 @@ const settlementTypeOptions = computed(() => {
 })
 
 const availableRecurringTypes = computed(() => (
-  recurringTypes.value.filter((recurringType) => String(recurringType?.name || '').trim().toLowerCase() !== 'mensal')
+  recurringTypes.value.filter((recurringType) => (
+    recurringType?.isActive !== false
+    && String(recurringType?.name || '').trim().toLowerCase() !== 'mensal'
+  ))
 ))
 
 function getCurrentDateInputValue() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function getCurrentDateTimeLocalInputValue() {
+  const currentDateTime = new Date()
+  const localTimeInMilliseconds = currentDateTime.getTime()
+    - (currentDateTime.getTimezoneOffset() * 60 * 1000)
+
+  return new Date(localTimeInMilliseconds).toISOString().slice(0, 16)
 }
 
 function getNextMonthInputValue() {
@@ -607,7 +613,7 @@ function resetSettlementForm() {
     entryId: '',
     entrySearch: '',
     amountBrl: '',
-    settledAt: '',
+    settledAt: getCurrentDateTimeLocalInputValue(),
     bankAccountId: '',
     settlementType: 'PAYMENT',
     installmentPlanId: '',
@@ -726,28 +732,41 @@ async function loadEntries(showNotificationOnError = false) {
 }
 
 async function loadSettlementEntryOptions(searchText = '') {
+  const requestId = settlementEntrySearchRequestId.value + 1
+  settlementEntrySearchRequestId.value = requestId
   loadingSettlementEntries.value = true
 
   try {
     const response = await fetchFinanceEntries(
       {
         direction: accountsDirectionByTab.value || 'PAYABLE',
+        macroStatus: 'OPEN',
         search: sanitizeSearchText(searchText, MAX_TITLE_LENGTH),
       },
       {
         page: 1,
-        itemsPerPage: 20,
+        itemsPerPage: 10,
       },
     )
 
+    if (requestId !== settlementEntrySearchRequestId.value) {
+      return
+    }
+
     settlementEntryOptions.value = Array.isArray(response.data?.items) ? response.data.items : []
   } catch (error) {
+    if (requestId !== settlementEntrySearchRequestId.value) {
+      return
+    }
+
     notifyUser(
       extractHttpMessage(error, translateScoped('notifications.loadSettlementEntriesError', 'Erro ao buscar lançamentos para baixa.')),
       'error',
     )
   } finally {
-    loadingSettlementEntries.value = false
+    if (requestId === settlementEntrySearchRequestId.value) {
+      loadingSettlementEntries.value = false
+    }
   }
 }
 
@@ -939,11 +958,11 @@ function requestDeleteEntry(entryItem) {
   }
 
   confirmDialogState.isOpen = true
-  confirmDialogState.title = translateScoped('confirm.deleteEntryTitle', 'Excluir lançamento')
-  confirmDialogState.message = translateScoped('confirm.deleteEntryMessage', 'Tem certeza que deseja excluir "{title}"?', {
+  confirmDialogState.title = translateScoped('confirm.cancelEntryTitle', 'Cancelar lançamento')
+  confirmDialogState.message = translateScoped('confirm.cancelEntryMessage', 'Cancelar "{title}"? Movimentos de baixa vinculados serão revertidos.', {
     title: sanitizeSingleLineText(entryItem?.title, MAX_TITLE_LENGTH),
   })
-  confirmDialogState.confirmLabel = translateScoped('actions.delete', 'Excluir')
+  confirmDialogState.confirmLabel = translateScoped('actions.cancelEntry', 'Cancelar lançamento')
   confirmDialogState.confirmTone = 'danger'
 
   confirmDialogAction.value = async () => {
@@ -951,7 +970,7 @@ function requestDeleteEntry(entryItem) {
 
     try {
       await deleteFinanceEntry(normalizedEntryId)
-      notifyUser(translateScoped('notifications.entryDeleted', 'Lançamento removido com sucesso.'), 'success')
+      notifyUser(translateScoped('notifications.entryCanceled', 'Lançamento cancelado com sucesso.'), 'success')
       await loadEntries(false)
     } catch (error) {
       notifyUser(extractHttpMessage(error, translateScoped('notifications.entryDeleteError', 'Erro ao excluir lançamento.')), 'error')
@@ -1011,7 +1030,7 @@ async function submitSettlement() {
     if (payload.settlementType === 'PAYMENT') {
       const requestPayload = {
         amountBrl: payload.amountBrl,
-        settlementType: selectedSettlementEntry.value?.direction === 'RECEIVABLE' ? 'RECEIPT' : 'PAYMENT',
+        settlementType: isSettlementReceipt.value ? 'RECEIPT' : 'PAYMENT',
       }
       if (payload.settledAt !== '') {
         requestPayload.settledAt = payload.settledAt
@@ -1027,7 +1046,12 @@ async function submitSettlement() {
       }
 
       await createFinanceSettlement(payload.entryId, requestPayload)
-      notifyUser(translateScoped('notifications.settlementCreated', 'Pagamento registrado com sucesso.'), 'success')
+      notifyUser(
+        isSettlementReceipt.value
+          ? translateScoped('notifications.settlementReceiptCreated', 'Recebimento registrado com sucesso.')
+          : translateScoped('notifications.settlementPaymentCreated', 'Pagamento registrado com sucesso.'),
+        'success',
+      )
     } else {
       await applyFinanceInstallmentPlanAdjustment(payload.installmentPlanId, {
         adjustmentType: payload.settlementType,
@@ -1147,34 +1171,29 @@ async function submitRecurringRule() {
   }
 }
 
-function requestDeleteRecurringRule(recurringRule) {
+async function toggleRecurringRuleStatus(recurringRule) {
   const normalizedRecurringRuleId = sanitizeIdentifier(recurringRule?.id)
-  if (normalizedRecurringRuleId === '') {
+  if (normalizedRecurringRuleId === '' || !canMutateFinance() || accountActionProcessing.value) {
     notifyUser(translateScoped('notifications.invalidRecurring', 'Recorrência inválida.'), 'warning')
     return
   }
 
-  confirmDialogState.isOpen = true
-  confirmDialogState.title = translateScoped('confirm.deleteRecurringTitle', 'Excluir recorrência')
-  confirmDialogState.message = translateScoped('confirm.deleteRecurringMessage', 'Excluir "{title}"?', {
-    title: sanitizeSingleLineText(recurringRule?.title, MAX_TITLE_LENGTH),
-  })
-  confirmDialogState.confirmLabel = translateScoped('actions.delete', 'Excluir')
-  confirmDialogState.confirmTone = 'danger'
+  const shouldActivate = recurringRule?.isActive === false
+  accountActionProcessing.value = true
 
-  confirmDialogAction.value = async () => {
-    confirmDialogState.processing = true
-
-    try {
-      await deleteFinanceRecurringRule(normalizedRecurringRuleId)
-      notifyUser(translateScoped('notifications.recurringDeleted', 'Recorrência removida com sucesso.'), 'success')
-      await loadRecurringRules(false)
-    } catch (error) {
-      notifyUser(extractHttpMessage(error, translateScoped('notifications.recurringDeleteError', 'Erro ao excluir recorrência.')), 'error')
-    } finally {
-      confirmDialogState.processing = false
-      closeConfirmDialog()
-    }
+  try {
+    await updateFinanceRecurringRule(normalizedRecurringRuleId, { isActive: shouldActivate })
+    notifyUser(
+      shouldActivate
+        ? translateScoped('notifications.recurringActivated', 'Recorrência reativada com sucesso.')
+        : translateScoped('notifications.recurringInactivated', 'Recorrência inativada com sucesso.'),
+      'success',
+    )
+    await loadRecurringRules(false)
+  } catch (error) {
+    notifyUser(extractHttpMessage(error, translateScoped('notifications.recurringStatusError', 'Erro ao alterar o status da recorrência.')), 'error')
+  } finally {
+    accountActionProcessing.value = false
   }
 }
 
@@ -1354,15 +1373,15 @@ function requestDeleteInstallmentPlan(installmentPlan) {
   }
 
   confirmDialogState.isOpen = true
-  confirmDialogState.title = translateScoped('confirm.deleteInstallmentTitle', 'Excluir parcelamento')
+  confirmDialogState.title = translateScoped('confirm.cancelInstallmentTitle', 'Cancelar parcelamento')
   confirmDialogState.message = translateScoped(
-    'confirm.deleteInstallmentMessage',
-    'Excluir "{title}" e remover suas parcelas dos cálculos?',
+    'confirm.cancelInstallmentMessage',
+    'Cancelar "{title}" e reverter as parcelas vinculadas?',
     {
       title: sanitizeSingleLineText(installmentPlan?.title, MAX_TITLE_LENGTH),
     },
   )
-  confirmDialogState.confirmLabel = translateScoped('actions.delete', 'Excluir')
+  confirmDialogState.confirmLabel = translateScoped('actions.cancelInstallment', 'Cancelar parcelamento')
   confirmDialogState.confirmTone = 'danger'
 
   confirmDialogAction.value = async () => {
@@ -1370,7 +1389,7 @@ function requestDeleteInstallmentPlan(installmentPlan) {
 
     try {
       await updateFinanceInstallmentPlan(normalizedInstallmentId, { status: 'CANCELED' })
-      notifyUser(translateScoped('notifications.installmentDeleted', 'Parcelamento removido com sucesso.'), 'success')
+      notifyUser(translateScoped('notifications.installmentCanceled', 'Parcelamento cancelado com sucesso.'), 'success')
       await Promise.all([
         loadInstallments(false),
         loadEntries(false),
@@ -1415,14 +1434,6 @@ function closeAccountActionModal() {
   accountActionModalState.isOpen = false
   accountActionModalState.actionType = 'ENTRY'
   resetAllAccountForms()
-}
-
-function handleModalOverlayClose() {
-  if (accountActionProcessing.value) {
-    return
-  }
-
-  closeAccountActionModal()
 }
 
 function closeConfirmDialog() {
@@ -1500,32 +1511,34 @@ function formatSettlementEntryOptionLabel(entryItem) {
   return `${entryItem.title}${installmentLabel} - ${formatDateToBrazilianPattern(entryItem?.dueDate)} - ${formatCurrency(entryItem.remainingAmountBrl)}`
 }
 
-function normalizeSettlementSearchText(rawSearchText) {
-  return String(rawSearchText || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[–—]/g, '-')
-    .replace(/\s+/g, ' ')
+function searchSettlementEntries(searchText, shouldClearSelection = false) {
+  const normalizedSearchText = sanitizeSearchText(searchText, MAX_TITLE_LENGTH)
+
+  if (shouldClearSelection) {
+    settlementForm.entrySearch = ''
+    settlementForm.entryId = ''
+    settlementForm.amountBrl = ''
+  }
+
+  if (settlementEntrySearchDebounceId.value) {
+    window.clearTimeout(settlementEntrySearchDebounceId.value)
+  }
+
+  settlementEntrySearchDebounceId.value = window.setTimeout(() => {
+    void loadSettlementEntryOptions(normalizedSearchText)
+  }, 300)
 }
 
-function findSettlementEntryBySearchText(searchText) {
-  const normalizedSearchText = normalizeSettlementSearchText(sanitizeSearchText(searchText, 220))
-  if (normalizedSearchText === '') {
-    return null
+function selectSettlementEntry(entryItem) {
+  const selectedEntryId = sanitizeIdentifier(entryItem?.id)
+  if (selectedEntryId === '') {
+    return
   }
 
-  const exactMatch = availableSettlementEntries.value.find((entryItem) => (
-    normalizeSettlementSearchText(formatSettlementEntryOptionLabel(entryItem)) === normalizedSearchText
-  ))
-  if (exactMatch) {
-    return exactMatch
-  }
-
-  const startsWithMatches = availableSettlementEntries.value.filter((entryItem) => (
-    normalizeSettlementSearchText(formatSettlementEntryOptionLabel(entryItem)).startsWith(normalizedSearchText)
-  ))
-
-  return startsWithMatches.length === 1 ? startsWithMatches[0] : null
+  settlementForm.entryId = selectedEntryId
+  settlementForm.entrySearch = formatSettlementEntryOptionLabel(entryItem)
+  const remainingAmount = Number(entryItem?.remainingAmountBrl || 0)
+  settlementForm.amountBrl = remainingAmount > 0 ? remainingAmount.toFixed(2) : ''
 }
 
 watch(activeAccountsTab, () => {
@@ -1585,34 +1598,6 @@ watch(
     if (!useCreditCard) {
       settlementForm.creditCardId = ''
     }
-  },
-)
-
-watch(
-  () => settlementForm.entrySearch,
-  (searchText) => {
-    if (accountActionModalState.actionType !== 'SETTLEMENT' || settlementForm.settlementType !== 'PAYMENT') {
-      return
-    }
-
-    if (String(searchText || '').trim() === '') {
-      settlementForm.entryId = ''
-      settlementForm.amountBrl = ''
-      return
-    }
-
-    const matchedEntry = findSettlementEntryBySearchText(searchText)
-    if (matchedEntry) {
-      settlementForm.entryId = sanitizeIdentifier(matchedEntry.id)
-    }
-
-    if (settlementEntrySearchDebounceId.value) {
-      window.clearTimeout(settlementEntrySearchDebounceId.value)
-    }
-
-    settlementEntrySearchDebounceId.value = window.setTimeout(() => {
-      void loadSettlementEntryOptions(searchText)
-    }, 300)
   },
 )
 
@@ -1698,6 +1683,12 @@ onErrorCaptured((error) => {
 
 <template>
   <section class="finance-section">
+    <FinancePageHeader
+      eyebrow="Fluxo de caixa"
+      title="Contas a pagar e receber"
+      description="Organize compromissos, receitas e recorrências sem perder a visão do seu saldo previsto."
+    />
+
     <nav
       class="finance-nav-tabs"
       :aria-label="translateScoped('tabs.navigationAriaLabel', 'Abas de contas')"
@@ -1853,7 +1844,10 @@ onErrorCaptured((error) => {
           </thead>
           <tbody>
             <tr v-for="recurringRule in paginatedRecurringRules" :key="recurringRule.id">
-              <td><strong>{{ recurringRule.title }}</strong></td>
+              <td>
+                <strong>{{ recurringRule.title }}</strong>
+                <small v-if="recurringRule.isActive === false" class="finance-muted-block">Inativa</small>
+              </td>
               <td>{{ formatCurrency(recurringRule.amountBrl) }}</td>
               <td>{{ recurringRule.dayOfMonth }}</td>
               <td>{{ recurringRule.recurringTypeName || '-' }}</td>
@@ -1861,7 +1855,7 @@ onErrorCaptured((error) => {
                 <button
                   type="button"
                   class="finance-inline-action"
-                  :disabled="accountActionProcessing || !canWriteFinance"
+                  :disabled="recurringRule.isActive === false || accountActionProcessing || !canWriteFinance"
                   @click="startEditingRecurringRule(recurringRule)"
                 >
                   {{ translateScoped('actions.edit', 'Editar') }}
@@ -1876,17 +1870,27 @@ onErrorCaptured((error) => {
                 </button>
                 <button
                   type="button"
-                  class="finance-inline-action finance-inline-action-danger"
+                  class="finance-inline-action"
                   :disabled="accountActionProcessing || !canWriteFinance"
-                  @click="requestDeleteRecurringRule(recurringRule)"
+                  @click="toggleRecurringRuleStatus(recurringRule)"
                 >
-                  {{ translateScoped('actions.delete', 'Excluir') }}
+                  {{ recurringRule.isActive === false ? 'Reativar' : 'Inativar' }}
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <FinancePagination
+        :current-page="localRecurringPage"
+        :total-pages="recurringRulesTotalPages"
+        :summary="translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: localRecurringPage, totalPages: recurringRulesTotalPages })"
+        :previous-label="translateScoped('pagination.previous', 'Anterior')"
+        :next-label="translateScoped('pagination.next', 'Próxima')"
+        @previous="localRecurringPage--"
+        @next="localRecurringPage++"
+      />
     </article>
 
     <article v-if="showInstallment && filteredInstallmentPlans.length > 0" class="finance-panel">
@@ -1931,13 +1935,23 @@ onErrorCaptured((error) => {
                   :disabled="accountActionProcessing || !canWriteFinance"
                   @click="requestDeleteInstallmentPlan(installmentPlan)"
                 >
-                  {{ translateScoped('actions.delete', 'Excluir') }}
+                  Cancelar
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <FinancePagination
+        :current-page="localInstallmentPage"
+        :total-pages="installmentPlansTotalPages"
+        :summary="translateScoped('pagination.summary', 'Página {page} de {totalPages}', { page: localInstallmentPage, totalPages: installmentPlansTotalPages })"
+        :previous-label="translateScoped('pagination.previous', 'Anterior')"
+        :next-label="translateScoped('pagination.next', 'Próxima')"
+        @previous="localInstallmentPage--"
+        @next="localInstallmentPage++"
+      />
     </article>
   </section>
 
@@ -1946,7 +1960,7 @@ onErrorCaptured((error) => {
     :entry-form="entryForm"
     :entry-editing-id="entryEditingId"
     :selectable-categories="selectableCategories"
-    :bank-accounts="bankAccounts"
+    :bank-accounts="selectableBankAccounts"
     :entry-type-options="entryTypeOptionsForForm"
     :processing="accountActionProcessing"
     :can-write="canWriteFinance"
@@ -1959,7 +1973,7 @@ onErrorCaptured((error) => {
     :settlement-form="settlementForm"
     :available-settlement-entries="availableSettlementEntries"
     :filtered-installment-plans="filteredInstallmentPlans"
-    :bank-accounts="bankAccounts"
+    :bank-accounts="selectableBankAccounts"
     :credit-card-accounts="creditCardAccounts"
     :settlement-type-options="settlementTypeOptions"
     :loading-entries="loadingSettlementEntries"
@@ -1967,6 +1981,8 @@ onErrorCaptured((error) => {
     :can-write="canWriteFinance"
     @submit="submitSettlement"
     @close="closeAccountActionModal"
+    @search-entries="searchSettlementEntries"
+    @select-entry="selectSettlementEntry"
   />
 
   <FinanceRecurringFormModal
@@ -1974,7 +1990,7 @@ onErrorCaptured((error) => {
     :recurring-form="recurringForm"
     :recurring-rule-editing-id="recurringRuleEditingId"
     :selectable-categories="selectableCategories"
-    :bank-accounts="bankAccounts"
+    :bank-accounts="selectableBankAccounts"
     :available-recurring-types="availableRecurringTypes"
     :processing="accountActionProcessing"
     :can-write="canWriteFinance"
@@ -1987,7 +2003,7 @@ onErrorCaptured((error) => {
     :installment-form="installmentForm"
     :installment-editing-id="installmentEditingId"
     :selectable-categories="selectableCategories"
-    :bank-accounts="bankAccounts"
+    :bank-accounts="selectableBankAccounts"
     :processing="accountActionProcessing"
     :can-write="canWriteFinance"
     @submit="submitInstallmentPlan"

@@ -350,7 +350,7 @@ final class FinanceCatalogService
         $branch = trim((string) ($payload['branch'] ?? ''));
         $accountNumber = trim((string) ($payload['accountNumber'] ?? ''));
         $accountType = strtoupper(trim((string) ($payload['accountType'] ?? 'CHECKING')));
-        $currentBalanceBrl = FinanceInput::normalizeMoney($payload['currentBalanceBrl'] ?? 0, 'currentBalanceBrl');
+        $currentBalanceBrl = FinanceInput::normalizeSignedMoney($payload['currentBalanceBrl'] ?? 0, 'currentBalanceBrl');
 
         if ($name === '') {
             throw new \InvalidArgumentException('The bank account name is required.');
@@ -407,7 +407,7 @@ final class FinanceCatalogService
             ? strtoupper(trim((string) $payload['accountType']))
             : (string) $existingAccount['accountType'];
         $currentBalanceBrl = array_key_exists('currentBalanceBrl', $payload)
-            ? FinanceInput::normalizeMoney($payload['currentBalanceBrl'], 'currentBalanceBrl')
+            ? FinanceInput::normalizeSignedMoney($payload['currentBalanceBrl'], 'currentBalanceBrl')
             : (float) $existingAccount['currentBalanceBrl'];
         $isActive = array_key_exists('isActive', $payload)
             ? FinanceInput::normalizeBoolean($payload['isActive'], true)

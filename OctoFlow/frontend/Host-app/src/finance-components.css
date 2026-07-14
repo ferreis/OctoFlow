@@ -3,12 +3,32 @@
      PADRÕES GLOBAIS DE LAYOUT - FINANCEIRO (CLEAN PREMIUM)
      ============================================================== */
   .finance-screen {
-    @apply grid gap-6;
+    @apply grid gap-4;
+  }
+
+  .finance-page-header {
+    @apply flex items-end justify-between gap-4 flex-wrap border-b border-line pb-4;
+  }
+  .finance-page-header-copy {
+    @apply grid gap-1;
+    max-width: 720px;
+  }
+  .finance-page-header-eyebrow {
+    @apply m-0 text-[0.7rem] font-extrabold uppercase tracking-[0.14em] text-accent;
+  }
+  .finance-page-header h1 {
+    @apply m-0 text-[1.65rem] font-extrabold tracking-tight text-ink;
+  }
+  .finance-page-header-description {
+    @apply m-0 text-sm leading-relaxed text-muted;
+  }
+  .finance-page-header-actions {
+    @apply flex items-center gap-3 flex-wrap;
   }
 
   .finance-screen-header {
-    @apply border border-line rounded-[18px] p-6 bg-surface overflow-hidden transition-all duration-300 relative;
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 4%, transparent);
+    @apply border border-line rounded-lg p-5 bg-surface overflow-hidden relative;
+    box-shadow: none;
   }
   .finance-screen-header h2 {
     @apply mt-0 mb-1.5 text-xl font-extrabold text-ink tracking-tight;
@@ -22,7 +42,7 @@
   }
 
   .finance-section {
-    @apply grid gap-5;
+    @apply grid gap-4;
   }
   .finance-dashboard-section {
     @apply gap-6;
@@ -30,10 +50,11 @@
 
   /* Painel Principal (Solid Clean Panel) */
   .finance-panel {
-    @apply border border-line rounded-[18px] bg-surface p-5 md:p-6 grid gap-5 overflow-hidden transition-all duration-300;
+    @apply border border-line rounded-lg bg-surface p-4 md:p-5 grid gap-4 overflow-hidden;
+    box-shadow: none;
   }
   .finance-panel header {
-    @apply flex items-center justify-between gap-4 flex-wrap border-b border-line pb-3 mb-1;
+    @apply flex items-center justify-between gap-3 flex-wrap border-b border-line pb-3;
   }
   .finance-panel h3 {
     @apply m-0 text-[1.05rem] font-bold text-ink tracking-tight;
@@ -53,16 +74,16 @@
 
   /* Grid KPIs */
   .finance-kpi-grid {
-    @apply grid gap-4 items-stretch;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    @apply grid gap-3 items-stretch;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
   .finance-dashboard-section .finance-kpi-grid {
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
   
   .finance-dashboard-section .finance-kpi-card {
-    @apply h-full p-5 rounded-[18px] border border-line bg-surface transition-transform duration-300 hover:-translate-y-1;
-    box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 3%, transparent);
+    @apply h-full p-4 rounded-lg border border-line bg-surface;
+    box-shadow: none;
   }
   .finance-dashboard-section .finance-kpi-card-value {
     @apply text-[1.4rem] font-extrabold tracking-tight mt-1 text-ink;
@@ -71,12 +92,19 @@
   /* Formulários e Filtros */
   .finance-form-grid,
   .finance-filter-grid {
-    @apply grid gap-4 items-end;
-    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+    @apply grid gap-3 items-end;
+    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   }
   .finance-form-grid label,
   .finance-filter-grid label {
     @apply grid gap-2 min-w-0;
+  }
+  .finance-form-grid > label.finance-modal-checkbox {
+    @apply flex min-h-10 items-center self-end gap-3 rounded-md border border-line px-3 py-2 text-sm font-medium text-ink;
+    background: var(--surface-strong);
+  }
+  .finance-form-grid > label.finance-modal-checkbox input[type='checkbox'] {
+    @apply h-4 min-h-0 w-4 shrink-0 p-0;
   }
   .finance-overview-month-field {
     @apply grid gap-1;
@@ -97,7 +125,7 @@
   .finance-filter-grid input,
   .finance-form-grid select,
   .finance-filter-grid select {
-    @apply border border-line rounded-xl min-h-[44px] px-4 w-full max-w-full min-w-0 text-ink font-medium text-sm transition-all duration-200 outline-none;
+    @apply border border-line rounded-md min-h-10 px-3 w-full max-w-full min-w-0 text-ink font-medium text-sm outline-none;
     background: var(--surface-strong);
   }
   .finance-form-grid input:hover,
@@ -117,8 +145,8 @@
   /* Botões de Ação Dinâmicos */
   .finance-action-button,
   .finance-inline-action {
-    @apply border border-transparent bg-accent text-white rounded-xl min-h-[44px] px-5 py-2 text-[0.85rem] font-bold cursor-pointer whitespace-nowrap ml-2 transition-all duration-300 flex items-center justify-center active:scale-95 hover:opacity-90;
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent);
+    @apply border border-transparent bg-accent text-white rounded-md min-h-10 px-4 py-2 text-[0.82rem] font-bold cursor-pointer whitespace-nowrap ml-2 flex items-center justify-center hover:brightness-110;
+    box-shadow: none;
   }
   .finance-form-grid > .finance-action-button,
   .finance-filter-grid > .finance-action-button {
@@ -134,7 +162,7 @@
 
   /* Tabelas Premium */
   .finance-inline-table-wrap {
-    @apply overflow-x-auto max-w-full rounded-[14px] border border-line;
+    @apply overflow-x-auto max-w-full rounded-md border border-line;
     background: var(--surface);
   }
   .finance-inline-table {
@@ -142,10 +170,10 @@
   }
   .finance-inline-table th,
   .finance-inline-table td {
-    @apply px-4 py-4 text-left align-middle text-ink border-b border-line;
+    @apply px-3 py-3 text-left align-middle text-ink border-b border-line;
   }
   .finance-inline-table th {
-    @apply text-xs uppercase tracking-[0.06em] font-extrabold text-muted bg-surface-strong border-none;
+    @apply text-[0.68rem] uppercase tracking-[0.08em] font-extrabold text-muted bg-surface-strong border-none;
   }
   .finance-inline-table tbody tr {
     @apply transition-colors duration-200;
@@ -158,7 +186,7 @@
     @apply whitespace-nowrap text-right;
   }
   .finance-actions-cell .finance-inline-action {
-    @apply ml-0 inline-flex items-center justify-center align-middle h-8 min-h-0 px-3 text-xs rounded-[8px] shadow-none;
+    @apply ml-0 inline-flex items-center justify-center align-middle h-8 min-h-0 px-2.5 text-xs rounded shadow-none;
   }
   .finance-actions-cell .finance-inline-action + .finance-inline-action {
     @apply ml-2;
@@ -182,7 +210,8 @@
   }
 
   .finance-content-stage {
-    @apply grid gap-6 px-8 pt-8 pb-12 w-full max-w-[1440px] mx-auto;
+    @apply grid gap-5 pt-6 pb-8 w-full;
+    padding-inline: clamp(1rem, 2vw, 2rem);
   }
 
   /* ─── Finance Module Header (Branded Navbar) ─── */
@@ -266,10 +295,10 @@
 
   /* Abas Internas (Secundárias/Content Rail) */
   .finance-nav-tabs {
-    @apply flex items-center gap-1 p-1 rounded-2xl bg-surface-strong border border-line mb-6 w-fit;
+    @apply flex items-center gap-0 border-b border-line mb-2 w-full overflow-x-auto;
   }
   .finance-nav-tabs-button {
-    @apply relative h-11 px-6 rounded-xl bg-transparent text-muted text-[0.78rem] font-bold cursor-pointer transition-all duration-300 whitespace-nowrap flex items-center justify-center;
+    @apply relative h-10 px-4 bg-transparent text-muted text-[0.76rem] font-bold cursor-pointer whitespace-nowrap flex items-center justify-center border-b-2 border-transparent;
     letter-spacing: 0.03em;
     text-transform: uppercase;
   }
@@ -278,8 +307,22 @@
     background: var(--nav-card-hover);
   }
   .finance-nav-tabs-button.active {
-    @apply text-white bg-accent shadow-md;
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent);
+    @apply text-accent bg-transparent border-accent;
+    box-shadow: none;
+  }
+
+  .finance-pagination {
+    @apply flex items-center justify-between gap-3 flex-wrap border-t border-line pt-4;
+  }
+  .finance-pagination-summary,
+  .finance-pagination-page {
+    @apply text-sm font-medium text-muted;
+  }
+  .finance-pagination-actions {
+    @apply flex items-center gap-2;
+  }
+  .finance-pagination-button {
+    @apply min-h-9;
   }
 
   /* Modais e Extras */
@@ -292,8 +335,129 @@
   .finance-modal-header p {
     @apply m-0 text-muted text-sm leading-relaxed;
   }
+  .finance-modal-frame {
+    @apply w-full max-w-[56rem] grid gap-5 overflow-y-auto rounded-lg;
+    max-height: calc(100dvh - 3rem);
+    padding: clamp(1.25rem, 3vw, 2rem);
+  }
+  .finance-modal-frame--with-search-select {
+    overflow: visible;
+  }
+  .finance-modal-form {
+    @apply grid gap-3 items-start;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .finance-modal-form > * {
+    min-width: 0;
+  }
+  .finance-modal-form > label {
+    @apply grid min-w-0 gap-2;
+  }
+  .finance-modal-form > label > span {
+    @apply ml-1 text-[0.78rem] font-bold leading-snug tracking-tight text-muted;
+  }
+  .finance-modal-form input,
+  .finance-modal-form select {
+    @apply min-h-10 min-w-0 w-full max-w-full rounded-md border border-line px-3 text-sm font-medium text-ink outline-none;
+    background: var(--surface-strong);
+  }
+  .finance-modal-form input:hover,
+  .finance-modal-form select:hover {
+    @apply border-line-strong;
+  }
+  .finance-modal-form input:focus,
+  .finance-modal-form select:focus {
+    @apply border-accent;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  .finance-modal-form > label.finance-modal-checkbox {
+    @apply flex min-h-10 items-center self-end gap-3 rounded-md border border-line px-3 py-2 text-sm font-medium text-ink;
+    background: var(--surface-strong);
+  }
+  .finance-modal-form .finance-modal-checkbox input[type='checkbox'] {
+    @apply h-4 min-h-0 w-4 shrink-0 p-0;
+  }
+  .finance-modal-form .finance-modal-checkbox > span {
+    @apply ml-0;
+  }
+  .finance-search-select {
+    @apply relative grid min-w-0 w-full max-w-full gap-2;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+  }
+  .finance-search-select > span {
+    @apply ml-1 text-[0.78rem] font-bold leading-snug tracking-tight text-muted;
+  }
+  .finance-search-select-options {
+    @apply absolute z-[80] grid max-h-72 w-full overflow-y-auto rounded-md border border-line p-1;
+    background: var(--theme-bg, #0f172a);
+    box-shadow: 0 20px 40px color-mix(in srgb, var(--color-bg) 58%, transparent);
+    top: calc(100% + 0.35rem);
+  }
+  .finance-search-select.is-open {
+    @apply z-20;
+  }
+  .finance-search-select-trigger {
+    @apply grid min-h-10 min-w-0 w-full max-w-full items-center gap-3 overflow-hidden rounded-md border border-line px-3 text-left text-sm font-medium text-ink;
+    grid-template-columns: minmax(0, 1fr) auto;
+    background: var(--surface-strong);
+  }
+  .finance-search-select-trigger:hover:not(:disabled) {
+    @apply border-line-strong;
+  }
+  .finance-search-select-trigger:focus-visible {
+    @apply border-accent outline-none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  .finance-search-select-trigger:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+  .finance-search-select-value {
+    @apply min-w-0 truncate;
+  }
+  .finance-search-select-value.is-placeholder {
+    @apply text-muted;
+  }
+  .finance-search-select-chevron {
+    @apply shrink-0 text-base leading-none text-muted;
+  }
+  .finance-search-select-filter {
+    @apply block p-1;
+  }
+  .finance-search-select-filter input {
+    @apply min-h-10 w-full rounded-md border border-line px-3 text-sm text-ink outline-none;
+    background: var(--surface);
+  }
+  .finance-search-select-filter input:focus {
+    @apply border-accent;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .finance-search-select-option {
+    @apply grid w-full gap-1 rounded px-3 py-2 text-left text-sm;
+    color: var(--ink);
+  }
+  .finance-search-select-option:hover,
+  .finance-search-select-option:focus {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    outline: none;
+  }
+  .finance-search-select-option strong {
+    @apply font-bold;
+  }
+  .finance-search-select-option span,
+  .finance-search-select-state {
+    @apply m-0 text-xs leading-snug text-muted;
+  }
+  .finance-search-select-state {
+    @apply px-3 py-2.5;
+  }
   .finance-modal-actions {
     @apply flex gap-3 justify-end flex-wrap col-span-full pt-2;
+  }
+  .finance-modal-actions .finance-action-button,
+  .finance-modal-actions .finance-inline-action {
+    @apply ml-0;
   }
   .finance-total-summary-row td {
     @apply font-extrabold;
@@ -330,12 +494,12 @@
     @apply w-full justify-center cursor-pointer;
   }
   .finance-migration-filename {
-    @apply w-full text-center px-4 py-2 border border-line rounded-lg text-sm font-medium cursor-not-allowed;
+    @apply w-full text-center px-4 py-2 border border-line rounded-md text-sm font-medium cursor-not-allowed;
     background: transparent;
     color: var(--muted);
   }
   .finance-migration-toggle {
-    @apply flex flex-row items-center justify-between py-3 px-4 border border-line rounded-lg cursor-pointer mt-1;
+    @apply flex flex-row items-center justify-between py-3 px-4 border border-line rounded-md cursor-pointer mt-1;
   }
   .finance-migration-toggle span {
     @apply text-[0.78rem] text-muted font-bold;
@@ -345,7 +509,7 @@
     transform: scale(1.1);
   }
   .finance-migration-confirmation {
-    @apply grid gap-2 p-4 border rounded-xl;
+    @apply grid gap-2 p-4 border rounded-md;
     border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
     background: color-mix(in srgb, var(--danger) 7%, var(--surface));
   }
@@ -356,7 +520,7 @@
     @apply text-[0.76rem] leading-snug text-muted font-medium;
   }
   .finance-migration-confirmation input {
-    @apply border rounded-xl min-h-[44px] px-4 w-full max-w-full min-w-0 text-ink font-bold text-sm outline-none;
+    @apply border rounded-md min-h-10 px-3 w-full max-w-full min-w-0 text-ink font-bold text-sm outline-none;
     background: var(--surface-strong);
     border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
   }
@@ -373,9 +537,15 @@
   /* Mobile */
   @media (max-width: 768px) {
     .finance-screen, .finance-dashboard-section { gap: 16px; }
-    .finance-panel { @apply p-4 rounded-xl; }
-    .finance-subtabs { @apply w-full flex-nowrap rounded-[14px]; }
+    .finance-panel { @apply p-4 rounded-md; }
+    .finance-subtabs { @apply w-full flex-nowrap rounded-md; }
     .finance-migration-grid { grid-template-columns: 1fr; }
     .finance-dashboard-chart-row-double { grid-template-columns: 1fr; }
+    .finance-page-header { @apply items-start; }
+    .finance-page-header h1 { @apply text-xl; }
+    .finance-modal-frame { max-height: calc(100dvh - 2rem); }
+    .finance-modal-form { grid-template-columns: 1fr; }
+    .finance-modal-actions { @apply flex-col-reverse items-stretch; }
+    .finance-modal-actions > button { @apply w-full ml-0; }
   }
 }

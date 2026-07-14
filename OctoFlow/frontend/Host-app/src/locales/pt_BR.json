@@ -1144,6 +1144,8 @@
         "entryDeleteError": "Erro ao excluir lançamento.",
         "settlementInvalid": "Selecione um lançamento e um valor de baixa válido.",
         "settlementCreated": "Baixa registrada com sucesso.",
+        "settlementPaymentCreated": "Pagamento registrado com sucesso.",
+        "settlementReceiptCreated": "Recebimento registrado com sucesso.",
         "settlementError": "Erro ao registrar baixa.",
         "recurringInvalid": "Preencha título, valor, início e tipo recorrente válidos.",
         "recurringUpdated": "Recorrência atualizada com sucesso.",
@@ -1160,6 +1162,10 @@
         "childRenderError": "Erro inesperado ao renderizar contas financeiras."
       },
       "settlement": {
+        "types": {
+          "payment": "Pagamento",
+          "receipt": "Recebimento"
+        },
         "remainingSuffix": "restante"
       },
       "management": {
