@@ -1,0 +1,62 @@
+version: 2
+
+updates:
+  - package-ecosystem: composer
+    directory: /OctoFlow/www
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - backend
+    groups:
+      symfony:
+        patterns:
+          - symfony/*
+
+  - package-ecosystem: npm
+    directory: /OctoFlow/frontend/Host-app
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:15'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      frontend-host:
+        patterns:
+          - '*'
+
+  - package-ecosystem: npm
+    directory: /OctoFlow/frontend/Components-app
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:30'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      frontend-components:
+        patterns:
+          - '*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:45'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
