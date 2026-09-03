@@ -79,8 +79,7 @@ services:
       - ./www_nginx:/var/www/html
       - ../data/cert_nginx:/var/www/cert
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./docker/nginx/conf.d:/etc/nginx/conf.d     
-
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
     ports:
       - "4481:443"
     networks:
@@ -92,9 +91,9 @@ services:
     image: postgres:16
     restart: on-failure:5
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: test_db
+      POSTGRES_USER: ${POSTGRES_USER:?Defina POSTGRES_USER no ambiente local}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-octoflow}
     build:
       context: .
       dockerfile: docker/pg/Dockerfile
@@ -107,10 +106,11 @@ services:
       - ../data/tempdb:/tempdb
       - ../data/temp:/temp
     ports:
-      - "14954:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-14954}:5432"
+    secrets:
+      - postgres_password
     networks:
       - octoflow-network
-
 
   mailcatcher:
     image: dockage/mailcatcher:latest
@@ -155,3 +155,7 @@ networks:
 volumes:
   redis-data:
     name: octoflow-redis-data
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:?Defina POSTGRES_PASSWORD_FILE apontando para um arquivo local fora do Git}
