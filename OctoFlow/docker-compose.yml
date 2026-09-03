@@ -100,6 +100,20 @@ services:
       args:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        password="$$(tr -d '\r\n' < /run/secrets/postgres_password)"
+        if [ "$${POSTGRES_USER}" = "root" ]; then
+          echo "POSTGRES_USER=root não é permitido. Use um usuário dedicado ao OctoFlow." >&2
+          exit 1
+        fi
+        if [ "$${#password}" -lt 24 ]; then
+          echo "A senha do PostgreSQL deve ter pelo menos 24 caracteres." >&2
+          exit 1
+        fi
+        exec docker-entrypoint.sh postgres
     volumes:
       - ../data/pg/PostgreSql-Snippets/infile:/infile
       - ../data/pg/pg_data:/var/lib/postgresql/data
@@ -119,7 +133,7 @@ services:
     restart: on-failure:5
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
-      - "11081:1080"
+      - "127.0.0.1:11081:1080"
     networks:
       - octoflow-network
 
@@ -138,7 +152,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "16379:6379"
+      - "127.0.0.1:16379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
