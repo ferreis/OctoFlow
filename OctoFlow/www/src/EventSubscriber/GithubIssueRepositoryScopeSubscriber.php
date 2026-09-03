@@ -4,10 +4,14 @@ namespace App\EventSubscriber;
 
 use App\Entity\User;
 use App\Github\Exception\GithubActionForbiddenException;
+use App\Github\Exception\GithubConfigurationException;
+use App\Github\Exception\GithubGraphQLException;
 use App\Github\GithubIssueRepositoryScopeGuard;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 
@@ -49,6 +53,12 @@ final class GithubIssueRepositoryScopeSubscriber implements EventSubscriberInter
             $this->repositoryScopeGuard->assertIssueAllowed($user, $issueId);
         } catch (GithubActionForbiddenException $exception) {
             throw new AccessDeniedHttpException($exception->getMessage(), $exception);
+        } catch (GithubConfigurationException $exception) {
+            throw new HttpException(503, $exception->getMessage(), $exception);
+        } catch (GithubGraphQLException $exception) {
+            throw new HttpException(502, $exception->getMessage(), $exception);
+        } catch (\InvalidArgumentException $exception) {
+            throw new BadRequestHttpException($exception->getMessage(), $exception);
         }
     }
 }
