@@ -3,9 +3,11 @@
 namespace App\EventSubscriber;
 
 use App\Entity\User;
+use App\Github\Exception\GithubActionForbiddenException;
 use App\Github\GithubIssueRepositoryScopeGuard;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 
@@ -42,6 +44,11 @@ final class GithubIssueRepositoryScopeSubscriber implements EventSubscriberInter
         }
 
         $issueId = trim((string) $request->attributes->get('issueId', ''));
-        $this->repositoryScopeGuard->assertIssueAllowed($user, $issueId);
+
+        try {
+            $this->repositoryScopeGuard->assertIssueAllowed($user, $issueId);
+        } catch (GithubActionForbiddenException $exception) {
+            throw new AccessDeniedHttpException($exception->getMessage(), $exception);
+        }
     }
 }
