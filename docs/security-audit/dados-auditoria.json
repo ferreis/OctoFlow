@@ -1,0 +1,102 @@
+{
+  "project": "OctoFlow",
+  "date": "03/09/2026",
+  "branch": "dev",
+  "scope": {
+    "backend": "PHP 8.2+ / Symfony 7.3 / API Platform 4.1 / Doctrine ORM+DBAL / LexikJWT",
+    "frontend": "Vue 3 / Vite / Pinia / Vue Router / Module Federation",
+    "deploy": "Docker Compose + Dockerfiles + Nginx/PostgreSQL/Redis/Mailcatcher",
+    "not_found": [
+      "GitHub Actions/CI",
+      "Helm",
+      "Terraform"
+    ],
+    "isolation": "Filtro manual no backend por User/owner_id e repositórios find...ByOwner/findOneOwnedBy; não há RLS."
+  },
+  "findings": [
+    {
+      "id": "SEC-001",
+      "severity": "alta",
+      "category": "Chaves expostas / hardcode",
+      "file": "OctoFlow/docker-compose.yml",
+      "lines": "95-96, 110",
+      "title": "Credencial PostgreSQL pública hardcoded com porta publicada no host",
+      "description": "O Docker Compose define POSTGRES_USER=root e POSTGRES_PASSWORD=root diretamente no arquivo versionado e publica a porta 5432 do container na porta 14954 do host.",
+      "snippet": "POSTGRES_USER: root\nPOSTGRES_PASSWORD: root\n...\nports:\n  - \"14954:5432\"",
+      "exploit": "Explorável quando a porta 14954 do host é alcançável pelo atacante (por exemplo, host em LAN/rede compartilhada, firewall permissivo ou publicação externa). A senha é conhecida por qualquer pessoa com acesso ao repositório e é a credencial efetivamente usada pelo Compose, sem necessidade de sobrescrita.",
+      "impact": "Acesso direto ao PostgreSQL com privilégios do usuário root configurado, permitindo leitura, alteração ou destruição dos dados disponíveis a esse papel.",
+      "related": "README.md:103 documenta DATABASE_URL com root:root, reforçando que a credencial é pública e esperada no ambiente.",
+      "recommendation": "Remover usuário/senha do Compose, exigir POSTGRES_USER/POSTGRES_PASSWORD via .env.local/secret externo sem default inseguro, rejeitar startup quando ausentes/iguais a valores proibidos e restringir a publicação da porta a 127.0.0.1 ou removê-la quando desnecessária."
+    },
+    {
+      "id": "SEC-002",
+      "severity": "média",
+      "category": "IDOR / escopo de objeto",
+      "file": "OctoFlow/www/src/Github/GithubAssignedIssueService.php",
+      "lines": "678-688, 749, 767, 776",
+      "title": "Operações por issueId contornam a allow-list local de repositórios",
+      "description": "As operações de detalhe/edição recebem um node ID do GitHub e consultam o GraphQL usando diretamente o token do usuário. Diferentemente das operações por repositório, não há comparação do repositório retornado pelo node com o catálogo local de repositórios registrados.",
+      "snippet": "$token = $this->profileService->requireToken($user);\n$data = $this->graphqlClient->query($token, self::ISSUE_DETAIL_QUERY, [\n    'issueId' => $normalizedIssueId,\n]);",
+      "exploit": "Exige usuário autenticado no OctoFlow e um token GitHub próprio que já tenha acesso ao repositório alvo. O atacante fornece o node ID de uma issue de um repositório não cadastrado no OctoFlow. O GitHub continua impondo as permissões do token; portanto, a falha contorna a restrição local de repositórios, mas não concede permissões GitHub novas.",
+      "impact": "Quebra da fronteira de autorização configurada pelo OctoFlow: leitura e, quando viewerCanUpdate permitir, alteração/criação de sub-issues em repositórios fora da allow-list local.",
+      "related": "OctoFlow/www/src/Github/GithubProfileService.php:151-162 demonstra que o fluxo normal exige que o repositório esteja no catálogo do usuário. Rotas afetadas: GithubController.php:309-317 (GET), 327-340 (PATCH/PUT) e 355-368 (POST sub-issues).",
+      "recommendation": "Após obter o node/contexto, extrair repository.nameWithOwner e validar contra GithubRegistryService::buildCatalog($user), recusando repositórios ausentes/ignorados antes de retornar dados ou executar mutações. Centralizar essa checagem em um método reutilizável e cobrir GET/PATCH/PUT/sub-issues."
+    }
+  ],
+  "strengths": [
+    {
+      "title": "Isolamento financeiro consistente por owner_id",
+      "evidence": "FinanceDashboardService.php usa buildEntryWhere() com entry.owner_id = :ownerId; FinanceEntryService, FinanceCatalogService, FinanceRecurringService, FinanceInvestmentService, FinanceExportService, FinanceOpenFinanceService e FinanceTransferService recebem o User e aplicam owner_id ou remapeiam IDs para o owner atual."
+    },
+    {
+      "title": "CRUD local de tarefas valida posse",
+      "evidence": "TaskController passa CurrentUser para LocalTaskService; o serviço resolve tarefas por owner e ID antes de exibir/alterar/sincronizar."
+    },
+    {
+      "title": "Registros GitHub locais validam owner",
+      "evidence": "GithubRegistryService::findOwnedAccount/findOwnedRepository usa repositórios findOneOwnedBy; update/delete ainda revalidam repository->getOwner()->getId()."
+    },
+    {
+      "title": "Permissões financeiras são reenforçadas no servidor",
+      "evidence": "Controllers Finance usam #[IsGranted(FinancePermissionResolver::READ/WRITE)] além do gate visual Vue. FinancePermissionResolver mapeia roles para permissões no backend."
+    },
+    {
+      "title": "API de usuários é administrativa no backend",
+      "evidence": "User.php declara ApiResource GET/GetCollection com security: is_granted('ROLE_ADMIN')."
+    },
+    {
+      "title": "Markdown usa sanitização antes de v-html",
+      "evidence": "MarkdownPreview.vue executa marked.parse() e, em seguida, DOMPurify.sanitize() antes do v-html. Não foram encontrados outros usos de v-html nem innerHTML."
+    },
+    {
+      "title": "URLs de repositório são normalizadas no backend",
+      "evidence": "GithubRegistryService::parseGithubRepositoryReference() reconstrói o valor como https://github.com/<owner>/<repo>, impedindo confiar apenas na regex do frontend."
+    },
+    {
+      "title": "Templates de e-mail ativos usam autoescape do Twig",
+      "evidence": "GooglePasswordSetupMailer e AccountPasswordChangeMailer usam TemplatedEmail + templates Twig sem |raw nos caminhos ativos revisados."
+    },
+    {
+      "title": "Material JWT não é versionado",
+      "evidence": "OctoFlow/www/.gitignore contém /config/jwt/*.pem; buscas por BEGIN PRIVATE KEY, github_pat_ e AIza não encontraram segredos atuais."
+    },
+    {
+      "title": "Frontend rastreado não contém segredo de autenticação",
+      "evidence": "Host-app/.env contém somente comentários; Google OAuth client ID é fornecido por /auth/config e não é segredo."
+    }
+  ],
+  "coverage": [
+    "Controllers raiz: AccountEmailController, AuthConfigController, AuthController, AvatarController, CsrfChallengeController, GithubController, TaskController e UISettingsController.",
+    "Controllers Finance: Catalog, Currency, Dashboard, DebtPlan, Entry, Export, Installment, Investment, OpenFinance, Recurring e Transfer.",
+    "ApiResource User (GET/GetCollection).",
+    "Serviços/repositórios usados pelas rotas por ID e pelas listagens/agregações/exportações financeiras.",
+    "Gates Vue relacionados a finanças e permissões; busca por isAdmin/ROLE_ADMIN/canWriteFinance.",
+    "Sinks XSS: v-html, innerHTML, eval, new Function, href/src dinâmicos, markdown e templates Twig.",
+    "Segredos/config: .env, .env.example, Docker Compose/Dockerfiles, documentação, padrões de token/chave e histórico do .env/Compose.",
+    "Árvore de deploy: não há .github/workflows, Helm ou Terraform na branch auditada."
+  ],
+  "exclusions": [
+    "O template templates/emails/system_notification.html.twig contém |raw, porém não foi encontrado nenhum chamador no código atual. Sem caminho executável/input comprovado, ele não foi contabilizado como vulnerabilidade, conforme a regra de não especular.",
+    "Redis/Mailcatcher publicados no ambiente de desenvolvimento são riscos de hardening de infraestrutura, mas não foram contados nas cinco categorias solicitadas porque não representam, por si, hardcode de segredo nem quebra de tenant comprovada."
+  ]
+}
