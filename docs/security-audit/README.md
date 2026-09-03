@@ -27,7 +27,9 @@ O relatório foi validado com 7 páginas e rasterização das páginas 1, 2, 4 e
 
 ## Testes Playwright de segurança
 
-Os testes em `tests/seguranca-autorizacao.spec.js` verificam que endpoints sensíveis rejeitam chamadas anônimas. Eles não exigem alteração no `package.json` do frontend. Para executá-los sem instalar dependências no projeto, copie o teste para um diretório temporário isolado:
+Os testes em `tests/seguranca-autorizacao.spec.js` verificam que endpoints sensíveis rejeitam chamadas anônimas. Também existe um teste autenticado opcional para confirmar que uma issue de repositório acessível pelo token do GitHub, mas não cadastrado no OctoFlow, é bloqueada com HTTP 403.
+
+Eles não exigem alteração no `package.json` do frontend. Para executá-los sem instalar dependências no projeto, copie o teste para um diretório temporário isolado:
 
 ```bash
 cd docs/security-audit
@@ -39,7 +41,16 @@ npm install --save-dev @playwright/test
 OCTOFLOW_API_BASE_URL="https://localhost:4481/OctoFlow/api" npx playwright test seguranca-autorizacao.spec.js
 ```
 
-Ajuste `OCTOFLOW_API_BASE_URL` para a URL real da instância auditada. Para HTTPS local com certificado de desenvolvimento, configure o ambiente Playwright para aceitar o certificado somente no ambiente de teste.
+Para executar também a regressão IDOR autenticada, informe um access token válido do OctoFlow e o node ID de uma issue pertencente a um repositório que o mesmo token GitHub consegue acessar, mas que não esteja cadastrado no OctoFlow:
+
+```bash
+OCTOFLOW_API_BASE_URL="https://localhost:4481/OctoFlow/api" \
+OCTOFLOW_ACCESS_TOKEN="TOKEN_DA_SESSAO_DE_TESTE" \
+OCTOFLOW_UNREGISTERED_ISSUE_ID="NODE_ID_DE_TESTE" \
+npx playwright test seguranca-autorizacao.spec.js
+```
+
+Use somente credenciais descartáveis de ambiente de teste e nunca registre os valores reais em arquivos ou commits. Ajuste `OCTOFLOW_API_BASE_URL` para a URL real da instância auditada. Para HTTPS local com certificado de desenvolvimento, configure o ambiente Playwright para aceitar o certificado somente no ambiente de teste.
 
 ## Observação
 
