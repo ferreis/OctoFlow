@@ -70,7 +70,8 @@ final class AuthenticationRateLimitListener
             return;
         }
 
-        $statusCode = $event->getResponse()->getStatusCode();
+        $response = $event->getResponse();
+        $statusCode = $response->getStatusCode();
         if ($statusCode >= 200 && $statusCode < 300) {
             $this->rateLimiter->clearIdentity($identity);
 
@@ -83,12 +84,12 @@ final class AuthenticationRateLimitListener
 
         $this->rateLimiter->recordFailure($request, $identity);
 
-        // Não exponha se o e-mail existe, se a conta está desativada ou se só aceita Google.
-        $response = new JsonResponse([
-            'message' => 'Invalid credentials.',
-        ], JsonResponse::HTTP_UNAUTHORIZED);
+        // Preserve CORS/security headers already attached by the response pipeline while
+        // avoiding account-state disclosure (missing, disabled or Google-only account).
+        $response->setStatusCode(JsonResponse::HTTP_UNAUTHORIZED);
+        $response->setContent('{"message":"Invalid credentials."}');
+        $response->headers->set('Content-Type', 'application/json');
         $response->headers->set('Cache-Control', 'no-store, private');
-        $event->setResponse($response);
     }
 
     private function isPasswordLoginRequest(Request $request): bool
