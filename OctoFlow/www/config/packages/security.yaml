@@ -24,6 +24,7 @@ security:
         - { path: ^/auth/login$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/register$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/config$, roles: PUBLIC_ACCESS }
+        - { path: ^/auth/google/nonce$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/google$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/refresh$, roles: PUBLIC_ACCESS }
         - { path: ^/auth/session/restore-available$, roles: PUBLIC_ACCESS }
