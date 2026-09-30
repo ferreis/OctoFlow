@@ -126,6 +126,15 @@ final class LogoutAccessTokenCookieListener
             return sprintf('/%s/auth/logout', $basePath);
         }
 
+        $pathInfo = '/' . ltrim((string) $request->getPathInfo(), '/');
+        $authSegmentPosition = strpos($pathInfo, '/auth');
+        if ($authSegmentPosition !== false) {
+            $prefixPath = trim(substr($pathInfo, 0, $authSegmentPosition), '/');
+            if ($prefixPath !== '') {
+                return sprintf('/%s/auth/logout', $prefixPath);
+            }
+        }
+
         return '/auth/logout';
     }
 
