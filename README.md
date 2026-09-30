@@ -93,14 +93,14 @@ Para desenvolvimento sem Docker:
 
 Nunca grave segredos reais no arquivo `OctoFlow/www/.env`, no README, em issues ou em commits.
 
-Crie `OctoFlow/www/.env.local` para os valores da sua máquina:
+Crie `OctoFlow/www/.env.local` para os valores da sua máquina. Use exatamente o mesmo usuário, senha e banco definidos para o PostgreSQL local:
 
 ```dotenv
 APP_ENV=dev
 APP_DEBUG=1
 APP_SECRET=gere-um-valor-aleatorio-longo
 
-DATABASE_URL="postgresql://root:root@database:5432/test_db?serverVersion=16&charset=utf8"
+DATABASE_URL="postgresql://SEU_USUARIO:SUA_SENHA_URL_ENCODED@database:5432/octoflow?serverVersion=16&charset=utf8"
 REDIS_URL="redis://redis:6379"
 
 JWT_PASSPHRASE=use-uma-senha-forte
@@ -127,11 +127,25 @@ Os seguintes arquivos já são ignorados pelo Git:
 
 ## Execução com Docker
 
-Na raiz do repositório:
+O Compose não possui senha padrão do PostgreSQL. Antes de iniciar, crie um arquivo de senha fora do repositório e exporte somente o caminho e o usuário no shell:
 
 ```bash
 cd OctoFlow
+mkdir -p ../data/secrets
+openssl rand -base64 48 > ../data/secrets/postgres_password
+chmod 600 ../data/secrets/postgres_password
+export POSTGRES_USER="octoflow_local"
+export POSTGRES_PASSWORD_FILE="$(realpath ../data/secrets/postgres_password)"
+export POSTGRES_DB="octoflow"
 docker compose up --build -d
+```
+
+A senha do arquivo deve ser usada também em `OctoFlow/www/.env.local`. Se ela contiver caracteres reservados de URL, codifique a senha ao montar `DATABASE_URL`.
+
+O PostgreSQL publicado no host é vinculado somente a `127.0.0.1`. Para mudar a porta local sem expor o serviço externamente:
+
+```bash
+export POSTGRES_HOST_PORT="14954"
 ```
 
 Instale as dependências do backend:
@@ -166,7 +180,7 @@ docker compose logs -f
 | --- | --- |
 | Aplicação | `https://localhost:4481/OctoFlow` |
 | Remote Module Federation | `https://localhost:4481/OctoFlow-mf` |
-| PostgreSQL | `localhost:14954` |
+| PostgreSQL | `127.0.0.1:14954` por padrão |
 | Redis | `localhost:16379` |
 | Mailcatcher | `http://localhost:11081` |
 

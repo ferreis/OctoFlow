@@ -19,6 +19,7 @@ import { useSessionStore } from '../stores/sessionStore'
 
 const GOOGLE_CREDENTIAL_MAX_LENGTH = 4096
 const GOOGLE_CLIENT_ID_MAX_LENGTH = 220
+const GOOGLE_NONCE_MAX_LENGTH = 128
 const FEEDBACK_MESSAGE_MAX_LENGTH = 280
 
 let googleIdentityScriptPromise
@@ -68,6 +69,7 @@ const googleButtonContainer = ref(null)
 const error = ref('')
 const localLoading = ref(false)
 const googleClientId = ref('')
+const googleLoginNonce = ref('')
 const cachedContainerWidth = ref(0)
 const shouldInitializeWhenActive = ref(true)
 
@@ -150,6 +152,17 @@ function sanitizeGoogleClientId(rawClientId) {
 
   return /^[a-zA-Z0-9._-]+$/.test(normalizedClientId)
     ? normalizedClientId
+    : ''
+}
+
+function sanitizeGoogleNonce(rawNonce) {
+  const normalizedNonce = sanitizeSingleLineText(rawNonce, GOOGLE_NONCE_MAX_LENGTH)
+  if (normalizedNonce === '') {
+    return ''
+  }
+
+  return /^[A-Za-z0-9_-]{32,128}$/.test(normalizedNonce)
+    ? normalizedNonce
     : ''
 }
 
@@ -258,6 +271,42 @@ async function loadAuthConfig() {
   }
 }
 
+async function loadGoogleLoginNonce() {
+  try {
+    const { data } = await executeClientRequest({
+      url: '/auth/google/nonce',
+      method: 'GET',
+    })
+
+    const normalizedNonce = sanitizeGoogleNonce(data?.nonce)
+    googleLoginNonce.value = normalizedNonce
+
+    if (!normalizedNonce) {
+      setErrorMessage(
+        translateWithFallback(
+          'shared.googleLogin.errors.nonceMissing',
+          'Não foi possível iniciar uma tentativa segura de login com Google.',
+        ),
+      )
+      return false
+    }
+
+    return true
+  } catch (requestError) {
+    const requestErrorMessage = sanitizeSingleLineText(requestError?.message, 120)
+    setErrorMessage(
+      translateWithFallback(
+        'shared.googleLogin.errors.nonceLoadFailed',
+        'Erro ao preparar login seguro com Google: {message}',
+        {
+          message: requestErrorMessage !== '' ? requestErrorMessage : 'falha ao consultar o nonce de login',
+        },
+      ),
+    )
+    return false
+  }
+}
+
 function loadGoogleIdentityScript() {
   if (typeof window === 'undefined') {
     return Promise.reject(
@@ -356,6 +405,10 @@ async function setupGoogleLogin() {
     return
   }
 
+  if (!await loadGoogleLoginNonce()) {
+    return
+  }
+
   try {
     await loadGoogleIdentityScript()
 
@@ -371,6 +424,7 @@ async function setupGoogleLogin() {
     window.google.accounts.id.initialize({
       client_id: googleClientId.value,
       callback: handleGoogleCredentialResponse,
+      nonce: googleLoginNonce.value,
       auto_select: false,
       cancel_on_tap_outside: true,
     })
@@ -380,6 +434,7 @@ async function setupGoogleLogin() {
     await renderGoogleButton()
     observeButtonContainerWidth()
   } catch (initializationError) {
+    googleLoginNonce.value = ''
     const initializationErrorMessage = sanitizeSingleLineText(initializationError?.message, 120)
     setErrorMessage(
       translateWithFallback(
@@ -431,12 +486,22 @@ async function handleGoogleCredentialResponse(response) {
     emit('credential', credential)
   } finally {
     localLoading.value = false
+    googleLoginNonce.value = ''
+
+    if (shouldInitializeWhenActive.value && typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        if (shouldInitializeWhenActive.value) {
+          void setupGoogleLogin()
+        }
+      }, 0)
+    }
   }
 }
 
 function resetGoogleComponentState() {
   clearErrorMessage()
   localLoading.value = false
+  googleLoginNonce.value = ''
 }
 
 onBeforeMount(() => {
@@ -487,11 +552,13 @@ onActivated(async () => {
 
 onDeactivated(() => {
   shouldInitializeWhenActive.value = false
+  googleLoginNonce.value = ''
   disconnectContainerResizeObserver()
 })
 
 onBeforeUnmount(() => {
   shouldInitializeWhenActive.value = false
+  googleLoginNonce.value = ''
   disconnectContainerResizeObserver()
   disableAutoSelect()
 })

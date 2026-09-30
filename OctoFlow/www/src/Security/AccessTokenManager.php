@@ -91,6 +91,18 @@ final class AccessTokenManager implements AccessTokenManagerInterface
         return true;
     }
 
+    public function deactivateByHash(string $accessTokenHash): bool
+    {
+        $normalizedHash = strtolower(trim($accessTokenHash));
+        if (preg_match('/^[a-f0-9]{64}$/', $normalizedHash) !== 1) {
+            return false;
+        }
+
+        return $this->accessTokenCachePool->deleteItem(
+            self::ACTIVE_TOKEN_CACHE_KEY_PREFIX . $normalizedHash,
+        );
+    }
+
     public function validateToken(string $accessToken): bool
     {
         $normalizedAccessToken = trim($accessToken);

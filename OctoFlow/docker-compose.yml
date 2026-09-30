@@ -79,8 +79,7 @@ services:
       - ./www_nginx:/var/www/html
       - ../data/cert_nginx:/var/www/cert
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./docker/nginx/conf.d:/etc/nginx/conf.d     
-
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
     ports:
       - "4481:443"
     networks:
@@ -92,25 +91,40 @@ services:
     image: postgres:16
     restart: on-failure:5
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: test_db
+      POSTGRES_USER: ${POSTGRES_USER:?Defina POSTGRES_USER no ambiente local}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-octoflow}
     build:
       context: .
       dockerfile: docker/pg/Dockerfile
       args:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        password="$$(tr -d '\r\n' < /run/secrets/postgres_password)"
+        if [ "$${POSTGRES_USER}" = "root" ]; then
+          echo "POSTGRES_USER=root não é permitido. Use um usuário dedicado ao OctoFlow." >&2
+          exit 1
+        fi
+        if [ "$${#password}" -lt 24 ]; then
+          echo "A senha do PostgreSQL deve ter pelo menos 24 caracteres." >&2
+          exit 1
+        fi
+        exec docker-entrypoint.sh postgres
     volumes:
       - ../data/pg/PostgreSql-Snippets/infile:/infile
       - ../data/pg/pg_data:/var/lib/postgresql/data
       - ../data/tempdb:/tempdb
       - ../data/temp:/temp
     ports:
-      - "14954:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-14954}:5432"
+    secrets:
+      - postgres_password
     networks:
       - octoflow-network
-
 
   mailcatcher:
     image: dockage/mailcatcher:latest
@@ -119,7 +133,7 @@ services:
     restart: on-failure:5
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
-      - "11081:1080"
+      - "127.0.0.1:11081:1080"
     networks:
       - octoflow-network
 
@@ -138,7 +152,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "16379:6379"
+      - "127.0.0.1:16379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -155,3 +169,7 @@ networks:
 volumes:
   redis-data:
     name: octoflow-redis-data
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:?Defina POSTGRES_PASSWORD_FILE apontando para um arquivo local fora do Git}

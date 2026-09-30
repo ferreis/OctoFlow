@@ -10,9 +10,14 @@ final class GoogleTokenInfoClient implements GoogleTokenInfoClientInterface
 
     public function fetchTokenInfo(string $idToken): array
     {
-        $curlHandle = curl_init(sprintf(self::TOKEN_INFO_URL, rawurlencode($idToken)));
+        $normalizedIdToken = trim($idToken);
+        if ($normalizedIdToken === '' || strlen($normalizedIdToken) > 8192) {
+            throw new GoogleTokenVerificationException('Google rejected the provided credential.');
+        }
+
+        $curlHandle = curl_init(sprintf(self::TOKEN_INFO_URL, rawurlencode($normalizedIdToken)));
         if ($curlHandle === false) {
-            throw new GoogleTokenVerificationException('Could not initialize Google token verification.');
+            throw new GoogleTokenVerificationException('Google token verification is temporarily unavailable.');
         }
 
         curl_setopt_array($curlHandle, [
@@ -22,31 +27,28 @@ final class GoogleTokenInfoClient implements GoogleTokenInfoClientInterface
             CURLOPT_HTTPHEADER => ['Accept: application/json'],
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
         ]);
 
         $rawResponse = curl_exec($curlHandle);
         if ($rawResponse === false) {
-            $curlError = curl_error($curlHandle);
-            curl_exec($curlHandle);
-
-            throw new GoogleTokenVerificationException(sprintf('Failed to contact Google: %s', $curlError));
+            throw new GoogleTokenVerificationException('Google token verification is temporarily unavailable.');
         }
 
         $statusCode = (int) curl_getinfo($curlHandle, CURLINFO_RESPONSE_CODE);
-        curl_exec($curlHandle);
+        if ($statusCode < 200 || $statusCode >= 300) {
+            throw new GoogleTokenVerificationException('Google rejected the provided credential.');
+        }
 
-        $decodedResponse = json_decode($rawResponse, true);
-        if (!is_array($decodedResponse)) {
+        try {
+            $decodedResponse = json_decode($rawResponse, true, flags: \JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
             throw new GoogleTokenVerificationException('Google token verification returned an invalid response.');
         }
 
-        if ($statusCode >= 400) {
-            $message = $decodedResponse['error_description'] ?? $decodedResponse['error'] ?? 'Google rejected the provided credential.';
-            if (!is_string($message) || trim($message) === '') {
-                $message = 'Google rejected the provided credential.';
-            }
-
-            throw new GoogleTokenVerificationException($message);
+        if (!is_array($decodedResponse)) {
+            throw new GoogleTokenVerificationException('Google token verification returned an invalid response.');
         }
 
         /** @var array<string, mixed> $decodedResponse */

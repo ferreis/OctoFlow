@@ -5,3 +5,6 @@ framework:
             access_token_pool:
                 adapter: cache.adapter.redis
                 provider: '%env(REDIS_URL)%'
+            auth_rate_limit_pool:
+                adapter: cache.adapter.redis
+                provider: '%env(REDIS_URL)%'

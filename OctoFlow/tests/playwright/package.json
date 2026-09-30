@@ -1,0 +1,13 @@
+{
+  "name": "octoflow-security-playwright",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:auth": "playwright test tests/auth-security.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
