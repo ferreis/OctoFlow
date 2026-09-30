@@ -15,5 +15,7 @@ interface AccessTokenManagerInterface
 
     public function blacklistToken(string $accessToken, ?UserInterface $expectedUser = null): bool;
 
+    public function deactivateByHash(string $accessTokenHash): bool;
+
     public function validateToken(string $accessToken): bool;
 }
