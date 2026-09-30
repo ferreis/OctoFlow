@@ -43,9 +43,9 @@ npm test
 
 O teste autenticado valida:
 
-- access token retornado somente no corpo da resposta;
+- access token retornado somente no corpo da resposta e mantido pelo frontend em memória;
 - refresh token mantido em cookie `HttpOnly` + `Secure`;
-- cookie auxiliar do access token restrito a `/auth/logout`;
+- hash SHA-256 não reutilizável do access token em cookie `HttpOnly` restrito a `/auth/logout`;
 - rotação do refresh token;
 - emissão de novo access token após refresh;
 - presença de `roles` e `permissions` no payload da sessão;
@@ -55,6 +55,6 @@ O teste autenticado valida:
 ## Variáveis opcionais
 
 - `PLAYWRIGHT_REFRESH_COOKIE_NAME`: padrão `refresh_token`.
-- `PLAYWRIGHT_LOGOUT_ACCESS_COOKIE_NAME`: padrão `logout_access_token`.
+- `PLAYWRIGHT_LOGOUT_ACCESS_HASH_COOKIE_NAME`: padrão `logout_access_token_hash`.
 
 Não use credenciais de produção na suíte E2E.
