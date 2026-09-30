@@ -131,6 +131,31 @@ final class AccessTokenManagerTest extends TestCase
         $this->assertFalse($accessTokenManager->validateToken($issuedAccessToken));
     }
 
+    public function testDeactivateByHashInvalidatesTokenWithoutStoringBearerCredential(): void
+    {
+        $tokenExpirationTimestamp = time() + 600;
+        $user = (new User())->setEmail('owner@example.com');
+        $cachePool = new ArrayAdapter();
+        $jwtTokenManager = $this->createJwtTokenManagerMock(
+            $user,
+            'new-access-token',
+            [
+                'new-access-token' => [
+                    'exp' => $tokenExpirationTimestamp,
+                    'username' => 'owner@example.com',
+                ],
+            ],
+        );
+
+        $accessTokenManager = new AccessTokenManager($jwtTokenManager, $cachePool);
+        $issuedAccessToken = $accessTokenManager->issueForUser($user);
+        $this->assertTrue($accessTokenManager->validateToken($issuedAccessToken));
+
+        $this->assertTrue($accessTokenManager->deactivateByHash(hash('sha256', $issuedAccessToken)));
+        $this->assertFalse($accessTokenManager->validateToken($issuedAccessToken));
+        $this->assertFalse($accessTokenManager->deactivateByHash($issuedAccessToken));
+    }
+
     /**
      * @param array<string, array<string, mixed>> $tokenPayloadByToken
      */
