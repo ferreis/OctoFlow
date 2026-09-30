@@ -1,13 +1,18 @@
+import { createHash } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 
 const API_BASE_URL = (process.env.PLAYWRIGHT_API_BASE_URL || 'https://localhost:4481/OctoFlow/api').replace(/\/$/, '')
 const E2E_USER_EMAIL = String(process.env.E2E_USER_EMAIL || '').trim()
 const E2E_USER_PASSWORD = String(process.env.E2E_USER_PASSWORD || '')
 const REFRESH_COOKIE_NAME = String(process.env.PLAYWRIGHT_REFRESH_COOKIE_NAME || 'refresh_token').trim()
-const LOGOUT_ACCESS_COOKIE_NAME = String(process.env.PLAYWRIGHT_LOGOUT_ACCESS_COOKIE_NAME || 'logout_access_token').trim()
+const LOGOUT_ACCESS_HASH_COOKIE_NAME = String(process.env.PLAYWRIGHT_LOGOUT_ACCESS_HASH_COOKIE_NAME || 'logout_access_token_hash').trim()
 
 function apiUrl(path) {
   return `${API_BASE_URL}/${String(path || '').replace(/^\/+/, '')}`
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex')
 }
 
 async function publicCsrfHeaders(request, actionId, path) {
@@ -101,16 +106,18 @@ test.describe('segurança de autenticação', () => {
 
       const cookiesAfterLogin = await currentCookies(request)
       const refreshAfterLogin = findCookie(cookiesAfterLogin, REFRESH_COOKIE_NAME)
-      const logoutAccessAfterLogin = findCookie(cookiesAfterLogin, LOGOUT_ACCESS_COOKIE_NAME)
+      const logoutHashAfterLogin = findCookie(cookiesAfterLogin, LOGOUT_ACCESS_HASH_COOKIE_NAME)
 
       expect(refreshAfterLogin).toBeTruthy()
       expect(refreshAfterLogin.httpOnly).toBe(true)
       expect(refreshAfterLogin.secure).toBe(true)
       expect(refreshAfterLogin.path.endsWith('/auth')).toBe(true)
-      expect(logoutAccessAfterLogin).toBeTruthy()
-      expect(logoutAccessAfterLogin.httpOnly).toBe(true)
-      expect(logoutAccessAfterLogin.secure).toBe(true)
-      expect(logoutAccessAfterLogin.path.endsWith('/auth/logout')).toBe(true)
+      expect(logoutHashAfterLogin).toBeTruthy()
+      expect(logoutHashAfterLogin.httpOnly).toBe(true)
+      expect(logoutHashAfterLogin.secure).toBe(true)
+      expect(logoutHashAfterLogin.path.endsWith('/auth/logout')).toBe(true)
+      expect(logoutHashAfterLogin.value).toBe(sha256(loginPayload.token))
+      expect(logoutHashAfterLogin.value).not.toBe(loginPayload.token)
 
       const refreshHeaders = await publicCsrfHeaders(request, 'auth.refresh', '/auth/refresh')
       const refreshResponse = await request.post(apiUrl('/auth/refresh'), { headers: refreshHeaders })
@@ -124,8 +131,10 @@ test.describe('segurança de autenticação', () => {
 
       const cookiesAfterRefresh = await currentCookies(request)
       const refreshAfterRotation = findCookie(cookiesAfterRefresh, REFRESH_COOKIE_NAME)
+      const logoutHashAfterRefresh = findCookie(cookiesAfterRefresh, LOGOUT_ACCESS_HASH_COOKIE_NAME)
       expect(refreshAfterRotation).toBeTruthy()
       expect(refreshAfterRotation.value).not.toBe(refreshAfterLogin.value)
+      expect(logoutHashAfterRefresh?.value).toBe(sha256(refreshPayload.token))
 
       const meResponse = await request.get(apiUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${refreshPayload.token}` },
@@ -138,7 +147,7 @@ test.describe('segurança de autenticação', () => {
 
       const cookiesAfterLogout = await currentCookies(request)
       expect(findCookie(cookiesAfterLogout, REFRESH_COOKIE_NAME)).toBeFalsy()
-      expect(findCookie(cookiesAfterLogout, LOGOUT_ACCESS_COOKIE_NAME)).toBeFalsy()
+      expect(findCookie(cookiesAfterLogout, LOGOUT_ACCESS_HASH_COOKIE_NAME)).toBeFalsy()
 
       const replayAccessResponse = await request.get(apiUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${refreshPayload.token}` },
