@@ -6,7 +6,7 @@ O projeto está em desenvolvimento ativo e usa um backend Symfony, dois frontend
 
 ## Principais recursos
 
-- Autenticação local e Google OAuth.
+- Autenticação local com Argon2id, salt individual e pepper externo, além de Google OAuth.
 - Sessão com access token em memória e refresh token em cookie `HttpOnly`.
 - Rotação e revogação de refresh tokens, proteção CSRF e validação de contexto da sessão.
 - Dashboard, tarefas locais e sincronização de issues do GitHub.
@@ -99,6 +99,7 @@ Crie `OctoFlow/www/.env.local` para os valores da sua máquina. Use exatamente o
 APP_ENV=dev
 APP_DEBUG=1
 APP_SECRET=gere-um-valor-aleatorio-longo
+PASSWORD_PEPPER_FILE=/caminho/absoluto/para/password_pepper
 
 DATABASE_URL="postgresql://SEU_USUARIO:SUA_SENHA_URL_ENCODED@database:5432/octoflow?serverVersion=16&charset=utf8"
 REDIS_URL="redis://redis:6379"
@@ -133,14 +134,18 @@ O Compose não possui senha padrão do PostgreSQL. Antes de iniciar, crie um arq
 cd OctoFlow
 mkdir -p ../data/secrets
 openssl rand -base64 48 > ../data/secrets/postgres_password
-chmod 600 ../data/secrets/postgres_password
+openssl rand -hex 32 > ../data/secrets/password_pepper
+chmod 600 ../data/secrets/postgres_password ../data/secrets/password_pepper
 export POSTGRES_USER="octoflow_local"
 export POSTGRES_PASSWORD_FILE="$(realpath ../data/secrets/postgres_password)"
+export PASSWORD_PEPPER_FILE="$(realpath ../data/secrets/password_pepper)"
 export POSTGRES_DB="octoflow"
 docker compose up --build -d
 ```
 
 A senha do arquivo deve ser usada também em `OctoFlow/www/.env.local`. Se ela contiver caracteres reservados de URL, codifique a senha ao montar `DATABASE_URL`.
+
+O pepper de senha deve permanecer fora do Git e separado do banco. O Compose monta esse arquivo como `/run/secrets/password_pepper`; em execução sem Docker, configure `PASSWORD_PEPPER_FILE` para o caminho absoluto do arquivo local. Perder ou trocar o pepper invalida hashes Argon2id já protegidos por ele, portanto mantenha backup seguro do segredo.
 
 O PostgreSQL publicado no host é vinculado somente a `127.0.0.1`. Para mudar a porta local sem expor o serviço externamente:
 

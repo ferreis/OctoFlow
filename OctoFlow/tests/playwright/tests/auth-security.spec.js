@@ -78,6 +78,16 @@ test.describe('segurança de autenticação', () => {
     expect(response.headers()['cache-control']).toContain('no-store')
   })
 
+  test('senha excessivamente longa é rejeitada sem erro interno ou vazamento', async ({ request }) => {
+    test.skip(!E2E_USER_EMAIL, 'Defina E2E_USER_EMAIL para validar o limite de senha contra uma conta existente.')
+
+    const response = await passwordLogin(request, E2E_USER_EMAIL, 'A'.repeat(4097))
+
+    expect(response.status()).toBe(401)
+    expect(await response.json()).toEqual({ message: 'Invalid credentials.' })
+    expect(response.headers()['cache-control']).toContain('no-store')
+  })
+
   test('access token e refresh token rotacionam e logout invalida a sessão', async ({ playwright }) => {
     test.skip(!E2E_USER_EMAIL || !E2E_USER_PASSWORD, 'Defina E2E_USER_EMAIL e E2E_USER_PASSWORD para o teste autenticado.')
 
