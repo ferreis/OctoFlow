@@ -127,6 +127,11 @@ class AuthController
             return new JsonResponse(['message' => 'Invalid credentials.'], JsonResponse::HTTP_UNAUTHORIZED);
         }
 
+        if ($this->passwordHasher->needsRehash($user)) {
+            $user->setPassword($this->passwordHasher->hashPassword($user, $password));
+            $this->entityManager->flush();
+        }
+
         return $this->createAuthenticatedResponse($user, $request);
     }
 

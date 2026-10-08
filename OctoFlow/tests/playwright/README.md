@@ -28,7 +28,8 @@ PLAYWRIGHT_API_BASE_URL="https://localhost:4481/OctoFlow/api" npm test
 Os testes públicos validam:
 
 - emissão de nonce Google aleatório e sem cache;
-- resposta genérica para credenciais inválidas, evitando enumeração de contas.
+- resposta genérica para credenciais inválidas, evitando enumeração de contas;
+- rejeição segura de senhas acima de 4096 caracteres quando `E2E_USER_EMAIL` estiver configurado.
 
 ## Execução autenticada
 

@@ -15,6 +15,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379
+      PASSWORD_PEPPER_FILE: /run/secrets/password_pepper
+    secrets:
+      - password_pepper
     volumes:
       - ./www:/var/www/html
       - ./docker/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
@@ -171,5 +174,7 @@ volumes:
     name: octoflow-redis-data
 
 secrets:
+  password_pepper:
+    file: ${PASSWORD_PEPPER_FILE:?Defina PASSWORD_PEPPER_FILE apontando para um arquivo local fora do Git}
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:?Defina POSTGRES_PASSWORD_FILE apontando para um arquivo local fora do Git}
