@@ -39,19 +39,15 @@ flowchart LR
 | Frontend Host | Vue 3, Vue Router, Pinia, Vite, Tailwind CSS |
 | Frontend Remote | Vue 3, Vite, Module Federation, Tailwind CSS |
 | Backend | PHP 8.4, Symfony 7.3, Doctrine ORM, API Platform |
-| Autenticação | Lexik JWT, refresh token rotativo, Google OAuth, CSRF |
+| Autenticação | Argon2id com salt e pepper, Lexik JWT, refresh token rotativo, Google OAuth, CSRF |
 | Dados | PostgreSQL 16 e Redis |
 | Infraestrutura | Docker Compose, Nginx, PHP-FPM e Mailcatcher |
-| Qualidade | PHPUnit, ESLint, builds Vite e GitHub Actions |
+| Qualidade | PHPUnit, Playwright, ESLint, builds Vite e auditoria de dependências |
 
 ## Estrutura do repositório
 
 ```text
 .
-├── .github/
-│   ├── dependabot.yml
-│   └── workflows/
-│       └── ci.yml
 ├── OctoFlow/
 │   ├── docker/
 │   │   ├── nginx/
@@ -67,6 +63,8 @@ flowchart LR
 │   │   ├── migrations/
 │   │   ├── src/
 │   │   └── tests/
+│   ├── tests/
+│   │   └── playwright/
 │   └── docker-compose.yml
 ├── SECURITY.md
 └── README.md
@@ -99,7 +97,7 @@ Crie `OctoFlow/www/.env.local` para os valores da sua máquina. Use exatamente o
 APP_ENV=dev
 APP_DEBUG=1
 APP_SECRET=gere-um-valor-aleatorio-longo
-PASSWORD_PEPPER_FILE=/caminho/absoluto/para/password_pepper
+PASSWORD_PEPPER_FILE=/run/secrets/password_pepper
 
 DATABASE_URL="postgresql://SEU_USUARIO:SUA_SENHA_URL_ENCODED@database:5432/octoflow?serverVersion=16&charset=utf8"
 REDIS_URL="redis://redis:6379"
@@ -128,7 +126,7 @@ Os seguintes arquivos já são ignorados pelo Git:
 
 ## Execução com Docker
 
-O Compose não possui senha padrão do PostgreSQL. Antes de iniciar, crie um arquivo de senha fora do repositório e exporte somente o caminho e o usuário no shell:
+O Compose não possui senha padrão do PostgreSQL nem pepper padrão para as senhas. Antes de iniciar, crie arquivos de segredo **fora do repositório**, em uma área restrita ao usuário ou serviço que os utiliza:
 
 ```bash
 cd OctoFlow
@@ -145,7 +143,9 @@ docker compose up --build -d
 
 A senha do arquivo deve ser usada também em `OctoFlow/www/.env.local`. Se ela contiver caracteres reservados de URL, codifique a senha ao montar `DATABASE_URL`.
 
-O pepper de senha deve permanecer fora do Git e separado do banco. O Compose monta esse arquivo como `/run/secrets/password_pepper`; em execução sem Docker, configure `PASSWORD_PEPPER_FILE` para o caminho absoluto do arquivo local. Perder ou trocar o pepper invalida hashes Argon2id já protegidos por ele, portanto mantenha backup seguro do segredo.
+O Compose monta o pepper como `/run/secrets/password_pepper` e usa `PASSWORD_PEPPER_FILE` no backend para localizar esse arquivo. **Não sobrescreva um pepper já utilizado ao reiniciar, reinstalar ou atualizar o projeto.** Sem o pepper original, os hashes novos deixam de ser verificáveis e será necessário redefinir as senhas dos usuários afetados. Faça backup criptografado, com acesso restrito e separado do backup do banco de dados. Em instalações sem Docker, configure `PASSWORD_PEPPER_FILE` em `OctoFlow/www/.env.local` com um caminho absoluto legível exclusivamente pelo processo PHP. Em instalações Docker, mantenha o valor interno `/run/secrets/password_pepper`.
+
+O diretório externo `../data/secrets` é apenas uma sugestão de desenvolvimento local. Garanta que esteja fora do controle de versão e evite armazenar os arquivos de segredos em locais compartilhados ou publicados pelo servidor web.
 
 O PostgreSQL publicado no host é vinculado somente a `127.0.0.1`. Para mudar a porta local sem expor o serviço externamente:
 
@@ -205,6 +205,20 @@ docker compose down --volumes
 
 Os dados persistidos em diretórios montados fora da pasta `OctoFlow` não são removidos automaticamente.
 
+## Proteção de senhas: Argon2id, salt e pepper
+
+O backend Symfony utiliza `App\\Security\\Hasher\\Argon2idPepperedPasswordHasher` para senhas locais. O fluxo de armazenamento é:
+
+1. A senha recebida é combinada com o **pepper secreto** usando HMAC-SHA-256.
+2. O resultado alimenta `password_hash(..., PASSWORD_ARGON2ID)`, que produz **salt aleatório individual** para cada hash.
+3. O banco armazena somente o hash versionado, iniciado por `octoflow:argon2id:v1:`. O salt e os parâmetros Argon2id fazem parte do próprio hash; o pepper não é armazenado nele nem no banco.
+
+O mesmo algoritmo é usado nos fluxos de cadastro, criação de usuário por comando, definição de senha após login Google e alteração da senha pelo perfil. A autenticação Google OAuth em si não exige senha local.
+
+**Migração de senhas existentes:** hashes antigos reconhecidos por `password_verify` continuam aceitos. Após o primeiro login local bem-sucedido, o backend substitui o hash antigo por Argon2id com pepper. A migração é individual e não exige conhecer previamente as senhas dos usuários. Alterações de senha passam diretamente a usar o algoritmo novo. Contas que não fizerem login continuarão com seus hashes antigos até a próxima autenticação ou redefinição de senha.
+
+**Operação:** cada ambiente precisa de um pepper próprio e persistente. O pepper não deve ser enviado ao frontend, persistido em logs, colocado em variáveis públicas do Vite ou incluído em commits. A aplicação requer o arquivo configurado para as operações de senha; valide a montagem e as permissões antes de colocar a instância em produção.
+
 ## Desenvolvimento e validação
 
 ### Backend
@@ -215,7 +229,11 @@ composer install
 composer validate --strict --no-check-publish
 composer audit --locked
 php bin/phpunit
+# Executar os testes unitários específicos do algoritmo de senha:
+php bin/phpunit tests/Unit/Security/Argon2idPepperedPasswordHasherTest.php
 ```
+
+O backend precisa das variáveis de ambiente e serviços auxiliares correspondentes aos testes executados. Para rodar dentro do container já configurado, use `docker compose exec backend php bin/phpunit` a partir do diretório `OctoFlow`.
 
 ### Host frontend
 
@@ -237,6 +255,27 @@ npm run build
 npm run dev
 ```
 
+### Testes Playwright de autenticação
+
+Com a API iniciada, execute a suíte de segurança:
+
+```bash
+cd OctoFlow/tests/playwright
+npm install
+PLAYWRIGHT_API_BASE_URL="https://localhost:4481/OctoFlow/api" npm test
+```
+
+O Playwright verifica respostas genéricas para credenciais inválidas, comportamento de nonce Google e, quando configurados os dados de uma **conta exclusiva de testes**, limites de senha, login, cookies de sessão, rotação de refresh token e logout. Para habilitar os cenários autenticados:
+
+```bash
+E2E_USER_EMAIL="usuario-e2e@example.test" \\
+E2E_USER_PASSWORD="senha-exclusiva-de-teste" \\
+PLAYWRIGHT_API_BASE_URL="https://localhost:4481/OctoFlow/api" \\
+npm test
+```
+
+Não utilize credenciais de produção. Veja [a documentação da suíte](OctoFlow/tests/playwright/README.md) para detalhes. Os testes que exigem credenciais são ignorados quando elas não estão definidas; `npm test` requer que a API esteja disponível.
+
 Portas padrão no desenvolvimento direto:
 
 - Host: `5173`
@@ -244,19 +283,7 @@ Portas padrão no desenvolvimento direto:
 
 ## Integração contínua
 
-O workflow `.github/workflows/ci.yml` é executado em pushes para `main` e em pull requests.
-
-Ele verifica:
-
-- instalação reproduzível com `npm ci`;
-- auditoria das dependências de produção do npm;
-- ESLint e build dos dois frontends;
-- validação e auditoria do Composer;
-- sintaxe PHP;
-- migrações em PostgreSQL;
-- testes PHPUnit com PostgreSQL e Redis.
-
-O workflow usa permissões somente de leitura, não recebe segredos do repositório e cancela execuções antigas da mesma branch.
+A branch `dev` não possui workflows GitHub Actions neste momento. Portanto, os comandos de validação descritos acima devem ser executados manualmente antes do merge. Não presuma que PHPUnit, Playwright, auditorias ou builds foram executados automaticamente pelo GitHub.
 
 ## Atualizações de dependências
 
@@ -275,10 +302,10 @@ Consulte [SECURITY.md](SECURITY.md) para relatar vulnerabilidades de forma priva
 
 Regras básicas:
 
-- não publique tokens, senhas, cookies, chaves JWT ou arquivos `.env.local`;
+- não publique tokens, senhas, cookies, chaves JWT, o arquivo do pepper ou arquivos `.env.local`;
 - não use credenciais de exemplo como credenciais reais;
 - mantenha a chave JWT privada com permissão restrita;
-- não habilite workflows com `pull_request_target` para executar código de forks;
+- caso workflows sejam introduzidos futuramente, não execute código de forks com segredos via `pull_request_target`;
 - revise ações e dependências automatizadas antes do merge.
 
 ## Licença
